@@ -455,12 +455,31 @@ class UNetbootinApp(QMainWindow):
 
         logger.info(f"ISO downloaded successfully: {iso_path}")
 
-        # Extract ISO (30-80%)
+        # Verify checksum if available (30-35%)
+        progress_dialog.setLabelText("Verifying ISO checksum...")
+        self._update_progress(progress_dialog, 30)
+        
+        # Get checksum for this distribution version
+        checksum = self.get_distribution_checksum(params.get('distro'), params.get('version'))
+        if checksum:
+            checksum_type = "sha256"  # Prefer SHA256
+            if not self.downloader.verify_checksum(iso_path, checksum, checksum_type):
+                # Clean up the downloaded file
+                try:
+                    os.remove(iso_path)
+                except Exception:
+                    pass
+                raise RuntimeError(f"ISO checksum verification failed for {iso_filename}")
+            logger.info(f"ISO checksum verified successfully: {checksum_type}")
+        else:
+            logger.warning(f"No checksum available for {params.get('distro')} {params.get('version')}, skipping verification")
+
+        # Extract ISO (35-80%)
         progress_dialog.setLabelText("Extracting ISO...")
         success, message = self.extractor.extract_iso_sync(
             iso_path,
             self.tmp_dir,
-            progress_callback=lambda p: self._update_progress(progress_dialog, 30 + int(p * 0.5))
+            progress_callback=lambda p: self._update_progress(progress_dialog, 35 + int(p * 0.45))
         )
         if not success:
             raise RuntimeError(f"Extraction failed: {message}")
@@ -478,6 +497,29 @@ class UNetbootinApp(QMainWindow):
         if not success:
             raise RuntimeError(f"Installation failed: {message}")
     
+    def get_distribution_checksum(self, distro_name: str, version_name: str) -> Optional[str]:
+        """Get the checksum for a specific distribution and version.
+        
+        Args:
+            distro_name: Name of the distribution
+            version_name: Name of the version
+            
+        Returns:
+            Checksum string (SHA256 preferred) or None if not available
+        """
+        distro = self.distro_manager.get_distribution(distro_name)
+        if not distro:
+            logger.error(f"Distribution not found: {distro_name}")
+            return None
+        
+        # Find the version with matching name
+        for version in distro.versions:
+            if version.name == version_name:
+                # Prefer SHA256, then SHA1, then MD5
+                return version.get_checksum("sha256")
+        
+        return None
+
     def get_distribution_iso_url(self, distro_name: str, version_name: str) -> Optional[str]:
         """Get the ISO URL for a specific distribution and version.
         

@@ -20,15 +20,36 @@ class DistributionVersion:
     size: int = 0
     description: str = ""
     category: str = ""
+    sha256: Optional[str] = None
+    sha1: Optional[str] = None
+    md5: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             'name': self.name,
             'url': self.url,
             'size': self.size,
             'description': self.description,
             'category': self.category,
         }
+        if self.sha256:
+            result['sha256'] = self.sha256
+        if self.sha1:
+            result['sha1'] = self.sha1
+        if self.md5:
+            result['md5'] = self.md5
+        return result
+    
+    def get_checksum(self, checksum_type: str = "sha256") -> Optional[str]:
+        """Get checksum by type, preferring SHA256 if available."""
+        if checksum_type == "sha256" and self.sha256:
+            return self.sha256
+        elif checksum_type == "sha1" and self.sha1:
+            return self.sha1
+        elif checksum_type == "md5" and self.md5:
+            return self.md5
+        # Fallback to any available checksum
+        return self.sha256 or self.sha1 or self.md5
 
 
 @dataclass

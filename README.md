@@ -438,7 +438,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 📦 Medium Priority
 - [ ] Add translation support (port `.ts` files to `.qm`)
 - [ ] Implement auto-update checking
-- [ ] Add ISO verification (checksum comparison)
+- [x] Add ISO verification (checksum comparison) - Done
 - [x] Add support for more archive formats (zip, tar, etc.) - Done
 
 ### 🎨 Low Priority / Enhancements

@@ -91,3 +91,25 @@ icon_path = resources_dir / 'icons' / 'unetbootin_48.png'
 - PNG icons were generated from the SVG at various sizes
 - Bootloader files are platform-specific and used during USB installation
 - Translation files are Qt Linguist files that need to be compiled to `.qm` files for use
+
+## Security
+
+⚠️ **IMPORTANT**: Binary files in `bootloader/` and `misc/` (sevnz.exe, sevnz.dll, 7zS.sfx, ubnldr.exe, syslinux.exe) are committed to the repository without cryptographic verification.
+
+### Verification Recommended
+
+Before using these binaries in production:
+1. Verify their SHA256 checksums against trusted sources
+2. Replace them with binaries from official distributions
+3. Consider using Python-based alternatives (py7zr, pycdlib) instead
+
+### Official Sources
+
+- **Syslinux**: https://www.syslinux.org/ (bootloader files)
+- **7-Zip**: https://www.7-zip.org/ (misc/7z*.* files)
+
+### Future Improvements
+
+- [ ] Add verified checksums for all binary files
+- [ ] Implement runtime verification of resource files
+- [ ] Fetch binaries dynamically from official sources with verification

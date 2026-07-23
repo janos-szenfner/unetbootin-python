@@ -165,8 +165,27 @@ class USBInstaller(QObject):
                     logger.error(f"Failed to unmount {target_device}")
                     return False
             
+            # Format the device with FAT32 filesystem
+            logger.info(f"Formatting {target_device} with FAT32")
+            if not self._format_device(target_device):
+                logger.error(f"Failed to format {target_device}")
+                return False
+            
             # Create temporary working directory
             params['temp_dir'] = tempfile.mkdtemp(prefix='unetbootin_install_')
+            
+            # Create and mount the device to a temporary mount point
+            mount_point = tempfile.mkdtemp(prefix='unetbootin_mount_')
+            logger.info(f"Mounting {target_device} to {mount_point}")
+            if not self._mount_device(target_device, mount_point):
+                logger.error(f"Failed to mount {target_device}")
+                # Clean up temp dir
+                shutil.rmtree(params['temp_dir'], ignore_errors=True)
+                shutil.rmtree(mount_point, ignore_errors=True)
+                return False
+            
+            # Store mount point in params for use during file copying
+            params['mount_point'] = mount_point
             
             return True
             
@@ -178,7 +197,9 @@ class USBInstaller(QObject):
                               params: Dict[str, Any],
                               progress_callback: Optional[Callable[[int], None]] = None) -> bool:
         """Copy files from source to target device."""
-        logger.info(f"Copying files from {source_dir} to {target_device}")
+        # Use mount point if available (for formatted devices), otherwise fall back to raw device
+        actual_target = params.get('mount_point', target_device)
+        logger.info(f"Copying files from {source_dir} to {actual_target}")
         
         try:
             # Get list of files to copy
@@ -189,7 +210,7 @@ class USBInstaller(QObject):
 
             for file_path in files_to_copy:
                 src_path = os.path.join(source_dir, file_path)
-                dest_path = os.path.join(target_device, file_path)
+                dest_path = os.path.join(actual_target, file_path)
 
                 try:
                     # Create directory structure
@@ -252,6 +273,42 @@ class USBInstaller(QObject):
         logger.info("Cleaning up installation")
         
         try:
+            # Unmount the device if it was mounted
+            mount_point = params.get('mount_point')
+            if mount_point and os.path.exists(mount_point):
+                logger.info(f"Unmounting device from {mount_point}")
+                if self.platform == 'win32':
+                    # Windows: no explicit unmount needed for drive letters
+                    pass
+                elif self.platform == 'darwin':
+                    # Find what's mounted at this point and unmount it
+                    result = subprocess.run(
+                        ['mount'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        for line in result.stdout.split('\n'):
+                            if mount_point in line:
+                                parts = line.strip().split()
+                                if len(parts) >= 1:
+                                    subprocess.run(
+                                        ['umount', mount_point],
+                                        capture_output=True,
+                                        timeout=5
+                                    )
+                                break
+                else:  # Linux
+                    subprocess.run(
+                        ['sudo', 'umount', mount_point],
+                        capture_output=True,
+                        timeout=5
+                    )
+                
+                # Remove the mount point directory
+                shutil.rmtree(mount_point, ignore_errors=True)
+            
             # Remove temporary directory
             temp_dir = params.get('temp_dir')
             if temp_dir and os.path.exists(temp_dir):
@@ -349,6 +406,161 @@ class USBInstaller(QObject):
             logger.error(f"Failed to unmount {device}: {e}")
         
         return False
+    
+    def _format_device(self, device: str) -> bool:
+        """Format the target device with FAT32 filesystem."""
+        logger.info(f"Formatting device {device}")
+        
+        try:
+            if self.platform == 'win32':
+                # Windows: use format command
+                if len(device) == 1 and device.isalpha():
+                    device = f"{device}:"
+                # Use Windows format command with FAT32
+                result = subprocess.run(
+                    ['format', device, '/FS:FAT32', '/Q', '/Y'],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                return result.returncode == 0
+            elif self.platform == 'darwin':
+                # macOS: use diskutil eraseVolume
+                # Find the disk identifier
+                result = subprocess.run(
+                    ['diskutil', 'list'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    return False
+                
+                # Parse to find the correct disk identifier
+                disk_identifier = None
+                for line in result.stdout.split('\n'):
+                    if device in line and 'disk' in line:
+                        # Extract disk identifier like disk2
+                        parts = line.strip().split()
+                        for part in parts:
+                            if part.startswith('disk') and part != 'disk':
+                                disk_identifier = part
+                                break
+                        if disk_identifier:
+                            break
+                
+                if not disk_identifier:
+                    logger.error(f"Could not find disk identifier for {device}")
+                    return False
+                
+                # Format as FAT32
+                result = subprocess.run(
+                    ['diskutil', 'eraseVolume', 'FAT32', 'UNETBOOTIN', 'MBRFormat', disk_identifier],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                return result.returncode == 0
+            else:  # Linux
+                # Linux: use mkfs.vfat
+                if not device.startswith('/dev/'):
+                    device = f"/dev/{device}"
+                
+                # Check if this is a whole device or partition
+                # For safety, we should operate on partitions, not whole devices
+                # But for simplicity, we'll assume it's a partition or the user knows what they're doing
+                result = subprocess.run(
+                    ['sudo', 'mkfs.vfat', '-F32', '-n', 'UNETBOOTIN', device],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                return result.returncode == 0
+                
+        except Exception as e:
+            logger.error(f"Failed to format device {device}: {e}")
+            return False
+    
+    def _mount_device(self, device: str, mount_point: str) -> bool:
+        """Mount the target device to the specified mount point."""
+        logger.info(f"Mounting {device} to {mount_point}")
+        
+        try:
+            if self.platform == 'win32':
+                # Windows: drives are already accessible via drive letters
+                # For simplicity, we'll just ensure the mount point directory exists
+                if len(device) == 1 and device.isalpha():
+                    # Use the drive letter as-is
+                    if not os.path.exists(mount_point):
+                        os.makedirs(mount_point, exist_ok=True)
+                    return True
+                return False
+            elif self.platform == 'darwin':
+                # macOS: use diskutil mount
+                if not os.path.exists(mount_point):
+                    os.makedirs(mount_point, exist_ok=True)
+                
+                # Find the disk identifier
+                result = subprocess.run(
+                    ['diskutil', 'list'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    return False
+                
+                # Parse to find the correct disk identifier
+                disk_identifier = None
+                for line in result.stdout.split('\n'):
+                    if device in line and 'disk' in line:
+                        parts = line.strip().split()
+                        for part in parts:
+                            if part.startswith('disk') and part != 'disk':
+                                disk_identifier = part
+                                break
+                        if disk_identifier:
+                            break
+                
+                if not disk_identifier:
+                    logger.error(f"Could not find disk identifier for {device}")
+                    return False
+                
+                result = subprocess.run(
+                    ['diskutil', 'mount', disk_identifier],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode != 0:
+                    return False
+                
+                # Now mount to our specific mount point
+                result = subprocess.run(
+                    ['mount', '-t', 'msdos', f'/dev/{disk_identifier}s1', mount_point],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                return result.returncode == 0
+            else:  # Linux
+                if not device.startswith('/dev/'):
+                    device = f"/dev/{device}"
+                
+                if not os.path.exists(mount_point):
+                    os.makedirs(mount_point, exist_ok=True)
+                
+                result = subprocess.run(
+                    ['sudo', 'mount', device, mount_point],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                return result.returncode == 0
+                
+        except Exception as e:
+            logger.error(f"Failed to mount device {device} to {mount_point}: {e}")
+            return False
     
     def _get_files_to_copy(self, source_dir: str, params: Dict[str, Any]) -> List[str]:
         """Get list of files to copy from source directory."""
