@@ -392,6 +392,36 @@ def format_drive(drive: str, filesystem: str = "vfat", label: str = "UNETBOOTIN"
         return False
 
 
+def get_parent_disk(device: str) -> Optional[str]:
+    """Resolve the whole-disk device for a partition (or return the device
+    itself if it is already a whole disk), using lsblk metadata."""
+    try:
+        if not device.startswith('/dev/'):
+            device = f"/dev/{device}"
+
+        # If it's a partition, lsblk reports its parent kernel name (pkname)
+        result = subprocess.run(
+            ['lsblk', '-no', 'pkname', device],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            pkname = result.stdout.strip().splitlines()[0].strip() if result.stdout.strip() else ''
+            if pkname:
+                return f"/dev/{pkname}"
+
+        # No parent: check it really is a disk before returning it
+        result = subprocess.run(
+            ['lsblk', '-no', 'type', '-d', device],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip() == 'disk':
+            return device
+    except Exception as e:
+        logger.error(f"Failed to resolve parent disk for {device}: {e}")
+
+    return None
+
+
 def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
     """Install bootloader to a drive on Linux."""
     try:
@@ -400,15 +430,15 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
         
         if bootloader_type.lower() == 'syslinux':
             # Install syslinux bootloader
-            
-            # First, find the correct device (whole disk vs partition)
-            if drive.endswith('1') or drive.endswith('2'):
-                # This is a partition, we need the whole disk
-                whole_disk = drive.rsplit('1', 1)[0]
-                if whole_disk.endswith('2'):
-                    whole_disk = drive.rsplit('2', 1)[0]
-            else:
-                whole_disk = drive
+
+            # Resolve the parent (whole) disk for the given device. Never
+            # guess by stripping trailing digits: that mangles NVMe/eMMC
+            # names (nvme0n1p1, mmcblk0p1) and we are about to dd an MBR
+            # to whatever this resolves to.
+            whole_disk = get_parent_disk(drive)
+            if not whole_disk:
+                logger.error(f"Cannot determine parent disk for {drive}; refusing to write MBR")
+                return False
             
             # Check if syslinux is installed
             if not os.path.exists('/usr/lib/syslinux/mbr/mbr.bin'):

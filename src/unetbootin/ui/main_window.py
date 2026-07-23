@@ -295,29 +295,35 @@ class MainWindow(QWidget):
         for distro in sorted(distros, key=lambda x: x['name']):
             self.distro_select.addItem(distro['name'], distro['name'])
     
-    def set_drive_list(self, drives: List[str]):
-        """Set the list of available drives."""
+    def set_drive_list(self, drives: List[tuple]):
+        """Set the list of available drives.
+
+        Args:
+            drives: List of (display_string, device_path) tuples. The device
+                path is stored as item userData so installation targets the
+                real device, not the decorated display text.
+        """
         logger.info(f"Setting {len(drives)} drives")
-        
-        # Remember current selection if any
-        current_drive = self.drive_select.currentText() if self.drive_select.count() > 0 else None
-        
+
+        # Remember current selection (by device path) if any
+        current_device = self.drive_select.currentData() if self.drive_select.count() > 0 else None
+
         # Clear existing items
         self.drive_select.clear()
-        
-        # Add drives to combo box
-        for drive in drives:
-            self.drive_select.addItem(drive, drive)
-        
+
+        # Add drives to combo box: visible label + device path as userData
+        for display, device in drives:
+            self.drive_select.addItem(display, device)
+
         # Try to restore previous selection
-        if current_drive and current_drive in drives:
-            index = self.drive_select.findText(current_drive)
+        if current_device:
+            index = self.drive_select.findData(current_device)
             if index >= 0:
                 self.drive_select.setCurrentIndex(index)
-        
+
         # Enable/disable based on whether we have drives
         self.drive_select.setEnabled(len(drives) > 0)
-        
+
         return len(drives) > 0
     
     def update_version_list(self, distro_name: str):
@@ -354,7 +360,9 @@ class MainWindow(QWidget):
                          else ('floppy' if self.radio_floppy.isChecked() 
                                else 'manual'),
             'drive_type': self.type_select.currentText(),
-            'target_drive': self.drive_select.currentText(),
+            # currentData() holds the real device path (set in set_drive_list);
+            # currentText() is only the decorated display label.
+            'target_drive': self.drive_select.currentData(),
         }
         
         if params['install_type'] == 'distribution':

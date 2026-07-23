@@ -185,32 +185,42 @@ class USBInstaller(QObject):
             files_to_copy = self._get_files_to_copy(source_dir, params)
             total_files = len(files_to_copy)
             copied_files = 0
-            
+            failed_files = []
+
             for file_path in files_to_copy:
                 src_path = os.path.join(source_dir, file_path)
                 dest_path = os.path.join(target_device, file_path)
-                
+
                 try:
                     # Create directory structure
                     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                    
+
                     # Copy file
                     if os.path.isdir(src_path):
                         shutil.copytree(src_path, dest_path)
                     else:
                         shutil.copy2(src_path, dest_path)
-                    
+
                     copied_files += 1
                     if progress_callback:
                         progress = int((copied_files / total_files) * 100)
                         progress_callback(progress)
-                        
+
                 except Exception as e:
                     logger.error(f"Failed to copy {src_path} to {dest_path}: {e}")
-                    # Continue with other files
-            
+                    failed_files.append(file_path)
+
+            # A boot medium with missing files is broken - report failure
+            # instead of pretending the copy succeeded.
+            if failed_files:
+                logger.error(
+                    f"{len(failed_files)}/{total_files} files failed to copy "
+                    f"(first: {failed_files[0]})"
+                )
+                return False
+
             return True
-            
+
         except Exception as e:
             logger.error(f"File copying failed: {e}")
             return False
@@ -397,18 +407,22 @@ class USBInstaller(QObject):
             # Check for syslinux
             syslinux_path = self._find_executable('syslinux')
             if syslinux_path:
-                # Use syslinux to make USB bootable
                 if len(device) == 1 and device.isalpha():
-                    device = f"{device}:\\"
-                
-                # This is a placeholder - actual syslinux command would be:
-                # syslinux.exe -ma -d /boot/syslinux <drive>:
+                    device = f"{device}:"
+
+                result = subprocess.run(
+                    [syslinux_path, '-ma', device],
+                    capture_output=True, text=True, timeout=60
+                )
+                if result.returncode != 0:
+                    logger.error(f"syslinux failed: {result.stderr}")
+                    return False
                 return True
-            
-            # Check for other tools
-            # ...
-            
-            return True  # Assume success for now
+
+            # No known bootloader tool available - report failure honestly
+            # instead of producing a non-bootable stick marked as success.
+            logger.error("Windows bootloader installation requires syslinux.exe on PATH")
+            return False
             
         except Exception as e:
             logger.error(f"Windows bootloader installation failed: {e}")
@@ -525,8 +539,9 @@ class USBInstaller(QObject):
                     )
                     return result.returncode == 0
             
-            logger.warning("No suitable bootloader installation method found")
-            return True  # Continue anyway
+            logger.error("No suitable bootloader installation method found "
+                         "(install syslinux, extlinux or grub)")
+            return False
             
         except Exception as e:
             logger.error(f"Linux bootloader installation failed: {e}")

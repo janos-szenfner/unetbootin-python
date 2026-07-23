@@ -5,6 +5,7 @@ macOS-specific functionality for UNetbootin.
 import os
 import re
 import sys
+import shutil
 import logging
 import subprocess
 from typing import Optional, List, Dict, Any
@@ -216,8 +217,9 @@ def unmount_drive(drive: str) -> bool:
                             text=True,
                             timeout=10
                         )
-                        return result.returncode == 0
-                        
+                        if result.returncode == 0:
+                            return True
+
                         # Alternative: use umount
                         result = subprocess.run(
                             ['umount', mount_point],
@@ -433,20 +435,16 @@ def set_volume_label(drive: str, label: str) -> bool:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
         
-        # We need to format the drive with the new label
-        # This is a simplified version
         result = subprocess.run(
             ['diskutil', 'rename', drive, label],
             capture_output=True,
             text=True,
             timeout=10
         )
-        
-        if result.returncode == 0:
-            return True
-        
-        # Alternative: reformat with new label
-        return format_drive(drive, label=label)
+
+        # NOTE: never fall back to reformatting here - renaming a volume must
+        # not erase it. If rename fails, report failure.
+        return result.returncode == 0
         
     except Exception as e:
         logger.error(f"Failed to set volume label for {drive}: {e}")

@@ -35,18 +35,25 @@ from unetbootin.platform import get_drive_list
 logger = logging.getLogger(__name__)
 
 
+class InstallationCancelled(Exception):
+    """Raised when the user cancels the installation via the progress dialog."""
+    pass
+
+
 class UNetbootinApp(QMainWindow):
     """Main application class that coordinates all functionality."""
     
-    def __init__(self, parent: Optional[QMainWindow] = None):
+    def __init__(self, parent: Optional[QMainWindow] = None,
+                 cli_args: Optional[Dict[str, Any]] = None):
         """Initialize the UNetbootin application."""
         super().__init__(parent)
         logger.info("Initializing UNetbootinApp")
-        
+
         # Application state
+        self.cli_args = cli_args or {}
         self.app_dir = os.path.dirname(os.path.abspath(__file__))
         self.app_loc = sys.argv[0]
-        self.app_lang = QLocale.system().name()
+        self.app_lang = self.cli_args.get('lang') or QLocale.system().name()
         self.tmp_dir = None
         self.exit_on_completion = False
         self.testing_download = False
@@ -66,7 +73,9 @@ class UNetbootinApp(QMainWindow):
         self.setup_connections()
         
         # Check for root/admin privileges on Unix systems
-        if self.platform in ['linux', 'darwin']:
+        # (skippable via --rootcheck=no, as documented in the README)
+        rootcheck = str(self.cli_args.get('rootcheck', True)).lower() not in ('no', 'false', '0')
+        if rootcheck and self.platform in ['linux', 'darwin']:
             self.check_privileges()
     
     def setup_platform(self):
@@ -141,23 +150,22 @@ class UNetbootinApp(QMainWindow):
             self.show_error("Failed to load drive list")
             return False
     
-    def format_drive_list(self, drives: List[Dict[str, Any]]) -> List[str]:
+    def format_drive_list(self, drives: List[Dict[str, Any]]) -> List[tuple]:
         """Format drive list for display in UI.
-        
-        Converts drive dictionaries to display strings with relevant information.
+
+        Converts drive dictionaries to (display_string, device_path) tuples so
+        the UI can show a friendly label while keeping the real device path.
         """
         display_list = []
-        
+
         for drive in drives:
             # Basic information
             device = drive.get('device', '')
-            
+            if not device:
+                continue
+
             # Build display string with useful information
-            parts = []
-            
-            # Add device name
-            if device:
-                parts.append(device)
+            parts = [device]
             
             # Add size if available
             size = drive.get('size')
@@ -183,11 +191,11 @@ class UNetbootinApp(QMainWindow):
                 parts.append(f"({filesystem})")
             
             display_str = " ".join(parts)
-            display_list.append(display_str)
-        
+            display_list.append((display_str, device))
+
         # Sort drives - put removable drives first, then by device name
-        display_list.sort(key=lambda x: ("[Removable]" not in x, x))
-        
+        display_list.sort(key=lambda x: ("[Removable]" not in x[0], x[0]))
+
         return display_list
     
     def check_privileges(self):
@@ -236,8 +244,11 @@ class UNetbootinApp(QMainWindow):
         """Re-launch the application with sudo on macOS."""
         logger.info("Attempting to re-launch with sudo")
         try:
-            # For macOS, we use osascript for sudo
-            script = f'tell application "Terminal" to do script "sudo {sys.argv[0]}"'
+            # For macOS, we use osascript for sudo. Quote the executable path
+            # so paths with spaces/quotes cannot break out of the command.
+            import shlex
+            quoted = shlex.quote(sys.argv[0])
+            script = f'tell application "Terminal" to do script "sudo {quoted}"'
             subprocess.run(['osascript', '-e', script], check=True)
             sys.exit(0)
         except subprocess.CalledProcessError as e:
@@ -311,57 +322,72 @@ class UNetbootinApp(QMainWindow):
         self.tmp_dir = tempfile.mkdtemp(prefix='unetbootin_')
         logger.info(f"Created temporary directory: {self.tmp_dir}")
     
+    def _update_progress(self, progress_dialog, value: int):
+        """Update the progress dialog, keep the UI responsive, honor Cancel."""
+        progress_dialog.setValue(value)
+        QApplication.processEvents()
+        if progress_dialog.wasCanceled():
+            raise InstallationCancelled("Cancelled by user")
+
     def start_installation(self, params: Dict[str, Any]):
-        """Start the installation process."""
+        """Start the installation process.
+
+        Runs the pipeline stages synchronously (download -> extract -> install)
+        so each stage only starts after the previous one succeeded, failures
+        are reported honestly, and cleanup happens after all work is done.
+        """
         logger.info("Starting installation process")
-        
+
         # Show progress dialog
         progress_dialog = QProgressDialog(
-            "Installing...", 
-            "Cancel", 
-            0, 
-            100, 
+            "Installing...",
+            "Cancel",
+            0,
+            100,
             self
         )
         progress_dialog.setWindowTitle("Installation in Progress")
         progress_dialog.setModal(True)
         progress_dialog.show()
-        
+
         try:
-            if params.get('install_type') == 'iso':
-                # Extract ISO
-                self.extractor.extract_iso(
-                    params['iso_path'],
+            install_type = params.get('install_type')
+
+            if install_type in ('iso', 'floppy'):
+                source_image = params.get('iso_path') or params.get('floppy_image')
+
+                # Extract image (0-50%)
+                progress_dialog.setLabelText("Extracting image...")
+                success, message = self.extractor.extract_iso_sync(
+                    source_image,
                     self.tmp_dir,
-                    progress_callback=lambda p: progress_dialog.setValue(int(p * 0.5))
+                    progress_callback=lambda p: self._update_progress(progress_dialog, int(p * 0.5))
                 )
-                
-                # Install to USB
-                self.installer.install(
+                if not success:
+                    raise RuntimeError(f"Extraction failed: {message}")
+
+                # Install to USB (50-100%)
+                progress_dialog.setLabelText("Installing to drive...")
+                success, message = self.installer.install_sync(
                     self.tmp_dir,
                     params['target_drive'],
-                    progress_callback=lambda p: progress_dialog.setValue(50 + int(p * 0.5))
+                    params,
+                    progress_callback=lambda p: self._update_progress(progress_dialog, 50 + int(p * 0.5))
                 )
-            elif params.get('install_type') == 'distribution':
-                # Download ISO from distribution URL
+                if not success:
+                    raise RuntimeError(f"Installation failed: {message}")
+
+            elif install_type == 'distribution':
+                # Download ISO from distribution URL, then extract and install
                 self.download_and_install_distribution(params, progress_dialog)
-            elif params.get('install_type') == 'floppy':
-                # Handle floppy disk image
-                if params.get('floppy_image'):
-                    self.extractor.extract_iso(
-                        params['floppy_image'],
-                        self.tmp_dir,
-                        progress_callback=lambda p: progress_dialog.setValue(int(p * 0.5))
-                    )
-                    self.installer.install(
-                        self.tmp_dir,
-                        params['target_drive'],
-                        progress_callback=lambda p: progress_dialog.setValue(50 + int(p * 0.5))
-                    )
-            
+            else:
+                raise RuntimeError(f"Unsupported install type: {install_type}")
+
             progress_dialog.setValue(100)
             self.show_completion_message()
-            
+
+        except InstallationCancelled:
+            logger.info("Installation cancelled by user")
         except Exception as e:
             logger.error(f"Installation failed: {e}")
             self.show_error(f"Installation failed: {str(e)}")
@@ -396,11 +422,12 @@ class UNetbootinApp(QMainWindow):
             """Update progress for download phase (0-30%)."""
             if bytes_total > 0:
                 download_percent = int((bytes_received / bytes_total) * 30)
-                progress_dialog.setValue(download_percent)
             else:
                 # No total size known, show indeterminate progress
-                progress_dialog.setValue(int(30 * bytes_received / (bytes_received + 1024 * 1024)))
-        
+                download_percent = int(30 * bytes_received / (bytes_received + 1024 * 1024))
+            progress_dialog.setValue(download_percent)
+            QApplication.processEvents()  # keep dialog responsive; cancel handled via cancel_check
+
         def download_estimated_callback(percentage: int, bytes_received: int, eta_or_speed: int):
             """Handle estimated progress updates."""
             if percentage >= 0:
@@ -408,50 +435,48 @@ class UNetbootinApp(QMainWindow):
                 progress_dialog.setLabelText(f"Downloading {iso_filename}... {percentage}% ({format_size(bytes_received)})")
             else:
                 # Show speed
-                from unetbootin.core.downloader import Downloader
-                downloader = Downloader()
-                speed_str = downloader.format_download_speed(eta_or_speed)
+                speed_str = self.downloader.format_download_speed(eta_or_speed)
                 progress_dialog.setLabelText(f"Downloading {iso_filename}... {format_size(bytes_received)} at {speed_str}")
-        
+
         # Perform the download
         success, message = self.downloader.download_file_sync(
             iso_url,
             iso_path,
             min_size=1024 * 1024,  # At least 1MB
             progress_callback=download_progress_callback,
-            progress_estimated_callback=download_estimated_callback
+            progress_estimated_callback=download_estimated_callback,
+            cancel_check=progress_dialog.wasCanceled
         )
-        
+
         if not success:
+            if progress_dialog.wasCanceled():
+                raise InstallationCancelled("Cancelled by user")
             raise ValueError(f"Failed to download ISO: {message}")
-        
+
         logger.info(f"ISO downloaded successfully: {iso_path}")
-        
+
         # Extract ISO (30-80%)
         progress_dialog.setLabelText("Extracting ISO...")
-        def extract_progress_callback(p: int):
-            """Update progress for extraction phase (30-80%)."""
-            progress_dialog.setValue(30 + int(p * 0.5))
-        
-        self.extractor.extract_iso(
+        success, message = self.extractor.extract_iso_sync(
             iso_path,
             self.tmp_dir,
-            progress_callback=extract_progress_callback
+            progress_callback=lambda p: self._update_progress(progress_dialog, 30 + int(p * 0.5))
         )
-        
+        if not success:
+            raise RuntimeError(f"Extraction failed: {message}")
+
         logger.info("ISO extracted successfully")
-        
+
         # Install to USB (80-100%)
         progress_dialog.setLabelText("Installing to USB...")
-        def install_progress_callback(p: int):
-            """Update progress for installation phase (80-100%)."""
-            progress_dialog.setValue(80 + int(p * 0.2))
-        
-        self.installer.install(
+        success, message = self.installer.install_sync(
             self.tmp_dir,
             params['target_drive'],
-            progress_callback=install_progress_callback
+            params,
+            progress_callback=lambda p: self._update_progress(progress_dialog, 80 + int(p * 0.2))
         )
+        if not success:
+            raise RuntimeError(f"Installation failed: {message}")
     
     def get_distribution_iso_url(self, distro_name: str, version_name: str) -> Optional[str]:
         """Get the ISO URL for a specific distribution and version.
@@ -516,16 +541,13 @@ class UNetbootinApp(QMainWindow):
             bytes_received: Number of bytes downloaded so far
             eta_or_speed: ETA in seconds (if percentage >= 0) or speed in bytes/sec (if percentage < 0)
         """
-        from unetbootin.core.downloader import Downloader
-        downloader = Downloader()
-        
         if percentage >= 0:
             # We have a percentage, eta_or_speed is ETA in seconds
-            eta_str = downloader.format_eta(eta_or_speed)
+            eta_str = self.downloader.format_eta(eta_or_speed)
             logger.debug(f"Estimated download progress: {percentage}%, ETA: {eta_str}")
         else:
             # We don't have a percentage, eta_or_speed is speed in bytes/sec
-            speed_str = downloader.format_download_speed(eta_or_speed)
+            speed_str = self.downloader.format_download_speed(eta_or_speed)
             logger.debug(f"Download progress: {bytes_received} bytes, Speed: {speed_str}")
     
     def on_extraction_progress(self, percent: int):

@@ -16,6 +16,7 @@ from PySide6.QtCore import QLocale, QTranslator, QLibraryInfo
 from PySide6.QtGui import QIcon
 
 from unetbootin.app import UNetbootinApp
+from unetbootin.core.utils import parse_command_line_args
 from unetbootin import APP_NAME, APP_VERSION
 
 
@@ -64,7 +65,10 @@ def main():
     """Main entry point."""
     logger = setup_logging()
     logger.info(f"Starting {APP_NAME} v{APP_VERSION}")
-    
+
+    # Parse command line arguments (--lang, --rootcheck, --automate, ...)
+    cli_args = parse_command_line_args()
+
     # Create Qt application
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
@@ -90,7 +94,7 @@ def main():
     app.setWindowIcon(icon)
     
     # Create and show main application
-    unetbootin = UNetbootinApp()
+    unetbootin = UNetbootinApp(cli_args=cli_args)
     unetbootin.show()
     
     # Execute application

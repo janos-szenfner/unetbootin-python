@@ -100,8 +100,8 @@ class DistributionManager:
                 'category': 'Ubuntu',
                 'homepage': 'https://ubuntu.com',
                 'versions': [
-                    {'name': '24.04 LTS', 'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso', 'size': 4500000000},
-                    {'name': '22.04 LTS', 'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.4-desktop-amd64.iso', 'size': 3800000000},
+                    {'name': '24.04 LTS', 'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso', 'size': 4500000000},
+                    {'name': '22.04 LTS', 'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso', 'size': 3800000000},
                     {'name': '20.04 LTS', 'url': 'https://releases.ubuntu.com/20.04/ubuntu-20.04.6-desktop-amd64.iso', 'size': 3200000000},
                 ],
                 'icon': 'ubuntu',
@@ -113,8 +113,9 @@ class DistributionManager:
                 'category': 'Debian',
                 'homepage': 'https://debian.org',
                 'versions': [
-                    {'name': '12 (Bookworm)', 'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-12.5.0-amd64-DVD-1.iso', 'size': 4200000000},
-                    {'name': '11 (Bullseye)', 'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-11.7.0-amd64-DVD-1.iso', 'size': 3900000000},
+                    # Note: point-release filenames under current/ change over time;
+                    # prefer refreshing these via an external JSON definition.
+                    {'name': '13 (Trixie)', 'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.6.0-amd64-DVD-1.iso', 'size': 4200000000},
                 ],
                 'icon': 'debian',
             },
@@ -125,8 +126,8 @@ class DistributionManager:
                 'category': 'Fedora',
                 'homepage': 'https://fedoraproject.org',
                 'versions': [
-                    {'name': '40', 'url': 'https://download.fedoraproject.org/pub/fedora/linux/releases/40/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-40-1.14.iso', 'size': 1200000000},
-                    {'name': '39', 'url': 'https://download.fedoraproject.org/pub/fedora/linux/releases/39/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-39-1.5.iso', 'size': 1100000000},
+                    {'name': '44', 'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-44-1.7.iso', 'size': 1200000000},
+                    {'name': '43', 'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-43-1.6.iso', 'size': 1100000000},
                 ],
                 'icon': 'fedora',
             },
@@ -137,8 +138,8 @@ class DistributionManager:
                 'category': 'Ubuntu',
                 'homepage': 'https://linuxmint.com',
                 'versions': [
-                    {'name': '21.3 (Virginia)', 'url': 'https://download.linuxmint.com/iso/linuxmint-21.3-cinnamon-64bit.iso', 'size': 3500000000},
-                    {'name': '21.2 (Victoria)', 'url': 'https://download.linuxmint.com/iso/linuxmint-21.2-cinnamon-64bit.iso', 'size': 3400000000},
+                    {'name': '22.2 (Zara)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso', 'size': 3500000000},
+                    {'name': '22.1 (Xia)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso', 'size': 3400000000},
                 ],
                 'icon': 'linuxmint',
             },
@@ -149,7 +150,7 @@ class DistributionManager:
                 'category': 'Arch',
                 'homepage': 'https://archlinux.org',
                 'versions': [
-                    {'name': 'Latest', 'url': 'https://archlinux.org/iso/latest/archlinux-x86_64.iso', 'size': 800000000},
+                    {'name': 'Latest', 'url': 'https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso', 'size': 800000000},
                 ],
                 'icon': 'archlinux',
             },
@@ -161,7 +162,7 @@ class DistributionManager:
                 'homepage': 'https://opensuse.org',
                 'versions': [
                     {'name': 'Tumbleweed', 'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso', 'size': 4700000000},
-                    {'name': 'Leap 15.5', 'url': 'https://download.opensuse.org/distribution/leap/15.5/iso/openSUSE-Leap-15.5-DVD-x86_64-Media.iso', 'size': 4600000000},
+                    {'name': 'Leap 15.6', 'url': 'https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-DVD-x86_64-Media.iso', 'size': 4600000000},
                 ],
                 'icon': 'opensuse',
             },

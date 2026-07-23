@@ -422,12 +422,32 @@ class ISOExtractor(QObject):
                 mode = 'r:xz'
             
             with tarfile.open(tar_path, mode) as tar_ref:
+                # filter='data' (Python 3.12+, backported to 3.10.12/3.11.4)
+                # blocks path traversal, absolute paths, symlink escapes and
+                # device nodes in untrusted archives. Fall back to manual
+                # member validation on older interpreters.
                 if files_to_extract:
-                    for member in tar_ref.getmembers():
-                        if member.name in files_to_extract:
-                            tar_ref.extract(member, path=dest_dir)
+                    members = [m for m in tar_ref.getmembers()
+                               if m.name in files_to_extract]
                 else:
-                    tar_ref.extractall(path=dest_dir)
+                    members = tar_ref.getmembers()
+
+                try:
+                    tar_ref.extractall(path=dest_dir, members=members, filter='data')
+                except TypeError:
+                    # Interpreter without the filter parameter: validate manually
+                    safe_members = []
+                    dest_real = os.path.realpath(dest_dir)
+                    for member in members:
+                        target = os.path.realpath(os.path.join(dest_dir, member.name))
+                        if not target.startswith(dest_real + os.sep) and target != dest_real:
+                            logger.warning(f"Skipping unsafe archive member: {member.name}")
+                            continue
+                        if member.islnk() or member.issym() or member.isdev():
+                            logger.warning(f"Skipping link/device archive member: {member.name}")
+                            continue
+                        safe_members.append(member)
+                    tar_ref.extractall(path=dest_dir, members=safe_members)
             
             if progress_callback:
                 progress_callback(100)

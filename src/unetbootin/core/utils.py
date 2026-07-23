@@ -32,11 +32,10 @@ def check_admin() -> bool:
         except Exception:
             return False
     elif sys.platform == 'darwin':
-        try:
-            # On macOS, check if we can write to system directories
-            return os.access('/usr/local', os.W_OK)
-        except Exception:
-            return False
+        # Writing boot sectors and using diskutil/bless on raw devices
+        # requires root. (Do NOT test writability of /usr/local: Homebrew
+        # makes it user-writable, giving false positives.)
+        return check_root()
     else:
         return check_root()
 
@@ -195,39 +194,38 @@ def call_external_app(exec_file: str, exec_param: str = "", write_to_stdin: Opti
     """Call an external application and return exit code, stdout, stderr."""
     logger.info(f"Calling external app: {exec_file} {exec_param}")
     
+    process = None
     try:
-        # Prepare command
+        # Build an argument list on every platform - never shell=True, which
+        # would allow command injection through exec_param.
         if sys.platform == 'win32':
-            # Windows: use shell=True
-            command = f'"{exec_file}" {exec_param}'
+            args = shlex.split(exec_param, posix=False) if exec_param else []
             process = subprocess.Popen(
-                command,
-                shell=True,
+                [exec_file] + args,
+                stdin=subprocess.PIPE if write_to_stdin else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 creationflags=subprocess.CREATE_NEW_CONSOLE
             )
         else:
-            # Unix-like systems
             args = shlex.split(exec_param) if exec_param else []
             process = subprocess.Popen(
                 [exec_file] + args,
+                stdin=subprocess.PIPE if write_to_stdin else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
-        
-        # Write to stdin if provided
-        if write_to_stdin:
-            process.communicate(input=write_to_stdin)
-        else:
-            stdout, stderr = process.communicate(timeout=300)  # 5 minute timeout
-        
+
+        stdout, stderr = process.communicate(
+            input=write_to_stdin, timeout=300  # 5 minute timeout
+        )
         return (process.returncode, stdout, stderr)
-        
+
     except subprocess.TimeoutExpired:
-        process.kill()
+        if process is not None:
+            process.kill()
         logger.error(f"External app timeout: {exec_file} {exec_param}")
         return (-1, "", "Timeout")
     except Exception as e:

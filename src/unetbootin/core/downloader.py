@@ -60,7 +60,8 @@ class DownloadWorker(QThread):
                 self.url,
                 self.dest_path,
                 self.min_size,
-                self.on_progress_update
+                self.on_progress_update,
+                cancel_check=lambda: self.stop_requested
             )
             
             if success:
@@ -186,23 +187,26 @@ class Downloader(QObject):
     def download_file_sync(self, url: str, dest_path: str,
                            min_size: int = 0,
                            progress_callback: Optional[Callable[[int, int], None]] = None,
-                           progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None) -> tuple:
+                           progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None,
+                           cancel_check: Optional[Callable[[], bool]] = None) -> tuple:
         """Synchronously download a file.
-        
+
         Args:
             url: URL to download from
             dest_path: Destination file path
             min_size: Minimum expected file size
             progress_callback: Callback for actual progress (bytes_received, bytes_total)
             progress_estimated_callback: Callback for estimated progress (percentage, bytes_received, eta_or_speed)
+            cancel_check: Optional callable checked between chunks; return True to abort
         """
         try:
             # Create destination directory
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             
-            # Get file size if possible
+            # Get file size if possible (may be None if the server does not
+            # answer HEAD requests or omits Content-Length)
             file_size = self.get_remote_file_size(url)
-            if file_size < min_size and min_size > 0:
+            if min_size > 0 and file_size is not None and file_size < min_size:
                 return False, f"File size ({file_size}) is smaller than minimum required ({min_size})"
             
             # Download with progress
@@ -224,6 +228,13 @@ class Downloader(QObject):
                 
                 with open(dest_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=chunk_size):
+                        if cancel_check and cancel_check():
+                            f.close()
+                            try:
+                                os.remove(dest_path)
+                            except OSError:
+                                pass
+                            return False, "Download cancelled"
                         if chunk:
                             f.write(chunk)
                             downloaded_bytes += len(chunk)
@@ -390,11 +401,12 @@ class Downloader(QObject):
             except Exception:
                 pass
             
-            # List files
+            # List files (max_size <= 0 means "no upper bound")
+            upper = max_size if max_size > 0 else float('inf')
             for name, facts in ftp.mlsd():
                 if facts.get('type') == 'file':
                     size = int(facts.get('size', 0))
-                    if (min_size <= size <= max_size) or (min_size == 0 and max_size == 0):
+                    if min_size <= size <= upper:
                         files.append(name)
             
             ftp.quit()

@@ -16,33 +16,47 @@ def get_drive_list() -> List[Dict[str, Any]]:
     drives = []
     
     try:
-        # Use wmic to get drive list
+        # Use wmic CSV output and parse by column NAME. Plain `wmic get`
+        # prints columns in ALPHABETICAL order (not the requested order) and
+        # whitespace-splitting breaks on volume labels containing spaces.
         result = subprocess.run(
-            ['wmic', 'logicaldisk', 'get', 'DeviceID,VolumeName,FileSystem,Size,FreeSpace,DriveType'],
+            ['wmic', 'logicaldisk', 'get',
+             'DeviceID,VolumeName,FileSystem,Size,FreeSpace,DriveType',
+             '/format:csv'],
             capture_output=True,
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for line in lines[1:]:  # Skip header
-                parts = line.strip().split()
-                if len(parts) >= 5:
-                    drive_info = {
-                        'device': f"{parts[0]}:\\",
-                        'letter': parts[0],
-                        'type': get_drive_type_name(int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 0),
-                        'filesystem': parts[2] if len(parts) > 2 else '',
-                        'label': parts[1] if len(parts) > 1 else '',
-                        'size': int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0,
-                        'free': int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0,
-                        'removable': int(parts[5]) == 2 if len(parts) > 5 and parts[5].isdigit() else False,
-                    }
-                    drives.append(drive_info)
+            import csv
+            import io
+            # wmic CSV output starts with a blank line; strip empty lines
+            lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+            reader = csv.DictReader(io.StringIO('\n'.join(lines)))
+            for row in reader:
+                device_id = (row.get('DeviceID') or '').strip()
+                if not device_id:
+                    continue
+                letter = device_id.rstrip(':')
+                drive_type_str = (row.get('DriveType') or '').strip()
+                drive_type = int(drive_type_str) if drive_type_str.isdigit() else 0
+                size_str = (row.get('Size') or '').strip()
+                free_str = (row.get('FreeSpace') or '').strip()
+                drive_info = {
+                    'device': f"{letter}:\\",
+                    'letter': letter,
+                    'type': get_drive_type_name(drive_type),
+                    'filesystem': (row.get('FileSystem') or '').strip(),
+                    'label': (row.get('VolumeName') or '').strip(),
+                    'size': int(size_str) if size_str.isdigit() else 0,
+                    'free': int(free_str) if free_str.isdigit() else 0,
+                    'removable': drive_type == 2,
+                }
+                drives.append(drive_info)
     except Exception as e:
         logger.error(f"Failed to get drive list: {e}")
-    
+
     return drives
 
 

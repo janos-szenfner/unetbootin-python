@@ -7,7 +7,6 @@ import os
 import sys
 from pathlib import Path
 from setuptools import setup, find_packages
-from setuptools.command.install import install
 
 # Get version from package
 PACKAGE_NAME = "unetbootin"

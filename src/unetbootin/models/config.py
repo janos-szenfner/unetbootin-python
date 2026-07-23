@@ -11,9 +11,27 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
-    
+
+
+@dataclass
+class AppConfig:
+    """Application configuration values."""
+    lang: str = 'en_US'
+    last_iso_path: str = ''
+    last_target_drive: str = ''
+    last_install_type: str = 'distribution'
+    last_distro: str = ''
+    last_version: str = ''
+    enable_persistence: bool = False
+    persistence_size: int = 1000
+    check_updates: bool = True
+    window_geometry: Dict[str, Any] = field(default_factory=dict)
+    # Additional user-defined keys not covered by the fixed schema above
+    extra: Dict[str, Any] = field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data = dict(self.extra)
+        data.update({
             'lang': self.lang,
             'last_iso_path': self.last_iso_path,
             'last_target_drive': self.last_target_drive,
@@ -24,8 +42,14 @@ logger = logging.getLogger(__name__)
             'persistence_size': self.persistence_size,
             'check_updates': self.check_updates,
             'window_geometry': self.window_geometry,
-        }
-    
+        })
+        return data
+
+    _KNOWN_KEYS = ('lang', 'last_iso_path', 'last_target_drive',
+                   'last_install_type', 'last_distro', 'last_version',
+                   'enable_persistence', 'persistence_size',
+                   'check_updates', 'window_geometry')
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
         return cls(
@@ -39,6 +63,7 @@ logger = logging.getLogger(__name__)
             persistence_size=data.get('persistence_size', 1000),
             check_updates=data.get('check_updates', True),
             window_geometry=data.get('window_geometry', {}),
+            extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
 
