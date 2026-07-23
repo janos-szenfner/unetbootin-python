@@ -197,8 +197,8 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://linuxmint.com',
                 'versions': [
+                    {'name': '22.3 (Zena)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso', 'size': 3500000000},
                     {'name': '22.2 (Zara)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso', 'size': 3500000000},
-                    {'name': '22.1 (Xia)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso', 'size': 3400000000},
                 ],
                 'icon': 'linuxmint',
             },
@@ -242,7 +242,7 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://zorin.com/os',
                 'versions': [
-                    {'name': 'Latest Free', 'url': 'https://cdn.zorincdn.com/zorin/os/17.1/zorin-os-17.1-core-64-bit.iso', 'size': 3200000000},
+                    {'name': 'Latest Free (18.1)', 'url': 'https://cdn.zorincdn.com/zorin/os/18.1/zorin-os-18.1-core-64-bit.iso', 'size': 3800000000},
                 ],
                 'icon': 'zorin',
             },
@@ -253,7 +253,7 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.kali.org',
                 'versions': [
-                    {'name': 'Latest', 'url': 'https://cdimage.kali.org/kali-images/kali-linux-2024.2-installer-amd64.iso', 'size': 3500000000},
+                    {'name': 'Latest (2026.2)', 'url': 'https://cdimage.kali.org/kali-images/kali-linux-2026.2-installer-amd64.iso', 'size': 3800000000},
                 ],
                 'icon': 'kali',
             },
@@ -271,11 +271,22 @@ class DistributionManager:
             {
                 'name': 'openmandriva',
                 'display_name': 'OpenMandriva',
-                'description': 'OpenMandriva Lx - Freedom in Diversity',
+                'description': 'OpenMandriva Lx - Freedom in Diversity (Rolling Release)',
                 'category': 'Linux',
                 'homepage': 'https://www.openmandriva.org',
                 'versions': [
                     {'name': 'Latest (ROME)', 'url': 'https://downloads.openmandriva.org/ROME/OpenMandrivaLx-ROME-Plasma5-x86_64.iso', 'size': 2800000000},
+                ],
+                'icon': 'openmandriva',
+            },
+            {
+                'name': 'openmandriva6',
+                'display_name': 'OpenMandriva 6.0',
+                'description': 'OpenMandriva Lx 6.0 - Stable Release',
+                'category': 'Linux',
+                'homepage': 'https://www.openmandriva.org',
+                'versions': [
+                    {'name': '6.0', 'url': 'https://downloads.openmandriva.org/6.0/OpenMandrivaLx-6.0-Plasma5-x86_64.iso', 'size': 2900000000},
                 ],
                 'icon': 'openmandriva',
             },
@@ -286,7 +297,7 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.tinycorelinux.net',
                 'versions': [
-                    {'name': 'Latest (15.x)', 'url': 'https://www.tinycorelinux.net/15.x/x86_64/release/TinyCore-current.iso', 'size': 210000000},
+                    {'name': 'Latest (17.0)', 'url': 'https://www.tinycorelinux.net/17.x/x86_64/release/TinyCore-current.iso', 'size': 210000000},
                 ],
                 'icon': 'tinycore',
             },
@@ -301,7 +312,7 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.freebsd.org',
                 'versions': [
-                    {'name': 'Latest (14.0)', 'url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.0/FreeBSD-14.0-RELEASE-amd64-disc1.iso', 'size': 1800000000},
+                    {'name': 'Latest (15.1)', 'url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/15.1/FreeBSD-15.1-RELEASE-amd64-disc1.iso', 'size': 1900000000},
                 ],
                 'icon': 'freebsd',
             },
@@ -312,7 +323,7 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.netbsd.org',
                 'versions': [
-                    {'name': 'Latest (10.0)', 'url': 'https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/amd64cd.iso', 'size': 350000000},
+                    {'name': 'Latest (10.1)', 'url': 'https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.1/amd64cd.iso', 'size': 360000000},
                 ],
                 'icon': 'netbsd',
             },
@@ -323,7 +334,7 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.midnightbsd.org',
                 'versions': [
-                    {'name': 'Latest (3.1.0)', 'url': 'https://mirror.midnightbsd.org/pub/MidnightBSD/ISO/3.1.0/amd64/MIDNIGHT310.iso', 'size': 1200000000},
+                    {'name': 'Latest (3.2.3)', 'url': 'https://mirror.midnightbsd.org/pub/MidnightBSD/ISO/3.2.3/amd64/MIDNIGHT323.iso', 'size': 1200000000},
                 ],
                 'icon': 'midnightbsd',
             },
@@ -334,7 +345,7 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://ghostbsd.org',
                 'versions': [
-                    {'name': 'Latest (24.03)', 'url': 'https://ghostbsd.org/releases/24.03/iso/GhostBSD-24.03-RELEASE-amd64.iso', 'size': 1800000000},
+                    {'name': 'Latest (26.1-R15.0p2)', 'url': 'https://ghostbsd.org/releases/26.1-R15.0p2/iso/GhostBSD-26.1-R15.0p2-RELEASE-amd64.iso', 'size': 1900000000},
                 ],
                 'icon': 'ghostbsd',
             },
@@ -345,7 +356,7 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.dragonflybsd.org',
                 'versions': [
-                    {'name': 'Latest (6.4)', 'url': 'https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.0_REL.iso', 'size': 800000000},
+                    {'name': 'Latest (6.4.2)', 'url': 'https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.2_REL.iso', 'size': 800000000},
                 ],
                 'icon': 'dragonflybsd',
             },
@@ -356,7 +367,7 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.truenas.com',
                 'versions': [
-                    {'name': 'Latest (SCALE Bluefin)', 'url': 'https://download.truenas.com/TrueNAS-SCALE-Bluefin/TrueNAS-SCALE-24.04.0.iso', 'size': 1500000000},
+                    {'name': 'Latest (SCALE Goldeye 25.10.4)', 'url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/TrueNAS-SCALE-25.10.4.iso', 'size': 1600000000},
                 ],
                 'icon': 'truenas',
             },

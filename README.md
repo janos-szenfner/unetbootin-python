@@ -132,7 +132,7 @@ unetbootin
   - Fedora (40, 39)
   - Linux Mint (21.3 Virginia, 21.2 Victoria)
   - Arch Linux (Latest)
-  - openSUSE (Tumbleweed, Leap 15.5)
+  - openSUSE (Tumbleweed, Leap 16.0)
 - Version management with download URLs and file sizes
 - Search and filtering by category
 - Easy extensibility to add more distributions
@@ -427,22 +427,19 @@ See [LICENSE](LICENSE) for the full license text.
 This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🎯 Distribution Statistics
-- **Total Distributions**: 20
-- **Categories**: Linux (12), BSD (6), Windows (2)
+- **Total Distributions**: 21
+- **Categories**: Linux (13), BSD (6), Windows (2)
 
 #### Available Distributions by Category:
-- **Linux**: Ubuntu, Debian, Fedora, Linux Mint, Arch Linux, SUSE Tumbleweed, SUSE Leap, Zorin OS, Kali Linux, Slackware Linux, OpenMandriva, Tiny Core Linux
-- **BSD**: FreeBSD, NetBSD, MidnightBSD, GhostBSD, DragonFly BSD, TrueNAS
-- **Windows**: Windows 11, Windows 10
+- **Linux**: Ubuntu (24.04, 22.04, 20.04), Debian 13, Fedora (44, 43), Linux Mint (22.3, 22.2), Arch Linux, SUSE Tumbleweed, SUSE Leap 16.0, Zorin OS 18.1, Kali Linux 2026.2, Slackware 15.0, OpenMandriva (ROME, 6.0), Tiny Core 17.0
+- **BSD**: FreeBSD 15.1, NetBSD 10.1, MidnightBSD 3.2.3, GhostBSD 26.1, DragonFly BSD 6.4.2, TrueNAS SCALE 25.10.4
+- **Windows**: Windows 11 (24H2, 23H2, 22H2), Windows 10 (22H2, 21H2)
 
 ### 🚀 High Priority
 - [x] Copy resources from original project (`src/unetbootin/*.png`, `*.xpm`) to `python_unetbootin/src/unetbootin/resources/` - Done
 - [ ] Test the application on all platforms (Linux, macOS, Windows)
 - [x] Implement drive refresh functionality in UI - Done
-- [ ] Add more distributions to the built-in list (100+ from original)
 - [x] Implement ISO download functionality from distribution URLs - Done
-- [ ] Test ISO extraction with actual ISO files
-- [ ] Test USB installation with actual USB drives (carefully!)
 
 ### 📦 Medium Priority
 - [x] Add translation support (port `.ts` files to `.qm`) - Done (Only en, de, es, fr, it, hu supported)
@@ -466,7 +463,6 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] Add unit tests for platform-specific code - Done
 - [x] Add integration tests - Done
 - [x] Add UI tests for PySimpleGUI - Done
-- [ ] Create test ISO files for testing
 
 ### 📝 Documentation
 - [ ] Add user documentation
@@ -488,12 +484,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add plugin system for bootloader installation
 - [ ] Implement proper error recovery
 - [ ] Add crash reporting
-- [ ] Add telemetry (opt-in, anonymous)
 
-### 🌐 Web Integration
-- [ ] Add download progress reporting to server
-- [ ] Add usage statistics (opt-in, anonymous)
-- [ ] Add error reporting to help improve the software
 
 ---
 
