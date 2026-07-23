@@ -56,8 +56,7 @@ class TestMainWindowDriveSelection(unittest.TestCase):
     
     def test_set_drive_list_with_devices(self):
         """Test setting drive list with device tuples."""
-        # Create a mock MainWindow
-        # Since we can't easily mock Qt, we'll test the logic indirectly
+        # Test data
         
         # Test data
         drives = [
@@ -328,8 +327,8 @@ class TestDriveRefresh(unittest.TestCase):
 #   # Test UI interactions here
 
 
-class TestUINonQt(unittest.TestCase):
-    """Test UI components that don't require PySimpleGUI."""
+class TestUIComponents(unittest.TestCase):
+    """Test UI components that don't require window display."""
     
     def test_format_drive_list_function(self):
         """Test the format_drive_list function from app.py."""
