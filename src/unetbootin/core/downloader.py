@@ -14,9 +14,6 @@ from typing import Optional, Callable, Dict, Any, List
 from urllib.parse import urljoin, urlparse
 from dataclasses import dataclass
 
-from PySide6.QtCore import QObject, Signal, Slot, QThread, QUrl
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
-
 logger = logging.getLogger(__name__)
 
 # Try to import aiohttp for async downloads
@@ -289,146 +286,10 @@ class MirrorManager:
         return url
 
 
-class DownloadWorker(QThread):
-    """Worker thread for download operations."""
-    
-    progress_updated = Signal(int, int)
-    progress_estimated = Signal(int, int, int)  # percent, bytes_received, estimated_total
-    finished = Signal(bool, str)
-    failed = Signal(str, str)
-    
-    def __init__(self, url: str, dest_path: str, min_size: int = 0, 
-                 enable_resume: bool = True, preferred_mirror: str = None,
-                 custom_mirrors: List[str] = None):
-        super().__init__()
-        self.url = url
-        self.dest_path = dest_path
-        self.min_size = min_size
-        self.stop_requested = False
-        self.start_time = 0
-        self.last_bytes = 0
-        self.last_time = 0
-        self.last_speed = 0
-        self.enable_resume = enable_resume
-        self.preferred_mirror = preferred_mirror
-        self.custom_mirrors = custom_mirrors or []
-        self.resume_manager = None
-        self.mirror_manager = None
-    
-    def run(self):
-        """Perform the download."""
-        try:
-            self.start_time = time.time()
-            self.last_bytes = 0
-            self.last_time = self.start_time
-            self.last_speed = 0
-            
-            # Initialize resume and mirror managers
-            self.resume_manager = DownloadResumeManager(self.dest_path)
-            self.mirror_manager = MirrorManager()
-            self.mirror_manager.set_custom_mirrors(self.custom_mirrors)
-            
-            # Get the effective URL (possibly with mirror replacement)
-            effective_url = self.url
-            if self.preferred_mirror:
-                effective_url = self.mirror_manager.replace_url_base(
-                    self.url, self.preferred_mirror
-                )
-            
-            downloader = Downloader()
-            
-            # Check if we can resume
-            resume_info = {}
-            if self.enable_resume:
-                resume_info = self.resume_manager.get_resume_info()
-                logger.info(f"Resume info: {resume_info}")
-            
-            success, message = downloader.download_file_sync(
-                effective_url,
-                self.dest_path,
-                self.min_size,
-                self.on_progress_update,
-                cancel_check=lambda: self.stop_requested,
-                enable_resume=self.enable_resume,
-                resume_info=resume_info,
-                resume_manager=self.resume_manager
-            )
-            
-            if success:
-                self.finished.emit(True, message)
-            else:
-                self.failed.emit(self.url, message)
-                
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
-            self.failed.emit(self.url, str(e))
-    
-    def stop(self):
-        """Request stop."""
-        self.stop_requested = True
-    
-    def on_progress_update(self, bytes_received: int, bytes_total: int):
-        """Handle progress update with estimation."""
-        if self.stop_requested:
-            return
-        
-        current_time = time.time()
-        
-        # Calculate speed
-        elapsed = current_time - self.last_time
-        if elapsed > 0.5:  # Update speed every 0.5 seconds
-            bytes_diff = bytes_received - self.last_bytes
-            self.last_speed = bytes_diff / elapsed if elapsed > 0 else 0
-            self.last_bytes = bytes_received
-            self.last_time = current_time
-        
-        # Emit actual progress
-        self.progress_updated.emit(bytes_received, bytes_total)
-        
-        # Always emit estimated progress (includes ETA when total is known)
-        self.emit_estimated_progress(bytes_received, bytes_total, current_time)
-    
-    def emit_estimated_progress(self, bytes_received: int, bytes_total: int, current_time: float):
-        """Emit estimated progress with ETA calculation.
-        
-        Args:
-            bytes_received: Number of bytes downloaded so far
-            bytes_total: Total size of the file (0 if unknown)
-            current_time: Current time
-        """
-        downloader = Downloader()
-        
-        # Calculate ETA
-        eta_seconds = downloader.calculate_eta(
-            bytes_received, bytes_total, self.start_time, current_time
-        )
-        
-        # Calculate percentage if we know the total
-        if bytes_total > 0:
-            percentage = min(int((bytes_received / bytes_total) * 100), 100)
-        else:
-            percentage = -1  # Unknown percentage
-        
-        # Emit all useful information
-        # Signal: percentage, bytes_received, bytes_total_or_estimated_speed
-        if bytes_total > 0:
-            # We know the total, emit ETA information
-            self.progress_estimated.emit(percentage, bytes_received, int(eta_seconds or 0))
-        else:
-            # We don't know the total, emit speed instead
-            self.progress_estimated.emit(-1, bytes_received, int(self.last_speed))
-
-
-class Downloader(QObject):
+class Downloader:
     """Handles file downloads with progress tracking."""
     
-    progress_updated = Signal(int, int)
-    progress_estimated = Signal(int, int, int)  # percent, bytes_received, estimated_total
-    download_complete = Signal(str, str)
-    download_failed = Signal(str, str)
-    
-    def __init__(self, parent: Optional[QObject] = None):
-        super().__init__(parent)
+    def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'UNetbootin/' + self.get_version()
@@ -443,11 +304,17 @@ class Downloader(QObject):
         except ImportError:
             return "0.1.0"
     
-    def download_file(self, url: str, dest_path: str, 
-                     min_size: int = 0,
-                     progress_callback: Optional[Callable[[int, int], None]] = None,
-                     progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None):
-        """Download a file with progress tracking.
+    def download_file_sync_threaded(self, url: str, dest_path: str, 
+                                   min_size: int = 0,
+                                   progress_callback: Optional[Callable[[int, int], None]] = None,
+                                   progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None,
+                                   cancel_check: Optional[Callable[[], bool]] = None,
+                                   enable_resume: bool = True,
+                                   resume_info: Optional[Dict[str, Any]] = None,
+                                   resume_manager: Optional['DownloadResumeManager'] = None) -> tuple:
+        """Download a file in a separate thread (for use with PySimpleGUI).
+        
+        This method runs the synchronous download to avoid blocking the PySimpleGUI event loop.
         
         Args:
             url: URL to download from
@@ -455,24 +322,41 @@ class Downloader(QObject):
             min_size: Minimum expected file size
             progress_callback: Callback for actual progress (bytes_received, bytes_total)
             progress_estimated_callback: Callback for estimated progress (percentage, bytes_received, eta_or_speed)
+            cancel_check: Optional callable checked between chunks; return True to abort
+            enable_resume: Enable download resume functionality
+            resume_info: Information for resuming a download
+            resume_manager: Manager for handling resume operations
+            
+        Returns:
+            Tuple of (success: bool, message: str)
         """
-        logger.info(f"Downloading {url} to {dest_path}")
+        import threading
         
-        # Create worker thread
-        self.worker = DownloadWorker(url, dest_path, min_size)
+        result = [None, None]
+        exception = [None]
         
-        if progress_callback:
-            self.worker.progress_updated.connect(progress_callback)
-        self.worker.progress_updated.connect(self.progress_updated.emit)
+        def download_wrapper():
+            try:
+                result[0], result[1] = self.download_file_sync(
+                    url, dest_path, min_size,
+                    progress_callback=progress_callback,
+                    progress_estimated_callback=progress_estimated_callback,
+                    cancel_check=cancel_check,
+                    enable_resume=enable_resume,
+                    resume_info=resume_info,
+                    resume_manager=resume_manager
+                )
+            except Exception as e:
+                exception[0] = e
         
-        if progress_estimated_callback:
-            self.worker.progress_estimated.connect(progress_estimated_callback)
-        self.worker.progress_estimated.connect(self.progress_estimated.emit)
+        thread = threading.Thread(target=download_wrapper, daemon=True)
+        thread.start()
+        thread.join()
         
-        self.worker.finished.connect(lambda success, msg: self.download_complete.emit(url, msg))
-        self.worker.failed.connect(self.download_failed.emit)
+        if exception[0]:
+            raise exception[0]
         
-        self.worker.start()
+        return result[0], result[1]
     
     def download_file_sync(self, url: str, dest_path: str,
                            min_size: int = 0,

@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QObject, Signal, Slot, QThread
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,52 +31,10 @@ class ArchiveFileInfo:
         }
 
 
-class ExtractWorker(QThread):
-    """Worker thread for extraction operations."""
-    
-    progress_updated = Signal(int)
-    finished = Signal(bool, str)
-    
-    def __init__(self, archive_path: str, dest_dir: str, files_to_extract: Optional[List[str]] = None):
-        super().__init__()
-        self.archive_path = archive_path
-        self.dest_dir = dest_dir
-        self.files_to_extract = files_to_extract
-        self.stop_requested = False
-    
-    def run(self):
-        """Perform the extraction."""
-        try:
-            extractor = ISOExtractor()
-            success, message = extractor.extract_iso_sync(
-                self.archive_path,
-                self.dest_dir,
-                self.files_to_extract,
-                self.on_progress_update
-            )
-            self.finished.emit(success, message)
-        except Exception as e:
-            logger.error(f"Extraction failed: {e}")
-            self.finished.emit(False, str(e))
-    
-    def stop(self):
-        """Request stop."""
-        self.stop_requested = True
-    
-    def on_progress_update(self, percent: int):
-        """Handle progress update."""
-        if not self.stop_requested:
-            self.progress_updated.emit(percent)
-
-
-class ISOExtractor(QObject):
+class ISOExtractor:
     """Handles ISO and archive extraction."""
     
-    progress_updated = Signal(int)
-    extraction_complete = Signal(bool, str)
-    
-    def __init__(self, parent: Optional[QObject] = None):
-        super().__init__(parent)
+    def __init__(self):
         self.supported_extensions = [
             '.iso', '.img', '.raw',
             '.zip',
@@ -87,21 +43,35 @@ class ISOExtractor(QObject):
         ]
         self.worker = None
     
-    def extract_iso(self, archive_path: str, dest_dir: str, 
-                   files_to_extract: Optional[List[str]] = None,
-                   progress_callback: Optional[Callable[[int], None]] = None):
-        """Extract an ISO file."""
-        logger.info(f"Extracting {archive_path} to {dest_dir}")
+    def extract_iso_sync_threaded(self, archive_path: str, dest_dir: str,
+                                  files_to_extract: Optional[List[str]] = None,
+                                  progress_callback: Optional[Callable[[int], None]] = None) -> tuple:
+        """Extract an ISO file in a thread (for use with PySimpleGUI).
         
-        # Create worker thread
-        self.worker = ExtractWorker(archive_path, dest_dir, files_to_extract)
+        This method runs the synchronous extraction in a separate thread to avoid
+        blocking the PySimpleGUI event loop.
+        """
+        import threading
         
-        if progress_callback:
-            self.worker.progress_updated.connect(progress_callback)
-        self.worker.progress_updated.connect(self.progress_updated.emit)
-        self.worker.finished.connect(self.extraction_complete.emit)
+        result = [None, None]
+        exception = [None]
         
-        self.worker.start()
+        def extract_wrapper():
+            try:
+                result[0], result[1] = self.extract_iso_sync(
+                    archive_path, dest_dir, files_to_extract, progress_callback
+                )
+            except Exception as e:
+                exception[0] = e
+        
+        thread = threading.Thread(target=extract_wrapper, daemon=True)
+        thread.start()
+        thread.join()
+        
+        if exception[0]:
+            raise exception[0]
+        
+        return result[0], result[1]
     
     def extract_iso_sync(self, archive_path: str, dest_dir: str,
                         files_to_extract: Optional[List[str]] = None,

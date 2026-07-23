@@ -14,76 +14,45 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List, Tuple
 
-from PySide6.QtCore import QObject, Signal, Slot, QThread, QProcess
-
 logger = logging.getLogger(__name__)
 
 
-class InstallWorker(QThread):
-    """Worker thread for installation operations."""
-    
-    progress_updated = Signal(int)
-    finished = Signal(bool, str)
-    
-    def __init__(self, source_dir: str, target_device: str, 
-                 install_params: Optional[Dict[str, Any]] = None):
-        super().__init__()
-        self.source_dir = source_dir
-        self.target_device = target_device
-        self.install_params = install_params or {}
-        self.stop_requested = False
-    
-    def run(self):
-        """Perform the installation."""
-        try:
-            installer = USBInstaller()
-            success, message = installer.install_sync(
-                self.source_dir,
-                self.target_device,
-                self.install_params,
-                self.on_progress_update
-            )
-            self.finished.emit(success, message)
-        except Exception as e:
-            logger.error(f"Installation failed: {e}")
-            self.finished.emit(False, str(e))
-    
-    def stop(self):
-        """Request stop."""
-        self.stop_requested = True
-    
-    def on_progress_update(self, percent: int):
-        """Handle progress update."""
-        if not self.stop_requested:
-            self.progress_updated.emit(percent)
-
-
-class USBInstaller(QObject):
+class USBInstaller:
     """Handles USB installation process."""
     
-    progress_updated = Signal(int)
-    installation_complete = Signal(bool, str)
-    
-    def __init__(self, parent: Optional[QObject] = None):
-        super().__init__(parent)
+    def __init__(self):
         self.worker = None
         self.platform = sys.platform
     
-    def install(self, source_dir: str, target_device: str,
-                install_params: Optional[Dict[str, Any]] = None,
-                progress_callback: Optional[Callable[[int], None]] = None):
-        """Install to USB device."""
-        logger.info(f"Installing from {source_dir} to {target_device}")
+    def install_sync_threaded(self, source_dir: str, target_device: str,
+                                       install_params: Optional[Dict[str, Any]] = None,
+                                       progress_callback: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
+        """Install to USB device in a thread (for use with PySimpleGUI).
         
-        # Create worker thread
-        self.worker = InstallWorker(source_dir, target_device, install_params)
+        This method runs the synchronous installation in a separate thread to avoid
+        blocking the PySimpleGUI event loop.
+        """
+        import threading
         
-        if progress_callback:
-            self.worker.progress_updated.connect(progress_callback)
-        self.worker.progress_updated.connect(self.progress_updated.emit)
-        self.worker.finished.connect(self.installation_complete.emit)
+        result = [None, None]
+        exception = [None]
         
-        self.worker.start()
+        def install_wrapper():
+            try:
+                result[0], result[1] = self.install_sync(
+                    source_dir, target_device, install_params, progress_callback
+                )
+            except Exception as e:
+                exception[0] = e
+        
+        thread = threading.Thread(target=install_wrapper, daemon=True)
+        thread.start()
+        thread.join()
+        
+        if exception[0]:
+            raise exception[0]
+        
+        return result[0], result[1]
     
     def install_sync(self, source_dir: str, target_device: str,
                     install_params: Optional[Dict[str, Any]] = None,
