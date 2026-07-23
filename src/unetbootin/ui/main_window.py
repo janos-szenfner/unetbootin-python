@@ -44,6 +44,7 @@ class MainWindow(QWidget):
         logger.info("Creating MainWindow UI")
         
         self.distributions = {}
+        self.categories = []
         self.current_distro = None
         self.current_version = None
         self.install_type = "distribution"
@@ -75,6 +76,12 @@ class MainWindow(QWidget):
         
         distro_layout = QHBoxLayout()
         
+        # Category combo box
+        self.category_select = QComboBox(self)
+        self.category_select.setMinimumWidth(120)
+        self.category_select.setToolTip("Select distribution category (Linux, BSD, Windows)")
+        self.category_select.setCurrentIndex(-1)
+        
         # Distribution combo box
         self.distro_select = QComboBox(self)
         self.distro_select.setMinimumWidth(200)
@@ -88,6 +95,7 @@ class MainWindow(QWidget):
         self.version_select.setCurrentIndex(-1)
         self.version_select.setEnabled(False)
         
+        distro_layout.addWidget(self.category_select)
         distro_layout.addWidget(self.distro_select)
         distro_layout.addWidget(self.version_select)
         
@@ -317,6 +325,9 @@ class MainWindow(QWidget):
         
         Connects all UI element signals to their respective handlers.
         """
+        # Category selection
+        self.category_select.currentIndexChanged.connect(self.on_category_changed)
+        
         # Distribution selection
         self.distro_select.currentTextChanged.connect(self.on_distro_text_changed)
         self.version_select.currentTextChanged.connect(self.on_version_text_changed)
@@ -342,16 +353,73 @@ class MainWindow(QWidget):
         self.type_select.currentIndexChanged.connect(self.on_type_changed)
     
     def set_distributions(self, distros: List[Dict[str, Any]]):
-        """Set the list of available distributions."""
+        """
+        Set the list of available distributions.
+        
+        Args:
+            distros: List of distribution dictionaries with name, display_name, category, etc.
+        """
         logger.info(f"Setting {len(distros)} distributions")
         self.distributions = {d['name']: d for d in distros}
+        
+        # Extract all categories
+        categories = set()
+        for distro in distros:
+            if distro.get('category'):
+                categories.add(distro['category'])
+        
+        # Set categories in the category combo box
+        self.set_categories(sorted(categories))
+        
+        # Update distribution list based on current category filter
+        self.update_distro_list()
+    
+    def set_categories(self, categories: List[str]):
+        """
+        Set the list of available categories.
+        
+        Args:
+            categories: List of category names (e.g., ['Linux', 'BSD', 'Windows'])
+        """
+        logger.info(f"Setting {len(categories)} categories")
+        self.categories = categories
+        
+        # Clear existing items
+        self.category_select.clear()
+        
+        # Add "All" option to show all distributions
+        self.category_select.addItem("All", "")
+        
+        # Add categories to combo box
+        for category in categories:
+            self.category_select.addItem(category, category)
+    
+    def update_distro_list(self, category_filter: str = None):
+        """
+        Update the distribution list based on category filter.
+        
+        Args:
+            category_filter: Category to filter by, or None for current selection
+        """
+        # Use provided filter or current selection
+        if category_filter is None:
+            category_filter = self.category_select.currentData() or ""
         
         # Clear existing items
         self.distro_select.clear()
         
-        # Add distributions to combo box
-        for distro in sorted(distros, key=lambda x: x['name']):
-            self.distro_select.addItem(distro['name'], distro['name'])
+        # Filter distributions by category if specified
+        if category_filter and category_filter != "":
+            filtered_distros = [
+                d for d in self.distributions.values() 
+                if d.get('category') == category_filter
+            ]
+        else:
+            filtered_distros = list(self.distributions.values())
+        
+        # Add distributions to combo box (sorted by display_name, then name)
+        for distro in sorted(filtered_distros, key=lambda x: (x.get('display_name', x['name']), x['name'])):
+            self.distro_select.addItem(distro.get('display_name', distro['name']), distro['name'])
     
     def set_drive_list(self, drives: List[tuple]):
         """Set the list of available drives.
@@ -468,6 +536,18 @@ class MainWindow(QWidget):
         """Handle version selection change."""
         self.current_version = text
         self.version_selected.emit(text)
+    
+    @Slot(int)
+    def on_category_changed(self, index: int):
+        """
+        Handle category selection change.
+        
+        Args:
+            index: The index of the selected category
+        """
+        category = self.category_select.itemData(index)
+        self.update_distro_list(category)
+        logger.info(f"Category changed to: {category}")
     
     @Slot(bool)
     def on_radio_distro_toggled(self, checked: bool):

@@ -426,6 +426,15 @@ See [LICENSE](LICENSE) for the full license text.
 
 This is a work in progress. Here are the tasks needed to complete the rewrite:
 
+### 🎯 Distribution Statistics
+- **Total Distributions**: 20
+- **Categories**: Linux (12), BSD (6), Windows (2)
+
+#### Available Distributions by Category:
+- **Linux**: Ubuntu, Debian, Fedora, Linux Mint, Arch Linux, SUSE Tumbleweed, SUSE Leap, Zorin OS, Kali Linux, Slackware Linux, OpenMandriva, Tiny Core Linux
+- **BSD**: FreeBSD, NetBSD, MidnightBSD, GhostBSD, DragonFly BSD, TrueNAS
+- **Windows**: Windows 11, Windows 10
+
 ### 🚀 High Priority
 - [x] Copy resources from original project (`src/unetbootin/*.png`, `*.xpm`) to `python_unetbootin/src/unetbootin/resources/` - Done
 - [ ] Test the application on all platforms (Linux, macOS, Windows)

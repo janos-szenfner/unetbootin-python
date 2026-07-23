@@ -150,6 +150,54 @@ class TestDistributionMirrors(unittest.TestCase):
         for distro in distros:
             if 'mirrors' in distro:
                 self.assertIsInstance(distro['mirrors'], list)
+    
+    def test_all_new_distributions_present(self):
+        """Test that all new distributions are present."""
+        manager = DistributionManager()
+        distros = manager.get_distributions()
+        distro_names = [d['name'] for d in distros]
+        
+        # Check Linux distributions
+        linux_distros = ['zorin', 'kali', 'slackware', 'openmandriva', 'tinycore']
+        for distro in linux_distros:
+            self.assertIn(distro, distro_names, f"Linux distro {distro} not found")
+        
+        # Check BSD distributions
+        bsd_distros = ['freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas']
+        for distro in bsd_distros:
+            self.assertIn(distro, distro_names, f"BSD distro {distro} not found")
+        
+        # Check Windows distributions
+        windows_distros = ['windows11', 'windows10']
+        for distro in windows_distros:
+            self.assertIn(distro, distro_names, f"Windows distro {distro} not found")
+    
+    def test_distribution_categories(self):
+        """Test that distributions are properly categorized."""
+        manager = DistributionManager()
+        categories = manager.get_categories()
+        
+        # Should have exactly 3 main categories
+        self.assertEqual(sorted(categories), ['BSD', 'Linux', 'Windows'])
+        
+        # Test Linux category
+        linux_distros = manager.get_distributions_by_category('Linux')
+        linux_names = [d['name'] for d in linux_distros]
+        expected_linux = ['ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux', 
+                         'suse_tumbleweed', 'suse_leap', 'zorin', 'kali', 'slackware', 'openmandriva', 'tinycore']
+        self.assertEqual(sorted(linux_names), sorted(expected_linux))
+        
+        # Test BSD category
+        bsd_distros = manager.get_distributions_by_category('BSD')
+        bsd_names = [d['name'] for d in bsd_distros]
+        expected_bsd = ['freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas']
+        self.assertEqual(sorted(bsd_names), sorted(expected_bsd))
+        
+        # Test Windows category
+        windows_distros = manager.get_distributions_by_category('Windows')
+        windows_names = [d['name'] for d in windows_distros]
+        expected_windows = ['windows11', 'windows10']
+        self.assertEqual(sorted(windows_names), sorted(expected_windows))
 
 
 class TestDownloadResumeManager(unittest.TestCase):
@@ -453,10 +501,31 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
 class TestMainWindowNewFeatures(unittest.TestCase):
     """Test main window new features."""
     
+    @classmethod
+    def setUpClass(cls):
+        """Set up QApplication for all tests."""
+        import sys
+        from PySide6.QtWidgets import QApplication
+        cls.app = QApplication(sys.argv)
+    
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up QApplication."""
+        cls.app.quit()
+        cls.app = None
+    
     def setUp(self):
         """Set up test fixtures."""
         # Create main window without showing it
         self.window = MainWindow()
+        
+        # Set up some test distributions with categories
+        test_distros = [
+            {'name': 'ubuntu', 'display_name': 'Ubuntu', 'category': 'Linux', 'versions': []},
+            {'name': 'freebsd', 'display_name': 'FreeBSD', 'category': 'BSD', 'versions': []},
+            {'name': 'windows11', 'display_name': 'Windows 11', 'category': 'Windows', 'versions': []},
+        ]
+        self.window.set_distributions(test_distros)
     
     def test_new_ui_elements_exist(self):
         """Test that new UI elements exist."""
@@ -505,6 +574,75 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         self.assertTrue(params['persistence_enabled'])
         self.assertIn('persistence_size', params)
         self.assertEqual(params['persistence_size'], 2000)
+    
+    def test_category_selector_exists(self):
+        """Test that category selector exists."""
+        self.assertIsNotNone(self.window.category_select)
+        self.assertGreater(self.window.category_select.count(), 0)
+    
+    def test_category_selector_has_all_categories(self):
+        """Test that category selector has all expected categories."""
+        categories = [self.window.category_select.itemText(i) 
+                     for i in range(self.window.category_select.count())]
+        
+        self.assertIn('All', categories)
+        self.assertIn('Linux', categories)
+        self.assertIn('BSD', categories)
+        self.assertIn('Windows', categories)
+    
+    def test_category_selection_filters_distributions(self):
+        """Test that selecting a category filters the distribution list."""
+        # Initially should show all distributions
+        initial_count = self.window.distro_select.count()
+        self.assertGreater(initial_count, 0)
+        
+        # Select Linux category
+        linux_index = self.window.category_select.findText('Linux')
+        if linux_index >= 0:
+            self.window.category_select.setCurrentIndex(linux_index)
+            linux_count = self.window.distro_select.count()
+            self.assertGreater(linux_count, 0)
+            
+            # All items should be Linux distributions
+            for i in range(linux_count):
+                distro_name = self.window.distro_select.itemData(i)
+                distro_info = self.window.distributions.get(distro_name)
+                if distro_info:
+                    self.assertEqual(distro_info.get('category'), 'Linux')
+        
+        # Select BSD category
+        bsd_index = self.window.category_select.findText('BSD')
+        if bsd_index >= 0:
+            self.window.category_select.setCurrentIndex(bsd_index)
+            bsd_count = self.window.distro_select.count()
+            self.assertGreater(bsd_count, 0)
+            
+            # All items should be BSD distributions
+            for i in range(bsd_count):
+                distro_name = self.window.distro_select.itemData(i)
+                distro_info = self.window.distributions.get(distro_name)
+                if distro_info:
+                    self.assertEqual(distro_info.get('category'), 'BSD')
+        
+        # Select Windows category
+        windows_index = self.window.category_select.findText('Windows')
+        if windows_index >= 0:
+            self.window.category_select.setCurrentIndex(windows_index)
+            windows_count = self.window.distro_select.count()
+            self.assertGreater(windows_count, 0)
+            
+            # All items should be Windows distributions
+            for i in range(windows_count):
+                distro_name = self.window.distro_select.itemData(i)
+                distro_info = self.window.distributions.get(distro_name)
+                if distro_info:
+                    self.assertEqual(distro_info.get('category'), 'Windows')
+        
+        # Select All to restore full list
+        all_index = self.window.category_select.findText('All')
+        if all_index >= 0:
+            self.window.category_select.setCurrentIndex(all_index)
+            self.assertEqual(self.window.distro_select.count(), initial_count)
 
 
 class TestAsyncNewFeatures(unittest.IsolatedAsyncioTestCase):

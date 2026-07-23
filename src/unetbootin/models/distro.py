@@ -148,14 +148,14 @@ class DistributionManager:
         """Load distributions from built-in data and/or external sources."""
         logger.info("Loading distributions")
         
-        # Built-in distribution list (simplified from original C++ version)
-        # This is a partial list - the full list would be much larger
-        builtin_distros = [
+        # Built-in distribution list organized by categories
+        # Linux distributions
+        linux_distros = [
             {
                 'name': 'ubuntu',
                 'display_name': 'Ubuntu',
                 'description': 'Ubuntu Linux distribution',
-                'category': 'Ubuntu',
+                'category': 'Linux',
                 'homepage': 'https://ubuntu.com',
                 'versions': [
                     {'name': '24.04 LTS', 'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso', 'size': 4500000000},
@@ -168,11 +168,9 @@ class DistributionManager:
                 'name': 'debian',
                 'display_name': 'Debian',
                 'description': 'Debian Linux distribution',
-                'category': 'Debian',
+                'category': 'Linux',
                 'homepage': 'https://debian.org',
                 'versions': [
-                    # Note: point-release filenames under current/ change over time;
-                    # prefer refreshing these via an external JSON definition.
                     {'name': '13 (Trixie)', 'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.6.0-amd64-DVD-1.iso', 'size': 4200000000},
                 ],
                 'icon': 'debian',
@@ -181,7 +179,7 @@ class DistributionManager:
                 'name': 'fedora',
                 'display_name': 'Fedora',
                 'description': 'Fedora Linux distribution',
-                'category': 'Fedora',
+                'category': 'Linux',
                 'homepage': 'https://fedoraproject.org',
                 'versions': [
                     {'name': '44', 'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-44-1.7.iso', 'size': 1200000000},
@@ -193,7 +191,7 @@ class DistributionManager:
                 'name': 'linuxmint',
                 'display_name': 'Linux Mint',
                 'description': 'Linux Mint distribution',
-                'category': 'Ubuntu',
+                'category': 'Linux',
                 'homepage': 'https://linuxmint.com',
                 'versions': [
                     {'name': '22.2 (Zara)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso', 'size': 3500000000},
@@ -205,7 +203,7 @@ class DistributionManager:
                 'name': 'archlinux',
                 'display_name': 'Arch Linux',
                 'description': 'Arch Linux distribution',
-                'category': 'Arch',
+                'category': 'Linux',
                 'homepage': 'https://archlinux.org',
                 'versions': [
                     {'name': 'Latest', 'url': 'https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso', 'size': 800000000},
@@ -213,17 +211,156 @@ class DistributionManager:
                 'icon': 'archlinux',
             },
             {
-                'name': 'opensuse',
-                'display_name': 'openSUSE',
-                'description': 'openSUSE distribution',
-                'category': 'SUSE',
-                'homepage': 'https://opensuse.org',
+                'name': 'suse_tumbleweed',
+                'display_name': 'SUSE Tumbleweed',
+                'description': 'openSUSE Tumbleweed - Rolling release distribution',
+                'category': 'Linux',
+                'homepage': 'https://get.opensuse.org/tumbleweed',
                 'versions': [
-                    {'name': 'Tumbleweed', 'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso', 'size': 4700000000},
-                    {'name': 'Leap 15.6', 'url': 'https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-DVD-x86_64-Media.iso', 'size': 4600000000},
+                    {'name': 'Latest', 'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso', 'size': 4700000000},
                 ],
                 'icon': 'opensuse',
             },
+            {
+                'name': 'suse_leap',
+                'display_name': 'SUSE Leap',
+                'description': 'openSUSE Leap - Stable release distribution',
+                'category': 'Linux',
+                'homepage': 'https://get.opensuse.org/leap',
+                'versions': [
+                    {'name': '16.0', 'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64.install.iso', 'size': 4200000000},
+                ],
+                'icon': 'opensuse',
+            },
+            {
+                'name': 'zorin',
+                'display_name': 'Zorin OS',
+                'description': 'Zorin OS - Linux for everyone',
+                'category': 'Linux',
+                'homepage': 'https://zorin.com/os',
+                'versions': [
+                    {'name': 'Latest Free', 'url': 'https://cdn.zorincdn.com/zorin/os/17.1/zorin-os-17.1-core-64-bit.iso', 'size': 3200000000},
+                ],
+                'icon': 'zorin',
+            },
+            {
+                'name': 'kali',
+                'display_name': 'Kali Linux',
+                'description': 'Kali Linux - Penetration Testing and Security Auditing',
+                'category': 'Linux',
+                'homepage': 'https://www.kali.org',
+                'versions': [
+                    {'name': 'Latest', 'url': 'https://cdimage.kali.org/kali-images/kali-linux-2024.2-installer-amd64.iso', 'size': 3500000000},
+                ],
+                'icon': 'kali',
+            },
+            {
+                'name': 'slackware',
+                'display_name': 'Slackware Linux',
+                'description': 'Slackware Linux distribution',
+                'category': 'Linux',
+                'homepage': 'https://www.slackware.com',
+                'versions': [
+                    {'name': 'Latest (15.0)', 'url': 'https://mirrors.slackware.com/slackware/slackware64-15.0/iso/slackware64-15.0-install-dvd.iso', 'size': 4800000000},
+                ],
+                'icon': 'slackware',
+            },
+            {
+                'name': 'openmandriva',
+                'display_name': 'OpenMandriva',
+                'description': 'OpenMandriva Lx - Freedom in Diversity',
+                'category': 'Linux',
+                'homepage': 'https://www.openmandriva.org',
+                'versions': [
+                    {'name': 'Latest (ROME)', 'url': 'https://downloads.openmandriva.org/ROME/OpenMandrivaLx-ROME-Plasma5-x86_64.iso', 'size': 2800000000},
+                ],
+                'icon': 'openmandriva',
+            },
+            {
+                'name': 'tinycore',
+                'display_name': 'Tiny Core Linux',
+                'description': 'Tiny Core Linux - Minimal Linux desktop',
+                'category': 'Linux',
+                'homepage': 'https://www.tinycorelinux.net',
+                'versions': [
+                    {'name': 'Latest (15.x)', 'url': 'https://www.tinycorelinux.net/15.x/x86_64/release/TinyCore-current.iso', 'size': 210000000},
+                ],
+                'icon': 'tinycore',
+            },
+        ]
+        
+        # BSD distributions
+        bsd_distros = [
+            {
+                'name': 'freebsd',
+                'display_name': 'FreeBSD',
+                'description': 'FreeBSD operating system',
+                'category': 'BSD',
+                'homepage': 'https://www.freebsd.org',
+                'versions': [
+                    {'name': 'Latest (14.0)', 'url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.0/FreeBSD-14.0-RELEASE-amd64-disc1.iso', 'size': 1800000000},
+                ],
+                'icon': 'freebsd',
+            },
+            {
+                'name': 'netbsd',
+                'display_name': 'NetBSD',
+                'description': 'NetBSD operating system',
+                'category': 'BSD',
+                'homepage': 'https://www.netbsd.org',
+                'versions': [
+                    {'name': 'Latest (10.0)', 'url': 'https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.0/amd64cd.iso', 'size': 350000000},
+                ],
+                'icon': 'netbsd',
+            },
+            {
+                'name': 'midnightbsd',
+                'display_name': 'MidnightBSD',
+                'description': 'MidnightBSD - A BSD derived OS',
+                'category': 'BSD',
+                'homepage': 'https://www.midnightbsd.org',
+                'versions': [
+                    {'name': 'Latest (3.1.0)', 'url': 'https://mirror.midnightbsd.org/pub/MidnightBSD/ISO/3.1.0/amd64/MIDNIGHT310.iso', 'size': 1200000000},
+                ],
+                'icon': 'midnightbsd',
+            },
+            {
+                'name': 'ghostbsd',
+                'display_name': 'GhostBSD',
+                'description': 'GhostBSD - A simple, elegant Desktop BSD Operating System',
+                'category': 'BSD',
+                'homepage': 'https://ghostbsd.org',
+                'versions': [
+                    {'name': 'Latest (24.03)', 'url': 'https://ghostbsd.org/releases/24.03/iso/GhostBSD-24.03-RELEASE-amd64.iso', 'size': 1800000000},
+                ],
+                'icon': 'ghostbsd',
+            },
+            {
+                'name': 'dragonflybsd',
+                'display_name': 'DragonFly BSD',
+                'description': 'DragonFly BSD operating system',
+                'category': 'BSD',
+                'homepage': 'https://www.dragonflybsd.org',
+                'versions': [
+                    {'name': 'Latest (6.4)', 'url': 'https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.0_REL.iso', 'size': 800000000},
+                ],
+                'icon': 'dragonflybsd',
+            },
+            {
+                'name': 'truenas',
+                'display_name': 'TrueNAS',
+                'description': 'TrueNAS - Open Source Storage Operating System',
+                'category': 'BSD',
+                'homepage': 'https://www.truenas.com',
+                'versions': [
+                    {'name': 'Latest (SCALE Bluefin)', 'url': 'https://download.truenas.com/TrueNAS-SCALE-Bluefin/TrueNAS-SCALE-24.04.0.iso', 'size': 1500000000},
+                ],
+                'icon': 'truenas',
+            },
+        ]
+        
+        # Windows distributions
+        windows_distros = [
             {
                 'name': 'windows11',
                 'display_name': 'Windows 11',
@@ -237,7 +374,22 @@ class DistributionManager:
                 ],
                 'icon': 'windows',
             },
+            {
+                'name': 'windows10',
+                'display_name': 'Windows 10',
+                'description': 'Windows 10 installation media',
+                'category': 'Windows',
+                'homepage': 'https://www.microsoft.com/software-download/windows10',
+                'versions': [
+                    {'name': '22H2', 'url': 'https://download.microsoft.com/download/9/7/N/97NDMP3FVML3P/Win10_22H2_English_x64.iso', 'size': 5500000000},
+                    {'name': '21H2', 'url': 'https://download.microsoft.com/download/1/7/D/17D422A7-A94D-4C89-96F8-927085F74E15/Win10_21H2_English_x64.iso', 'size': 5200000000},
+                ],
+                'icon': 'windows',
+            },
         ]
+        
+        # Combine all distributions
+        builtin_distros = linux_distros + bsd_distros + windows_distros
         
         # Convert to Distribution objects
         for distro_data in builtin_distros:
