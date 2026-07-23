@@ -437,12 +437,9 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 📦 Medium Priority
 - [ ] Add translation support (port `.ts` files to `.qm`)
-- [ ] Add system tray integration
 - [ ] Implement auto-update checking
-- [ ] Add command-line mode for headless operation
 - [ ] Add ISO verification (checksum comparison)
 - [x] Add support for more archive formats (zip, tar, etc.) - Done
-- [ ] Add support for floppy disk image creation
 
 ### 🎨 Low Priority / Enhancements
 - [ ] Add themes/dark mode support
@@ -465,7 +462,6 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 📝 Documentation
 - [ ] Add user documentation
 - [ ] Add developer documentation
-- [ ] Add screenshots to README
 - [ ] Create man page
 - [ ] Add inline code documentation
 
