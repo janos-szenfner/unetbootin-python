@@ -8,6 +8,7 @@ import time
 import logging
 import asyncio
 import requests
+import hashlib
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
 from urllib.parse import urljoin, urlparse
@@ -37,6 +38,153 @@ class DownloadFileInfo:
     checksum_type: str = "sha256"
 
 
+@dataclass
+class MirrorInfo:
+    """Information about a download mirror."""
+    url: str
+    name: str = ""
+    country: str = ""
+    priority: int = 0
+    protocol: str = "https"
+    
+    def get_base_url(self) -> str:
+        """Get the base URL for this mirror."""
+        return f"{self.protocol}://{self.url}"
+
+
+class DownloadResumeManager:
+    """Manages download resume functionality using partial downloads and checksums."""
+    
+    def __init__(self, dest_path: str):
+        """Initialize the resume manager."""
+        self.dest_path = dest_path
+        self.temp_path = f"{dest_path}.part"
+        self.checksum_path = f"{dest_path}.checksum"
+        self.resume_info_path = f"{dest_path}.resume"
+    
+    def get_resume_info(self) -> Dict[str, Any]:
+        """Get saved resume information."""
+        try:
+            if os.path.exists(self.resume_info_path):
+                with open(self.resume_info_path, 'r') as f:
+                    import json
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+    
+    def save_resume_info(self, info: Dict[str, Any]):
+        """Save resume information."""
+        try:
+            os.makedirs(os.path.dirname(self.resume_info_path) or '.', exist_ok=True)
+            with open(self.resume_info_path, 'w') as f:
+                import json
+                json.dump(info, f)
+        except Exception as e:
+            logger.error(f"Failed to save resume info: {e}")
+    
+    def get_partial_file_size(self) -> int:
+        """Get the size of the partial download file."""
+        if os.path.exists(self.temp_path):
+            return os.path.getsize(self.temp_path)
+        return 0
+    
+    def get_partial_file_checksum(self) -> Optional[str]:
+        """Get the checksum of the partial file."""
+        if os.path.exists(self.checksum_path):
+            try:
+                with open(self.checksum_path, 'r') as f:
+                    return f.read().strip()
+            except Exception:
+                pass
+        return None
+    
+    def save_partial_file_checksum(self, checksum: str, checksum_type: str = "sha256"):
+        """Save the checksum of the partial file."""
+        try:
+            with open(self.checksum_path, 'w') as f:
+                f.write(f"{checksum_type}:{checksum}")
+        except Exception as e:
+            logger.error(f"Failed to save partial checksum: {e}")
+    
+    def cleanup(self):
+        """Clean up temporary files."""
+        for path in [self.temp_path, self.checksum_path, self.resume_info_path]:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception as e:
+                logger.error(f"Failed to clean up {path}: {e}")
+    
+    def rename_partial_to_final(self) -> bool:
+        """Rename partial file to final destination."""
+        try:
+            if os.path.exists(self.temp_path):
+                if os.path.exists(self.dest_path):
+                    os.remove(self.dest_path)
+                os.rename(self.temp_path, self.dest_path)
+                self.cleanup()
+                return True
+        except Exception as e:
+            logger.error(f"Failed to rename partial to final: {e}")
+        return False
+
+
+class MirrorManager:
+    """Manages a list of download mirrors and selects the best one."""
+    
+    def __init__(self):
+        """Initialize the mirror manager."""
+        self.mirrors: List[MirrorInfo] = []
+        self.custom_mirrors: List[str] = []
+    
+    def add_mirror(self, mirror: MirrorInfo):
+        """Add a mirror to the list."""
+        self.mirrors.append(mirror)
+        # Sort by priority (higher priority first)
+        self.mirrors.sort(key=lambda m: m.priority, reverse=True)
+    
+    def add_mirrors(self, mirrors: List[MirrorInfo]):
+        """Add multiple mirrors."""
+        for mirror in mirrors:
+            self.add_mirror(mirror)
+    
+    def set_custom_mirrors(self, urls: List[str]):
+        """Set custom mirror URLs."""
+        self.custom_mirrors = urls
+    
+    def get_all_mirrors(self) -> List[str]:
+        """Get all mirror base URLs."""
+        urls = [m.get_base_url() for m in self.mirrors]
+        urls.extend(self.custom_mirrors)
+        return urls
+    
+    def get_best_mirror(self, base_url: str) -> str:
+        """Get the best mirror for a given base URL."""
+        # If we have custom mirrors, prefer them
+        if self.custom_mirrors:
+            return self.custom_mirrors[0]
+        
+        # Return the first built-in mirror or the original URL
+        if self.mirrors:
+            return self.mirrors[0].get_base_url()
+        
+        return base_url
+    
+    def replace_url_base(self, url: str, new_base: str) -> str:
+        """Replace the base URL of a URL with a new base."""
+        parsed = urlparse(url)
+        if parsed.scheme and parsed.netloc:
+            # Extract the path from the original URL
+            path = parsed.path
+            if parsed.query:
+                path += f"?{parsed.query}"
+            if parsed.fragment:
+                path += f"#{parsed.fragment}"
+            return urljoin(new_base, path)
+        return url
+
+
 class DownloadWorker(QThread):
     """Worker thread for download operations."""
     
@@ -45,7 +193,9 @@ class DownloadWorker(QThread):
     finished = Signal(bool, str)
     failed = Signal(str, str)
     
-    def __init__(self, url: str, dest_path: str, min_size: int = 0):
+    def __init__(self, url: str, dest_path: str, min_size: int = 0, 
+                 enable_resume: bool = True, preferred_mirror: str = None,
+                 custom_mirrors: List[str] = None):
         super().__init__()
         self.url = url
         self.dest_path = dest_path
@@ -55,6 +205,11 @@ class DownloadWorker(QThread):
         self.last_bytes = 0
         self.last_time = 0
         self.last_speed = 0
+        self.enable_resume = enable_resume
+        self.preferred_mirror = preferred_mirror
+        self.custom_mirrors = custom_mirrors or []
+        self.resume_manager = None
+        self.mirror_manager = None
     
     def run(self):
         """Perform the download."""
@@ -64,13 +219,35 @@ class DownloadWorker(QThread):
             self.last_time = self.start_time
             self.last_speed = 0
             
+            # Initialize resume and mirror managers
+            self.resume_manager = DownloadResumeManager(self.dest_path)
+            self.mirror_manager = MirrorManager()
+            self.mirror_manager.set_custom_mirrors(self.custom_mirrors)
+            
+            # Get the effective URL (possibly with mirror replacement)
+            effective_url = self.url
+            if self.preferred_mirror:
+                effective_url = self.mirror_manager.replace_url_base(
+                    self.url, self.preferred_mirror
+                )
+            
             downloader = Downloader()
+            
+            # Check if we can resume
+            resume_info = {}
+            if self.enable_resume:
+                resume_info = self.resume_manager.get_resume_info()
+                logger.info(f"Resume info: {resume_info}")
+            
             success, message = downloader.download_file_sync(
-                self.url,
+                effective_url,
                 self.dest_path,
                 self.min_size,
                 self.on_progress_update,
-                cancel_check=lambda: self.stop_requested
+                cancel_check=lambda: self.stop_requested,
+                enable_resume=self.enable_resume,
+                resume_info=resume_info,
+                resume_manager=self.resume_manager
             )
             
             if success:
@@ -197,7 +374,10 @@ class Downloader(QObject):
                            min_size: int = 0,
                            progress_callback: Optional[Callable[[int, int], None]] = None,
                            progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None,
-                           cancel_check: Optional[Callable[[], bool]] = None) -> tuple:
+                           cancel_check: Optional[Callable[[], bool]] = None,
+                           enable_resume: bool = True,
+                           resume_info: Optional[Dict[str, Any]] = None,
+                           resume_manager: Optional[DownloadResumeManager] = None) -> tuple:
         """Synchronously download a file.
 
         Args:
@@ -207,10 +387,17 @@ class Downloader(QObject):
             progress_callback: Callback for actual progress (bytes_received, bytes_total)
             progress_estimated_callback: Callback for estimated progress (percentage, bytes_received, eta_or_speed)
             cancel_check: Optional callable checked between chunks; return True to abort
+            enable_resume: Enable download resume functionality
+            resume_info: Information for resuming a download
+            resume_manager: Manager for handling resume operations
         """
         try:
             # Create destination directory
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            
+            # Initialize resume manager if not provided
+            if resume_manager is None and enable_resume:
+                resume_manager = DownloadResumeManager(dest_path)
             
             # Get file size if possible (may be None if the server does not
             # answer HEAD requests or omits Content-Length)
@@ -218,29 +405,57 @@ class Downloader(QObject):
             if min_size > 0 and file_size is not None and file_size < min_size:
                 return False, f"File size ({file_size}) is smaller than minimum required ({min_size})"
             
+            # Check if we can resume a partial download
+            partial_size = 0
+            if enable_resume and resume_manager:
+                partial_size = resume_manager.get_partial_file_size()
+                logger.info(f"Found partial download of {partial_size} bytes")
+            
             # Download with progress
-            downloaded_bytes = 0
+            downloaded_bytes = partial_size if enable_resume and partial_size > 0 else 0
             chunk_size = 8192
             start_time = time.time()
-            last_bytes = 0
+            last_bytes = downloaded_bytes
             last_time = start_time
             last_speed = 0
             
+            # Determine if we're resuming
+            is_resuming = enable_resume and partial_size > 0
+            
             # Use streaming download
-            with self.session.get(url, stream=True, timeout=30) as response:
+            headers = {}
+            if is_resuming:
+                # Request to continue from where we left off
+                headers['Range'] = f'bytes={partial_size}-'
+                logger.info(f"Resuming download from byte {partial_size}")
+            
+            with self.session.get(url, stream=True, timeout=30, headers=headers) as response:
                 response.raise_for_status()
                 
                 total_size = int(response.headers.get('content-length', file_size or 0))
                 
+                # If we're resuming, adjust total_size
+                if is_resuming and total_size > 0:
+                    total_size += partial_size
+                
                 if total_size < min_size and min_size > 0:
                     return False, f"Downloaded file size ({total_size}) is smaller than minimum required ({min_size})"
                 
-                with open(dest_path, 'wb') as f:
+                # Use temporary file for resume support
+                temp_path = dest_path if not enable_resume else resume_manager.temp_path
+                
+                # If resuming, open in append mode, otherwise in write mode
+                mode = 'ab' if is_resuming else 'wb'
+                
+                with open(temp_path, mode) as f:
                     for chunk in response.iter_content(chunk_size=chunk_size):
                         if cancel_check and cancel_check():
                             f.close()
                             try:
-                                os.remove(dest_path)
+                                if enable_resume:
+                                    resume_manager.cleanup()
+                                else:
+                                    os.remove(dest_path)
                             except OSError:
                                 pass
                             return False, "Download cancelled"
@@ -272,16 +487,31 @@ class Downloader(QObject):
                                     # No total size, emit speed instead
                                     progress_estimated_callback(-1, downloaded_bytes, int(last_speed))
             
+            # If we used a temporary file, move it to final destination
+            if enable_resume and os.path.exists(temp_path) and temp_path != dest_path:
+                if not resume_manager.rename_partial_to_final():
+                    return False, "Failed to finalize download"
+            
             # Verify file size
-            actual_size = os.path.getsize(dest_path)
+            actual_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
             if actual_size < min_size and min_size > 0:
-                os.remove(dest_path)
+                if enable_resume:
+                    resume_manager.cleanup()
+                else:
+                    try:
+                        os.remove(dest_path)
+                    except OSError:
+                        pass
                 return False, f"Downloaded file size ({actual_size}) is smaller than minimum required ({min_size})"
             
             return True, f"Downloaded {actual_size} bytes"
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Download failed: {e}")
+            # Clean up on failure
+            if enable_resume and resume_manager:
+                # Don't cleanup on failure - keep partial download for resume
+                pass
             return False, f"Download failed: {str(e)}"
         except Exception as e:
             logger.error(f"Download failed: {e}")

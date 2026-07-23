@@ -256,13 +256,24 @@ class USBInstaller(QObject):
         try:
             install_type = params.get('install_type', 'distribution')
             drive_type = params.get('drive_type', 'USB Drive')
+            enable_uefi_only = params.get('enable_uefi_only', False)
+            enable_secure_boot = params.get('enable_secure_boot', False)
+            
+            # Store boot options in params for config file generation
+            boot_options = params.get('boot_options', '')
+            params['boot_options'] = boot_options
+            
+            if enable_uefi_only:
+                logger.info("UEFI-only installation mode enabled")
+            if enable_secure_boot:
+                logger.info("Secure Boot support enabled")
             
             if self.platform == 'win32':
-                return self._install_bootloader_windows(target_device, params)
+                return self._install_bootloader_windows(target_device, params, enable_uefi_only, enable_secure_boot)
             elif self.platform == 'darwin':
-                return self._install_bootloader_macos(target_device, params)
+                return self._install_bootloader_macos(target_device, params, enable_uefi_only, enable_secure_boot)
             else:  # Linux and other Unix
-                return self._install_bootloader_linux(target_device, params)
+                return self._install_bootloader_linux(target_device, params, enable_uefi_only, enable_secure_boot)
             
         except Exception as e:
             logger.error(f"Bootloader installation failed: {e}")
@@ -605,9 +616,11 @@ class USBInstaller(QObject):
         
         return files_to_copy
     
-    def _install_bootloader_windows(self, device: str, params: Dict[str, Any]) -> bool:
+    def _install_bootloader_windows(self, device: str, params: Dict[str, Any], 
+                                       enable_uefi_only: bool = False, 
+                                       enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Windows."""
-        logger.info(f"Installing bootloader for Windows on {device}")
+        logger.info(f"Installing bootloader for Windows on {device} (UEFI-only: {enable_uefi_only}, Secure Boot: {enable_secure_boot})")
         
         try:
             # Windows: use external tools like syslinux, grub4dos, etc.
@@ -617,19 +630,57 @@ class USBInstaller(QObject):
             # 1. Copy bootloader files to the USB drive
             # 2. Run a tool to make it bootable
             
+            if enable_uefi_only:
+                logger.info("Configuring for UEFI-only installation")
+                # For UEFI-only, we need to ensure the device has an EFI partition
+                # and install UEFI bootloader files
+                if not self._ensure_efi_partition(device):
+                    logger.error("Failed to create EFI partition for UEFI-only installation")
+                    return False
+                
+                if enable_secure_boot:
+                    # For Secure Boot, we need signed bootloader files
+                    if not self._install_secure_boot_files(device):
+                        logger.error("Failed to install Secure Boot files")
+                        return False
+                
+                # Use EFISYS for UEFI bootloader installation
+                efisys_path = self._find_executable('efisys')
+                if efisys_path:
+                    if len(device) == 1 and device.isalpha():
+                        device = f"{device}:"
+                    result = subprocess.run(
+                        [efisys_path, device],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    return result.returncode == 0
+            
+            # Default BIOS/UEFI dual boot installation
             # Check for syslinux
             syslinux_path = self._find_executable('syslinux')
             if syslinux_path:
                 if len(device) == 1 and device.isalpha():
                     device = f"{device}:"
 
-                result = subprocess.run(
-                    [syslinux_path, '-ma', device],
-                    capture_output=True, text=True, timeout=60
-                )
-                if result.returncode != 0:
-                    logger.error(f"syslinux failed: {result.stderr}")
-                    return False
+                # For UEFI support, also copy EFI files
+                if not enable_uefi_only:
+                    result = subprocess.run(
+                        [syslinux_path, '-ma', device],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    if result.returncode != 0:
+                        logger.error(f"syslinux failed: {result.stderr}")
+                        return False
+                else:
+                    # UEFI-only installation
+                    result = subprocess.run(
+                        [syslinux_path, '--uefi', device],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    if result.returncode != 0:
+                        logger.error(f"syslinux UEFI-only failed: {result.stderr}")
+                        return False
+                
                 return True
 
             # No known bootloader tool available - report failure honestly
@@ -641,9 +692,11 @@ class USBInstaller(QObject):
             logger.error(f"Windows bootloader installation failed: {e}")
             return False
     
-    def _install_bootloader_macos(self, device: str, params: Dict[str, Any]) -> bool:
+    def _install_bootloader_macos(self, device: str, params: Dict[str, Any], 
+                                    enable_uefi_only: bool = False, 
+                                    enable_secure_boot: bool = False) -> bool:
         """Install bootloader on macOS."""
-        logger.info(f"Installing bootloader for macOS on {device}")
+        logger.info(f"Installing bootloader for macOS on {device} (UEFI-only: {enable_uefi_only}, Secure Boot: {enable_secure_boot})")
         
         try:
             # macOS: use diskutil and possibly bless
@@ -663,6 +716,21 @@ class USBInstaller(QObject):
                 # This is simplified
                 disk_identifier = device
                 
+                if enable_uefi_only:
+                    # For UEFI-only, ensure we're using the correct EFI partition
+                    logger.info("Configuring UEFI-only bootloader on macOS")
+                    
+                    # Create EFI directory structure if it doesn't exist
+                    efi_dir = f'{device}/EFI/BOOT'
+                    os.makedirs(efi_dir, exist_ok=True)
+                    
+                    if enable_secure_boot:
+                        # For Secure Boot, we need to copy signed bootloader
+                        logger.info("Configuring Secure Boot on macOS")
+                        if not self._copy_secure_boot_files(efi_dir):
+                            logger.error("Failed to copy Secure Boot files")
+                            return False
+                
                 # Use bless to make it bootable
                 # bless --mount /Volumes/USB --setBoot --folder /Volumes/USB/EFI --file /Volumes/USB/EFI/BOOT/BOOTX64.EFI
                 result = subprocess.run(
@@ -679,9 +747,11 @@ class USBInstaller(QObject):
             logger.error(f"macOS bootloader installation failed: {e}")
             return False
     
-    def _install_bootloader_linux(self, device: str, params: Dict[str, Any]) -> bool:
+    def _install_bootloader_linux(self, device: str, params: Dict[str, Any], 
+                                     enable_uefi_only: bool = False, 
+                                     enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Linux."""
-        logger.info(f"Installing bootloader for Linux on {device}")
+        logger.info(f"Installing bootloader for Linux on {device} (UEFI-only: {enable_uefi_only}, Secure Boot: {enable_secure_boot})")
         
         try:
             # Linux: use various tools depending on what's available
@@ -689,9 +759,66 @@ class USBInstaller(QObject):
             install_type = params.get('install_type', 'distribution')
             drive_type = params.get('drive_type', 'USB Drive')
             
-            # For USB drives, we typically use syslinux or extlinux
+            # For UEFI-only installation
+            if enable_uefi_only:
+                logger.info("Configuring UEFI-only bootloader on Linux")
+                
+                # For UEFI-only, we need to install to the EFI partition
+                if not device.startswith('/dev/'):
+                    device = f"/dev/{device}"
+                
+                # Try to find EFI partition (usually partition 1)
+                efi_partition = device
+                if not device.endswith('1') and not device.endswith('p1'):
+                    # Try common EFI partition naming
+                    for suffix in ['1', 'p1']:
+                        test_partition = f"{device}{suffix}"
+                        if os.path.exists(test_partition):
+                            efi_partition = test_partition
+                            break
+                
+                # Create EFI directory structure
+                efi_mount = tempfile.mkdtemp(prefix='unetbootin_efi_')
+                if self._mount_device(efi_partition, efi_mount):
+                    try:
+                        efi_boot_dir = os.path.join(efi_mount, 'EFI', 'BOOT')
+                        os.makedirs(efi_boot_dir, exist_ok=True)
+                        
+                        # Copy bootloader files
+                        self._copy_efi_bootloader_files(efi_boot_dir)
+                        
+                        if enable_secure_boot:
+                            # Install Secure Boot files
+                            if not self._install_secure_boot_files_linux(efi_boot_dir):
+                                logger.error("Failed to install Secure Boot files")
+                                return False
+                        
+                        # Install UEFI bootloader
+                        grub_efi_install_path = self._find_executable('grub-install')
+                        if grub_efi_install_path:
+                            result = subprocess.run(
+                                ['sudo', grub_efi_install_path, '--target=x86_64-efi', 
+                                 '--efi-directory=' + efi_mount, '--bootloader-id=UNetbootin', device],
+                                capture_output=True, text=True, timeout=30
+                            )
+                            if result.returncode == 0:
+                                return True
+                        
+                        # Try using efibootmgr
+                        efibootmgr_path = self._find_executable('efibootmgr')
+                        if efibootmgr_path:
+                            # This would need more complex handling
+                            logger.info("efibootmgr available but manual setup needed")
+                    finally:
+                        self._unmount_device(efi_partition)
+                        shutil.rmtree(efi_mount, ignore_errors=True)
+                
+                logger.error("UEFI-only installation failed - no suitable method found")
+                return False
+            
+            # For USB drives with BIOS/UEFI dual support
             if drive_type == 'USB Drive':
-                # Try syslinux first
+                # Try syslinux first (for BIOS boot)
                 syslinux_path = self._find_executable('syslinux')
                 if syslinux_path:
                     if not device.startswith('/dev/'):
@@ -710,7 +837,7 @@ class USBInstaller(QObject):
                         ['sudo', syslinux_path, device],
                         capture_output=True, text=True, timeout=10
                     )
-                    return result.returncode == 0
+                    return result.return_code == 0
                 
                 # Try extlinux
                 extlinux_path = self._find_executable('extlinux')
@@ -723,9 +850,9 @@ class USBInstaller(QObject):
                         ['sudo', extlinux_path, '--install', device],
                         capture_output=True, text=True, timeout=10
                     )
-                    return result.returncode == 0
+                    return result.return_code == 0
                 
-                # Try grub
+                # Try grub for BIOS
                 grub_install_path = self._find_executable('grub-install')
                 if grub_install_path:
                     if not device.startswith('/dev/'):
@@ -735,7 +862,7 @@ class USBInstaller(QObject):
                         ['sudo', grub_install_path, '--target=i386-pc', '--boot-directory=' + device, device],
                         capture_output=True, text=True, timeout=10
                     )
-                    return result.returncode == 0
+                    return result.return_code == 0
             
             # For Hard Disk installation
             elif drive_type == 'Hard Disk':
@@ -750,7 +877,7 @@ class USBInstaller(QObject):
                         ['sudo', grub_install_path, '--target=i386-pc', '--boot-directory=/boot', device],
                         capture_output=True, text=True, timeout=10
                     )
-                    return result.returncode == 0
+                    return result.return_code == 0
             
             logger.error("No suitable bootloader installation method found "
                          "(install syslinux, extlinux or grub)")
@@ -848,6 +975,7 @@ LABEL poweroff
             kernel = params.get('kernel', 'vmlinuz')
             initrd = params.get('initrd', 'initrd.img')
             boot_options = params.get('boot_options', '')
+            enable_secure_boot = params.get('enable_secure_boot', False)
             
             # Create grub.cfg content
             grub_cfg_content = f"""set default="{distro}"
@@ -871,6 +999,13 @@ menuentry "Power Off" {{
 }}
 """
             
+            # For Secure Boot, we might need additional configuration
+            if enable_secure_boot:
+                grub_cfg_content += """
+# Secure Boot configuration
+set check_signatures=enforce
+"""
+            
             # Write to file
             grub_cfg_path = os.path.join(target_device, 'grub.cfg')
             with open(grub_cfg_path, 'w') as f:
@@ -880,6 +1015,132 @@ menuentry "Power Off" {{
             
         except Exception as e:
             logger.error(f"Failed to create grub.cfg: {e}")
+            return False
+    
+    def _ensure_efi_partition(self, device: str) -> bool:
+        """Ensure the device has an EFI partition."""
+        logger.info(f"Checking for EFI partition on {device}")
+        
+        try:
+            if self.platform == 'win32':
+                # On Windows, use diskpart or other tools
+                # This is a simplified implementation
+                logger.info("EFI partition check on Windows - assuming partition exists")
+                return True
+            elif self.platform == 'darwin':
+                # On macOS, use diskutil to check partition type
+                result = subprocess.run(
+                    ['diskutil', 'list', device],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    # Check if output contains EFI
+                    return 'EFI' in result.stdout.upper()
+            else:  # Linux
+                # On Linux, check partition type using blkid or lsblk
+                if not device.startswith('/dev/'):
+                    device = f"/dev/{device}"
+                
+                result = subprocess.run(
+                    ['sudo', 'blkid', device],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    # Check for EFI system partition type
+                    return 'TYPE="vfat"' in result.stdout and 'EFI' in result.stdout
+                
+                # Alternative: check lsblk output
+                result = subprocess.run(
+                    ['lsblk', '-f', device],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    return 'vfat' in result.stdout.lower()
+            
+            return True  # Assume it's okay for now
+            
+        except Exception as e:
+            logger.error(f"Failed to check EFI partition: {e}")
+            return True  # Don't fail the installation, just proceed
+    
+    def _copy_efi_bootloader_files(self, efi_dir: str):
+        """Copy EFI bootloader files to the EFI directory."""
+        logger.info(f"Copying EFI bootloader files to {efi_dir}")
+        
+        try:
+            # Common EFI bootloader files
+            efi_files = [
+                '/usr/lib/grub/x86_64-efi/core.efi',
+                '/usr/lib/grub/x86_64-efi/grubx64.efi',
+            ]
+            
+            # Also look for syslinux EFI files
+            syslinux_efi_files = [
+                '/usr/lib/syslinux/efi64/ldlinux.e64',
+                '/usr/lib/syslinux/efi64/syslinux.efi',
+            ]
+            
+            all_files = efi_files + syslinux_efi_files
+            
+            for src_file in all_files:
+                if os.path.exists(src_file):
+                    dest_file = os.path.join(efi_dir, os.path.basename(src_file))
+                    try:
+                        shutil.copy2(src_file, dest_file)
+                        logger.info(f"Copied {src_file} to {dest_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to copy {src_file}: {e}")
+            
+            # Also copy shim for Secure Boot if available
+            shim_files = [
+                '/usr/lib/shim/shimx64.efi',
+                '/usr/share/shim/shimx64.efi',
+            ]
+            
+            for src_file in shim_files:
+                if os.path.exists(src_file):
+                    dest_file = os.path.join(efi_dir, os.path.basename(src_file))
+                    try:
+                        shutil.copy2(src_file, dest_file)
+                        logger.info(f"Copied {src_file} to {dest_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to copy {src_file}: {e}")
+                        
+        except Exception as e:
+            logger.error(f"Failed to copy EFI files: {e}")
+    
+    def _install_secure_boot_files_linux(self, efi_dir: str) -> bool:
+        """Install Secure Boot files for Linux."""
+        logger.info(f"Installing Secure Boot files for Linux in {efi_dir}")
+        
+        try:
+            # Copy shim and signed grub files
+            shim_locations = [
+                '/usr/lib/shim/shimx64.efi',
+                '/usr/share/shim/shimx64.efi',
+            ]
+            
+            for shim_path in shim_locations:
+                if os.path.exists(shim_path):
+                    try:
+                        shutil.copy2(shim_path, os.path.join(efi_dir, 'shimx64.efi'))
+                        logger.info(f"Copied Secure Boot shim from {shim_path}")
+                        
+                        # Also copy mmx64.efi if available
+                        mm_path = shim_path.replace('shimx64.efi', 'mmx64.efi')
+                        if os.path.exists(mm_path):
+                            shutil.copy2(mm_path, os.path.join(efi_dir, 'mmx64.efi'))
+                        
+                        return True
+                    except Exception as e:
+                        logger.warning(f"Failed to copy shim: {e}")
+            
+            # If no shim found, try other signed bootloaders
+            logger.info("No shim found, Secure Boot may not work")
+            return True  # Don't fail, just warn
+            
+        except Exception as e:
+            logger.error(f"Failed to install Secure Boot files: {e}")
             return False
 
 

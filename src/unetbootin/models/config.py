@@ -7,7 +7,7 @@ import sys
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,14 @@ class AppConfig:
     persistence_size: int = 1000
     check_updates: bool = True
     window_geometry: Dict[str, Any] = field(default_factory=dict)
+    # Boot options
+    boot_options: str = ''
+    enable_uefi_only: bool = False
+    enable_secure_boot: bool = False
+    # Download settings
+    enable_download_resume: bool = True
+    preferred_mirror: str = ''
+    custom_mirrors: List[str] = field(default_factory=list)
     # Additional user-defined keys not covered by the fixed schema above
     extra: Dict[str, Any] = field(default_factory=dict)
 
@@ -42,13 +50,25 @@ class AppConfig:
             'persistence_size': self.persistence_size,
             'check_updates': self.check_updates,
             'window_geometry': self.window_geometry,
+            # Boot options
+            'boot_options': self.boot_options,
+            'enable_uefi_only': self.enable_uefi_only,
+            'enable_secure_boot': self.enable_secure_boot,
+            # Download settings
+            'enable_download_resume': self.enable_download_resume,
+            'preferred_mirror': self.preferred_mirror,
+            'custom_mirrors': self.custom_mirrors,
         })
         return data
 
     _KNOWN_KEYS = ('lang', 'last_iso_path', 'last_target_drive',
                    'last_install_type', 'last_distro', 'last_version',
                    'enable_persistence', 'persistence_size',
-                   'check_updates', 'window_geometry')
+                   'check_updates', 'window_geometry',
+                   # Boot options
+                   'boot_options', 'enable_uefi_only', 'enable_secure_boot',
+                   # Download settings
+                   'enable_download_resume', 'preferred_mirror', 'custom_mirrors')
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
@@ -63,6 +83,14 @@ class AppConfig:
             persistence_size=data.get('persistence_size', 1000),
             check_updates=data.get('check_updates', True),
             window_geometry=data.get('window_geometry', {}),
+            # Boot options
+            boot_options=data.get('boot_options', ''),
+            enable_uefi_only=data.get('enable_uefi_only', False),
+            enable_secure_boot=data.get('enable_secure_boot', False),
+            # Download settings
+            enable_download_resume=data.get('enable_download_resume', True),
+            preferred_mirror=data.get('preferred_mirror', ''),
+            custom_mirrors=data.get('custom_mirrors', []),
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 

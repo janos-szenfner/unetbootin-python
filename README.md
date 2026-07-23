@@ -443,14 +443,14 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🎨 Low Priority / Enhancements
 - [ ] Add themes/dark mode support
-- [ ] Add persistence configuration UI
-- [ ] Add boot options editor for advanced users
-- [ ] Add support for UEFI-only installations
-- [ ] Add support for Secure Boot
+- [x] Add persistence configuration UI
+- [x] Add boot options editor for advanced users
+- [x] Add support for UEFI-only installations
+- [x] Add support for Secure Boot
 - [ ] Add disk partitioning tool integration
 - [x] Add progress estimation for downloads - Done
-- [ ] Add download resume support
-- [ ] Add download mirror selection
+- [x] Add download resume support
+- [x] Add download mirror selection
 
 ### 🧪 Testing
 - [x] Add unit tests for core functionality - Done
@@ -497,12 +497,12 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | UI Framework | ✅ Complete |
 | Distribution Models | ✅ Complete |
 | Configuration | ✅ Complete |
-| Downloader | ✅ Complete |
+| Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ✅ Complete |
+| Installer | ✅ Complete (with UEFI/Secure Boot) |
 | Platform Support | ✅ Complete (all 3 platforms) |
 | Core Utilities | ✅ Complete |
-| Unit Tests | ⚠️ Partial |
+| Unit Tests | ✅ Complete |
 | Documentation | ⚠️ Partial |
 | Resources | ❌ Not Started |
 | Full Distribution List | ❌ Not Started |

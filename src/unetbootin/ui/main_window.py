@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QRadioButton, QComboBox, QLabel, QTextBrowser,
     QPushButton, QFileDialog, QGroupBox, QButtonGroup,
-    QLineEdit, QCheckBox, QSpinBox
+    QLineEdit, QCheckBox, QSpinBox, QTextEdit, QTabWidget
 )
 from PySide6.QtCore import Signal, Slot, Qt, QObject, QSize
 from PySide6.QtGui import QIcon
@@ -212,7 +212,13 @@ class MainWindow(QWidget):
         
         advanced_layout = QGridLayout(self.advanced_group)
         
-        # Persistence
+        # Create a tab widget for advanced options
+        self.advanced_tabs = QTabWidget(self)
+        
+        # Tab 1: Persistence
+        persistence_tab = QWidget()
+        persistence_layout = QGridLayout(persistence_tab)
+        
         self.persistence_check = QCheckBox("Enable persistence", self)
         self.persistence_check.setToolTip("Enable persistence for live USB")
         
@@ -222,9 +228,46 @@ class MainWindow(QWidget):
         self.persistence_size_spin.setValue(1000)
         self.persistence_size_spin.setEnabled(False)
         
-        advanced_layout.addWidget(self.persistence_check, 0, 0, 1, 2)
-        advanced_layout.addWidget(persistence_size_label, 1, 0)
-        advanced_layout.addWidget(self.persistence_size_spin, 1, 1)
+        persistence_layout.addWidget(self.persistence_check, 0, 0, 1, 2)
+        persistence_layout.addWidget(persistence_size_label, 1, 0)
+        persistence_layout.addWidget(self.persistence_size_spin, 1, 1)
+        persistence_layout.setContentsMargins(6, 6, 6, 6)
+        
+        # Tab 2: Boot Options
+        boot_tab = QWidget()
+        boot_layout = QGridLayout(boot_tab)
+        
+        self.boot_options_label = QLabel("Boot Options:", self)
+        self.boot_options_edit = QTextEdit(self)
+        self.boot_options_edit.setToolTip("Custom boot options for the live USB (e.g., quiet splash persistent)")
+        self.boot_options_edit.setMaximumHeight(80)
+        self.boot_options_edit.setPlaceholderText("Enter boot options (e.g., quiet splash persistent noapic)")
+        
+        boot_layout.addWidget(self.boot_options_label, 0, 0)
+        boot_layout.addWidget(self.boot_options_edit, 1, 0, 1, 2)
+        boot_layout.setContentsMargins(6, 6, 6, 6)
+        
+        # Tab 3: UEFI & Secure Boot
+        firmware_tab = QWidget()
+        firmware_layout = QGridLayout(firmware_tab)
+        
+        self.uefi_only_check = QCheckBox("UEFI-only installation", self)
+        self.uefi_only_check.setToolTip("Install for UEFI systems only (no BIOS/CSM support)")
+        
+        self.secure_boot_check = QCheckBox("Enable Secure Boot", self)
+        self.secure_boot_check.setToolTip("Enable Secure Boot support (requires signed bootloader)")
+        
+        firmware_layout.addWidget(self.uefi_only_check, 0, 0, 1, 2)
+        firmware_layout.addWidget(self.secure_boot_check, 1, 0, 1, 2)
+        firmware_layout.setContentsMargins(6, 6, 6, 6)
+        
+        # Add tabs to the tab widget
+        self.advanced_tabs.addTab(persistence_tab, "Persistence")
+        self.advanced_tabs.addTab(boot_tab, "Boot Options")
+        self.advanced_tabs.addTab(firmware_tab, "Firmware")
+        
+        # Add the tab widget to the advanced layout
+        advanced_layout.addWidget(self.advanced_tabs, 0, 0, 1, 2)
         
         main_layout.addWidget(self.advanced_group, 6, 1)
         
@@ -379,6 +422,15 @@ class MainWindow(QWidget):
         if self.advanced_group.isChecked():
             params['persistence_enabled'] = self.persistence_check.isChecked()
             params['persistence_size'] = self.persistence_size_spin.value()
+            
+            # Boot options
+            boot_options_text = self.boot_options_edit.toPlainText().strip()
+            if boot_options_text:
+                params['boot_options'] = boot_options_text
+            
+            # UEFI and Secure Boot
+            params['enable_uefi_only'] = self.uefi_only_check.isChecked()
+            params['enable_secure_boot'] = self.secure_boot_check.isChecked()
         
         return params
     

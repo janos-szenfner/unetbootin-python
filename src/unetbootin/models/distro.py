@@ -23,6 +23,7 @@ class DistributionVersion:
     sha256: Optional[str] = None
     sha1: Optional[str] = None
     md5: Optional[str] = None
+    mirrors: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         result = {
@@ -38,6 +39,8 @@ class DistributionVersion:
             result['sha1'] = self.sha1
         if self.md5:
             result['md5'] = self.md5
+        if self.mirrors:
+            result['mirrors'] = self.mirrors
         return result
     
     def get_checksum(self, checksum_type: str = "sha256") -> Optional[str]:
@@ -62,13 +65,14 @@ class Distribution:
     versions: List[DistributionVersion] = field(default_factory=list)
     icon: str = ""
     homepage: str = ""
+    mirrors: List[str] = field(default_factory=list)
     
     def __post_init__(self):
         if not self.display_name:
             self.display_name = self.name
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             'name': self.name,
             'display_name': self.display_name,
             'description': self.description,
@@ -77,6 +81,9 @@ class Distribution:
             'icon': self.icon,
             'homepage': self.homepage,
         }
+        if self.mirrors:
+            result['mirrors'] = self.mirrors
+        return result
 
 
 class DistributionManager:
