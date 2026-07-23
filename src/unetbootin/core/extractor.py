@@ -5,6 +5,7 @@ ISO and archive extraction functionality for UNetbootin.
 import os
 import re
 import logging
+import asyncio
 import tempfile
 import shutil
 import subprocess
@@ -927,3 +928,83 @@ class ISOExtractor(QObject):
             logger.error(f"Failed to extract single file: {e}")
         
         return False
+
+
+class AsyncISOExtractor:
+    """Async ISO and archive extractor for non-blocking I/O operations.
+    
+    This class provides async/await compatible methods for extracting archives,
+    which can be used with asyncio event loops. It runs the extraction in a
+    thread pool executor since most extraction libraries are synchronous.
+    """
+    
+    def __init__(self):
+        """Initialize the async extractor."""
+        self.supported_extensions = [
+            '.iso', '.img', '.raw',
+            '.zip',
+            '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz',
+            '.7z'
+        ]
+    
+    async def extract_iso_async(
+        self,
+        archive_path: str,
+        dest_dir: str,
+        files_to_extract: Optional[List[str]] = None,
+        progress_callback: Optional[Callable[[int], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None
+    ) -> tuple:
+        """Extract an archive file asynchronously.
+        
+        Args:
+            archive_path: Path to the archive file
+            dest_dir: Destination directory for extracted files
+            files_to_extract: Optional list of specific files to extract
+            progress_callback: Optional callback for progress (0-100)
+            cancel_check: Optional callable to check for cancellation
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        logger.info(f"Async extracting {archive_path} to {dest_dir}")
+        
+        loop = asyncio.get_event_loop()
+        extractor = ISOExtractor()
+        
+        # Run sync extraction in executor
+        return await loop.run_in_executor(
+            None,
+            lambda: extractor.extract_iso_sync(
+                archive_path,
+                dest_dir,
+                files_to_extract=files_to_extract,
+                progress_callback=progress_callback
+            )
+        )
+    
+    async def extract_with_tool_async(
+        self,
+        archive_path: str,
+        dest_dir: str,
+        tool_name: str,
+        progress_callback: Optional[Callable[[int], None]] = None
+    ) -> tuple:
+        """Extract using a specific tool asynchronously."""
+        loop = asyncio.get_event_loop()
+        extractor = ISOExtractor()
+        
+        def sync_extract():
+            try:
+                result = extractor._extract_with_tool(
+                    archive_path, dest_dir, tool_name, progress_callback
+                )
+                return result
+            except Exception as e:
+                return False, str(e)
+        
+        return await loop.run_in_executor(None, sync_extract)
+    
+    def get_supported_extensions(self) -> List[str]:
+        """Get list of supported archive extensions."""
+        return self.supported_extensions

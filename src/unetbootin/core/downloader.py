@@ -6,6 +6,7 @@ import os
 import re
 import time
 import logging
+import asyncio
 import requests
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
@@ -16,6 +17,14 @@ from PySide6.QtCore import QObject, Signal, Slot, QThread, QUrl
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 logger = logging.getLogger(__name__)
+
+# Try to import aiohttp for async downloads
+try:
+    import aiohttp
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
+    logger.debug("aiohttp not available, async downloads will use threading")
 
 
 @dataclass
@@ -539,3 +548,175 @@ class Downloader(QObject):
         """Clean up resources."""
         if self.session:
             self.session.close()
+
+
+class AsyncDownloader:
+    """Async downloader using aiohttp for non-blocking I/O operations.
+    
+    This class provides async/await compatible methods for downloading files,
+    which can be used with asyncio event loops. Falls back to threading if
+    aiohttp is not available.
+    """
+    
+    def __init__(self):
+        """Initialize the async downloader."""
+        self.session = None
+        self.user_agent = "UNetbootin/" + self._get_version()
+    
+    def _get_version(self) -> str:
+        """Get application version."""
+        try:
+            from unetbootin import APP_VERSION
+            return APP_VERSION
+        except ImportError:
+            return "0.1.0"
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        if HAS_AIOHTTP:
+            self.session = aiohttp.ClientSession(headers={'User-Agent': self.user_agent})
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if HAS_AIOHTTP and self.session:
+            await self.session.close()
+    
+    async def download_file_async(
+        self,
+        url: str,
+        dest_path: str,
+        min_size: int = 0,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None
+    ) -> tuple:
+        """Download a file asynchronously with progress tracking.
+        
+        Args:
+            url: URL to download from
+            dest_path: Destination file path
+            min_size: Minimum expected file size
+            progress_callback: Optional callback for progress (bytes_received, bytes_total)
+            cancel_check: Optional callable to check for cancellation
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        logger.info(f"Async downloading {url} to {dest_path}")
+        
+        try:
+            # Create destination directory
+            os.makedirs(os.path.dirname(dest_path) or '.', exist_ok=True)
+            
+            if HAS_AIOHTTP:
+                return await self._download_with_aiohttp(
+                    url, dest_path, min_size, progress_callback, cancel_check
+                )
+            else:
+                # Fallback: run sync download in executor
+                loop = asyncio.get_event_loop()
+                downloader = Downloader()
+                return await loop.run_in_executor(
+                    None,
+                    lambda: downloader.download_file_sync(
+                        url, dest_path, min_size,
+                        progress_callback=progress_callback,
+                        cancel_check=cancel_check
+                    )
+                )
+        except Exception as e:
+            logger.error(f"Async download failed: {e}")
+            return False, str(e)
+    
+    async def _download_with_aiohttp(
+        self,
+        url: str,
+        dest_path: str,
+        min_size: int = 0,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None
+    ) -> tuple:
+        """Download using aiohttp."""
+        try:
+            # Get file size first
+            async with aiohttp.ClientSession() as temp_session:
+                async with temp_session.head(url, timeout=10) as response:
+                    file_size = int(response.headers.get('content-length', 0))
+                    if min_size > 0 and file_size < min_size:
+                        return False, f"File size ({file_size}) is smaller than minimum required ({min_size})"
+            
+            # Download the file
+            downloaded_bytes = 0
+            chunk_size = 8192
+            
+            async with aiohttp.ClientSession(headers={'User-Agent': self.user_agent}) as temp_session:
+                async with temp_session.get(url, timeout=30) as response:
+                    response.raise_for_status()
+                    
+                    total_size = int(response.headers.get('content-length', file_size or 0))
+                    
+                    with open(dest_path, 'wb') as f:
+                        while True:
+                            if cancel_check and cancel_check():
+                                return False, "Cancelled by user"
+                            
+                            chunk = await response.content.read(chunk_size)
+                            if not chunk:
+                                break
+                            
+                            f.write(chunk)
+                            downloaded_bytes += len(chunk)
+                            
+                            if progress_callback:
+                                progress_callback(downloaded_bytes, total_size)
+            
+            # Verify minimum size
+            if min_size > 0 and downloaded_bytes < min_size:
+                return False, f"Downloaded size ({downloaded_bytes}) is smaller than minimum required ({min_size})"
+            
+            return True, f"Downloaded {downloaded_bytes} bytes"
+            
+        except aiohttp.ClientError as e:
+            logger.error(f"aiohttp download failed: {e}")
+            return False, str(e)
+        except Exception as e:
+            logger.error(f"aiohttp download failed with unexpected error: {e}")
+            return False, str(e)
+    
+    async def get_remote_file_size_async(self, url: str) -> Optional[int]:
+        """Get remote file size asynchronously."""
+        try:
+            if HAS_AIOHTTP:
+                async with aiohttp.ClientSession() as session:
+                    async with session.head(url, timeout=10) as response:
+                        if response.status == 200:
+                            content_length = response.headers.get('content-length')
+                            if content_length:
+                                return int(content_length)
+            else:
+                # Fallback to sync
+                loop = asyncio.get_event_loop()
+                downloader = Downloader()
+                return await loop.run_in_executor(
+                    None,
+                    downloader.get_remote_file_size,
+                    url
+                )
+        except Exception as e:
+            logger.debug(f"Could not get remote file size: {e}")
+        return None
+    
+    async def verify_checksum_async(
+        self,
+        file_path: str,
+        expected_checksum: str,
+        checksum_type: str = "sha256"
+    ) -> bool:
+        """Verify file checksum asynchronously."""
+        loop = asyncio.get_event_loop()
+        downloader = Downloader()
+        return await loop.run_in_executor(
+            None,
+            downloader.verify_checksum,
+            file_path, expected_checksum, checksum_type
+        )

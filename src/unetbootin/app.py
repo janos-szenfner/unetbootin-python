@@ -7,6 +7,7 @@ import sys
 import platform
 import subprocess
 import logging
+import asyncio
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -24,8 +25,8 @@ from unetbootin import APP_NAME, APP_VERSION
 from unetbootin.ui.main_window import MainWindow
 from unetbootin.models.distro import DistributionManager
 from unetbootin.core.extractor import ISOExtractor
-from unetbootin.core.downloader import Downloader
-from unetbootin.core.installer import USBInstaller
+from unetbootin.core.downloader import Downloader, AsyncDownloader
+from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
 from unetbootin.core.utils import (
     check_root, check_admin, get_platform_info,
     format_size, parse_command_line_args
@@ -67,6 +68,11 @@ class UNetbootinApp(QMainWindow):
         self.extractor = ISOExtractor()
         self.downloader = Downloader()
         self.installer = USBInstaller()
+        
+        # Initialize async components
+        self.async_downloader = AsyncDownloader()
+        self.async_extractor = AsyncISOExtractor()
+        self.async_installer = AsyncUSBInstaller()
         
         # Initialize UI
         self.init_ui()
@@ -496,6 +502,127 @@ class UNetbootinApp(QMainWindow):
         )
         if not success:
             raise RuntimeError(f"Installation failed: {message}")
+    
+    async def start_installation_async(self, params: Dict[str, Any]):
+        """Start the installation process asynchronously.
+        
+        Runs the installation pipeline using async/await for I/O operations.
+        This method can be awaited and provides better performance for I/O-bound
+        operations like downloading and extracting ISOs.
+        
+        Args:
+            params: Installation parameters
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        logger.info("Starting async installation process")
+        
+        try:
+            install_type = params.get('install_type')
+            
+            if install_type in ('iso', 'floppy'):
+                source_image = params.get('iso_path') or params.get('floppy_image')
+                
+                # Extract image
+                success, message = await self.extractor.extract_iso_async(
+                    source_image,
+                    self.tmp_dir
+                )
+                if not success:
+                    return False, f"Extraction failed: {message}"
+                
+                # Install to USB
+                success, message = await self.installer.install_async(
+                    self.tmp_dir,
+                    params['target_drive'],
+                    params
+                )
+                if not success:
+                    return False, f"Installation failed: {message}"
+                
+                return True, "Installation completed successfully"
+            
+            elif install_type == 'distribution':
+                # Use async download and install
+                return await self.download_and_install_distribution_async(params)
+            else:
+                return False, f"Unsupported install type: {install_type}"
+        
+        except Exception as e:
+            logger.error(f"Async installation failed: {e}")
+            return False, str(e)
+    
+    async def download_and_install_distribution_async(self, params: Dict[str, Any]):
+        """Download ISO from distribution URL and install asynchronously.
+        
+        Args:
+            params: Installation parameters
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        logger.info(f"Async downloading distribution: {params.get('distro')}, version: {params.get('version')}")
+        
+        # Get the ISO URL
+        iso_url = self.get_distribution_iso_url(params.get('distro'), params.get('version'))
+        if not iso_url:
+            return False, f"Could not find ISO URL for distribution {params.get('distro')} version {params.get('version')}"
+        
+        # Determine the ISO filename
+        import os
+        iso_filename = os.path.basename(iso_url)
+        iso_path = os.path.join(self.tmp_dir, iso_filename)
+        
+        logger.info(f"Async downloading ISO from {iso_url} to {iso_path}")
+        
+        # Download the ISO file asynchronously
+        success, message = await self.async_downloader.download_file_async(
+            iso_url,
+            iso_path,
+            min_size=1024 * 1024  # At least 1MB
+        )
+        
+        if not success:
+            return False, f"Failed to download ISO: {message}"
+        
+        logger.info(f"ISO downloaded successfully: {iso_path}")
+        
+        # Verify checksum if available
+        checksum = self.get_distribution_checksum(params.get('distro'), params.get('version'))
+        if checksum:
+            if not await self.async_downloader.verify_checksum_async(iso_path, checksum, "sha256"):
+                try:
+                    os.remove(iso_path)
+                except Exception:
+                    pass
+                return False, f"ISO checksum verification failed for {iso_filename}"
+            logger.info(f"ISO checksum verified successfully")
+        
+        # Extract ISO asynchronously
+        logger.info("Extracting ISO...")
+        success, message = await self.async_extractor.extract_iso_async(
+            iso_path,
+            self.tmp_dir
+        )
+        
+        if not success:
+            return False, f"Extraction failed: {message}"
+        
+        logger.info("ISO extracted successfully")
+        
+        # Install to USB asynchronously
+        logger.info("Installing to USB...")
+        success, message = await self.installer.install_async(
+            self.tmp_dir,
+            params['target_drive'],
+            params
+        )
+        
+        if not success:
+            return False, f"Installation failed: {message}"
+        
+        return True, "Installation completed successfully"
     
     def get_distribution_checksum(self, distro_name: str, version_name: str) -> Optional[str]:
         """Get the checksum for a specific distribution and version.

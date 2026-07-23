@@ -7,6 +7,7 @@ import re
 import sys
 import time
 import logging
+import asyncio
 import shutil
 import subprocess
 import tempfile
@@ -880,3 +881,115 @@ menuentry "Power Off" {{
         except Exception as e:
             logger.error(f"Failed to create grub.cfg: {e}")
             return False
+
+
+class AsyncUSBInstaller:
+    """Async USB installer for non-blocking I/O operations.
+    
+    This class provides async/await compatible methods for USB installation,
+    which can be used with asyncio event loops. It runs the installation in a
+    thread pool executor since most filesystem operations are synchronous.
+    """
+    
+    def __init__(self):
+        """Initialize the async installer."""
+        self.platform = sys.platform
+    
+    async def install_async(
+        self,
+        source_dir: str,
+        target_device: str,
+        install_params: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Callable[[int], None]] = None
+    ) -> Tuple[bool, str]:
+        """Install to USB device asynchronously.
+        
+        Args:
+            source_dir: Source directory containing files to install
+            target_device: Target device path (e.g., /dev/sdb or D:)\n            install_params: Optional installation parameters
+            progress_callback: Optional callback for progress (0-100)
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        logger.info(f"Async installing from {source_dir} to {target_device}")
+        
+        loop = asyncio.get_event_loop()
+        installer = USBInstaller()
+        
+        # Run sync installation in executor
+        return await loop.run_in_executor(
+            None,
+            lambda: installer.install_sync(
+                source_dir,
+                target_device,
+                install_params,
+                progress_callback=progress_callback
+            )
+        )
+    
+    async def format_device_async(self, device: str) -> bool:
+        """Format device asynchronously."""
+        loop = asyncio.get_event_loop()
+        installer = USBInstaller()
+        return await loop.run_in_executor(
+            None,
+            installer._format_device,
+            device
+        )
+    
+    async def mount_device_async(self, device: str, mount_point: str) -> bool:
+        """Mount device asynchronously."""
+        loop = asyncio.get_event_loop()
+        installer = USBInstaller()
+        return await loop.run_in_executor(
+            None,
+            installer._mount_device,
+            device, mount_point
+        )
+    
+    async def copy_files_to_device_async(
+        self,
+        source_dir: str,
+        target_device: str,
+        params: Dict[str, Any],
+        progress_callback: Optional[Callable[[int], None]] = None
+    ) -> bool:
+        """Copy files to device asynchronously."""
+        loop = asyncio.get_event_loop()
+        installer = USBInstaller()
+        return await loop.run_in_executor(
+            None,
+            installer._copy_files_to_device,
+            source_dir, target_device, params, progress_callback
+        )
+    
+    async def install_bootloader_async(
+        self,
+        target_device: str,
+        params: Dict[str, Any],
+        progress_callback: Optional[Callable[[int], None]] = None
+    ) -> bool:
+        """Install bootloader asynchronously."""
+        loop = asyncio.get_event_loop()
+        installer = USBInstaller()
+        return await loop.run_in_executor(
+            None,
+            installer._install_bootloader,
+            target_device, params, progress_callback
+        )
+    
+    async def cleanup_installation_async(
+        self,
+        source_dir: str,
+        target_device: str,
+        params: Dict[str, Any]
+    ) -> None:
+        """Clean up installation asynchronously."""
+        loop = asyncio.get_event_loop()
+        installer = USBInstaller()
+        await loop.run_in_executor(
+            None,
+            installer._cleanup_installation,
+            source_dir, target_device, params
+        )

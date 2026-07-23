@@ -473,7 +473,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Set up automatic updates
 
 ### 🏗️ Architecture Improvements
-- [ ] Consider using async/await for I/O operations
+- [x] Consider using async/await for I/O operations - Done
 - [ ] Add plugin system for distribution definitions
 - [ ] Add plugin system for extraction methods
 - [ ] Add plugin system for bootloader installation
