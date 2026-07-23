@@ -11,7 +11,7 @@ import logging
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 
 try:
     import PySimpleGUI as sg
@@ -46,7 +46,10 @@ class UNetbootinAppPySG:
     def __init__(self, parent=None, cli_args: Optional[Dict[str, Any]] = None):
         """Initialize the UNetbootin application."""
         if not HAS_PYSIMPLEGUI:
-            raise ImportError("PySimpleGUI is required. Please install it with: pip install PySimpleGUI")
+            raise ImportError(
+                "PySimpleGUI is required. "
+                "Please install it with: pip install PySimpleGUI"
+            )
         
         logger.info("Initializing UNetbootinApp with PySimpleGUI")
         
@@ -55,7 +58,9 @@ class UNetbootinAppPySG:
         self.app_dir = os.path.dirname(os.path.abspath(__file__))
         self.app_loc = sys.argv[0]
         # Normalize language code
-        self.app_lang = normalize_language_code(self.cli_args.get('lang')) or normalize_language_code('en')
+        lang = self.cli_args.get('lang')
+        self.app_lang = normalize_language_code(lang) or \
+            normalize_language_code('en')
         self.tmp_dir = None
         self.exit_on_completion = False
         self.testing_download = False
@@ -88,11 +93,13 @@ class UNetbootinAppPySG:
         self.load_drive_list()
         
         # Check for root/admin privileges on Unix systems
-        rootcheck = str(self.cli_args.get('rootcheck', True)).lower() not in ('no', 'false', '0')
+        rootcheck = str(
+            self.cli_args.get('rootcheck', True)
+        ).lower() not in ('no', 'false', '0')
         if rootcheck and self.platform in ['linux', 'darwin']:
             self.check_privileges()
     
-    def load_distributions(self):
+    def load_distributions(self) -> None:
         """Load the list of supported distributions."""
         logger.info("Loading distributions")
         try:
@@ -102,8 +109,12 @@ class UNetbootinAppPySG:
             logger.error(f"Failed to load distributions: {e}")
             self.show_error("Failed to load distribution list")
     
-    def load_drive_list(self):
-        """Load the list of available drives."""
+    def load_drive_list(self) -> bool:
+        """Load the list of available drives.
+        
+        Returns:
+            bool: True if successful, False on error
+        """
         logger.info("Loading drive list")
         try:
             drives = get_drive_list()
@@ -130,7 +141,7 @@ class UNetbootinAppPySG:
                 try:
                     size_str = format_size(size)
                     parts.append(f"({size_str})")
-                except Exception:
+                except (ValueError, TypeError):
                     pass
             
             label = drive.get('label', '')
@@ -200,11 +211,22 @@ class UNetbootinAppPySG:
             self.show_error("Failed to elevate privileges")
     
     def get_installation_parameters(self) -> Dict[str, Any]:
-        """Get installation parameters from UI."""
+        """Get installation parameters from UI.
+        
+        Returns:
+            Dict[str, Any]: Dictionary of installation parameters
+        """
         return self.ui.get_installation_parameters()
     
     def validate_parameters(self, params: Dict[str, Any]) -> bool:
-        """Validate installation parameters."""
+        """Validate installation parameters.
+        
+        Args:
+            params: Dictionary of installation parameters to validate
+            
+        Returns:
+            bool: True if all parameters are valid, False otherwise
+        """
         if params.get('install_type') == 'distribution':
             if not params.get('distro'):
                 self.show_error("Please select a distribution")
@@ -224,36 +246,53 @@ class UNetbootinAppPySG:
         
         return True
     
-    def create_temp_directory(self):
+    def create_temp_directory(self) -> None:
         """Create a temporary directory for extraction."""
         self.tmp_dir = tempfile.mkdtemp(prefix='unetbootin_')
         logger.info(f"Created temporary directory: {self.tmp_dir}")
     
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean up temporary files."""
         if self.tmp_dir and os.path.exists(self.tmp_dir):
             try:
                 shutil.rmtree(self.tmp_dir)
                 logger.info(f"Cleaned up temporary directory: {self.tmp_dir}")
-            except Exception as e:
+            except (OSError, shutil.Error) as e:
                 logger.error(f"Failed to clean up temporary directory: {e}")
         self.tmp_dir = None
     
-    def show_error(self, message: str):
-        """Show error message to user."""
+    def show_error(self, message: str) -> None:
+        """Show error message to user.
+        
+        Args:
+            message: Error message to display
+        """
         logger.error(f"Showing error to user: {message}")
         sg.popup_error(message, title="Error")
     
-    def show_info(self, message: str, title: str = "Information"):
-        """Show information message to user."""
+    def show_info(
+        self,
+        message: str,
+        title: str = "Information"
+    ) -> None:
+        """Show information message to user.
+        
+        Args:
+            message: Information message to display
+            title: Window title (default: "Information")
+        """
         sg.popup_ok(message, title=title)
     
-    def show_completion_message(self, message: str = None):
-        """Show installation completion message."""
+    def show_completion_message(self, message: str = None) -> None:
+        """Show installation completion message.
+        
+        Args:
+            message: Completion message to display (default: generic message)
+        """
         if message is None:
             message = f"{APP_NAME} has completed successfully!"
         sg.popup_ok(message, title="Installation Complete")
-        
+
         if self.exit_on_completion:
             self.stop()
     
@@ -280,17 +319,25 @@ class UNetbootinAppPySG:
         for version in distro.versions:
             if version.name == version_name:
                 if version.url:
-                    logger.info(f"Found ISO URL for {distro_name} {version_name}: {version.url}")
+                    logger.info(
+                        f"Found ISO URL for {distro_name} {version_name}: "
+                        f"{version.url}"
+                    )
                     return version.url
                 else:
                     logger.error(f"Version {version_name} has no URL")
                     return None
         
         if distro.versions:
-            logger.warning(f"Version {version_name} not found, using first available version")
+            logger.warning(
+                f"Version {version_name} not found, "
+                f"using first available version"
+            )
             return distro.versions[0].url
-        
-        logger.error(f"No versions available for distribution {distro_name}")
+
+        logger.error(
+            f"No versions available for distribution {distro_name}"
+        )
         return None
     
     def start_installation(self, params: Dict[str, Any]):

@@ -61,9 +61,11 @@ def main():
     logger.info(f"Starting {APP_NAME} v{APP_VERSION} with PySimpleGUI")
     
     if not HAS_PYSIMPLEGUI:
-        logger.error("PySimpleGUI is not installed. Please install it with: pip install PySimpleGUI")
-        print("Error: PySimpleGUI is not installed.")
-        print("Please install it with: pip install PySimpleGUI")
+        error_msg = (
+            "PySimpleGUI is not installed. "
+            "Please install it with: pip install PySimpleGUI"
+        )
+        logger.error(error_msg)
         sys.exit(1)
     
     # Parse command line arguments (--lang, --rootcheck, --automate, ...)
@@ -86,7 +88,10 @@ def main():
         logger.info("Application exited successfully")
     except Exception as e:
         logger.error(f"Application failed: {e}")
-        sg.popup_error(f"Application failed: {str(e)}", title="Fatal Error")
+        sg.popup_error(
+            f"Application failed: {str(e)}",
+            title="Fatal Error"
+        )
         sys.exit(1)
 
 
