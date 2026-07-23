@@ -333,15 +333,31 @@ class UNetbootinApp(QMainWindow):
                 self.extractor.extract_iso(
                     params['iso_path'],
                     self.tmp_dir,
-                    progress_callback=lambda p: progress_dialog.setValue(p)
+                    progress_callback=lambda p: progress_dialog.setValue(int(p * 0.5))
                 )
                 
                 # Install to USB
                 self.installer.install(
                     self.tmp_dir,
                     params['target_drive'],
-                    progress_callback=lambda p: progress_dialog.setValue(50 + p // 2)
+                    progress_callback=lambda p: progress_dialog.setValue(50 + int(p * 0.5))
                 )
+            elif params.get('install_type') == 'distribution':
+                # Download ISO from distribution URL
+                self.download_and_install_distribution(params, progress_dialog)
+            elif params.get('install_type') == 'floppy':
+                # Handle floppy disk image
+                if params.get('floppy_image'):
+                    self.extractor.extract_iso(
+                        params['floppy_image'],
+                        self.tmp_dir,
+                        progress_callback=lambda p: progress_dialog.setValue(int(p * 0.5))
+                    )
+                    self.installer.install(
+                        self.tmp_dir,
+                        params['target_drive'],
+                        progress_callback=lambda p: progress_dialog.setValue(50 + int(p * 0.5))
+                    )
             
             progress_dialog.setValue(100)
             self.show_completion_message()
@@ -352,6 +368,124 @@ class UNetbootinApp(QMainWindow):
         finally:
             progress_dialog.close()
             self.cleanup()
+    
+    def download_and_install_distribution(self, params: Dict[str, Any], progress_dialog):
+        """Download ISO from distribution URL and install.
+        
+        Args:
+            params: Installation parameters
+            progress_dialog: Progress dialog to update
+        """
+        logger.info(f"Downloading distribution: {params.get('distro')}, version: {params.get('version')}")
+        
+        # Get the ISO URL for the selected distribution and version
+        iso_url = self.get_distribution_iso_url(params.get('distro'), params.get('version'))
+        if not iso_url:
+            raise ValueError(f"Could not find ISO URL for distribution {params.get('distro')} version {params.get('version')}")
+        
+        # Determine the ISO filename from the URL
+        import os
+        iso_filename = os.path.basename(iso_url)
+        iso_path = os.path.join(self.tmp_dir, iso_filename)
+        
+        logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
+        progress_dialog.setLabelText(f"Downloading {iso_filename}...")
+        
+        # Download the ISO file
+        def download_progress_callback(bytes_received: int, bytes_total: int):
+            """Update progress for download phase (0-30%)."""
+            if bytes_total > 0:
+                download_percent = int((bytes_received / bytes_total) * 30)
+                progress_dialog.setValue(download_percent)
+            else:
+                # No total size known, show indeterminate progress
+                progress_dialog.setValue(int(30 * bytes_received / (bytes_received + 1024 * 1024)))
+        
+        def download_estimated_callback(percentage: int, bytes_received: int, eta_or_speed: int):
+            """Handle estimated progress updates."""
+            if percentage >= 0:
+                # We have percentage, show it in the label
+                progress_dialog.setLabelText(f"Downloading {iso_filename}... {percentage}% ({format_size(bytes_received)})")
+            else:
+                # Show speed
+                from unetbootin.core.downloader import Downloader
+                downloader = Downloader()
+                speed_str = downloader.format_download_speed(eta_or_speed)
+                progress_dialog.setLabelText(f"Downloading {iso_filename}... {format_size(bytes_received)} at {speed_str}")
+        
+        # Perform the download
+        success, message = self.downloader.download_file_sync(
+            iso_url,
+            iso_path,
+            min_size=1024 * 1024,  # At least 1MB
+            progress_callback=download_progress_callback,
+            progress_estimated_callback=download_estimated_callback
+        )
+        
+        if not success:
+            raise ValueError(f"Failed to download ISO: {message}")
+        
+        logger.info(f"ISO downloaded successfully: {iso_path}")
+        
+        # Extract ISO (30-80%)
+        progress_dialog.setLabelText("Extracting ISO...")
+        def extract_progress_callback(p: int):
+            """Update progress for extraction phase (30-80%)."""
+            progress_dialog.setValue(30 + int(p * 0.5))
+        
+        self.extractor.extract_iso(
+            iso_path,
+            self.tmp_dir,
+            progress_callback=extract_progress_callback
+        )
+        
+        logger.info("ISO extracted successfully")
+        
+        # Install to USB (80-100%)
+        progress_dialog.setLabelText("Installing to USB...")
+        def install_progress_callback(p: int):
+            """Update progress for installation phase (80-100%)."""
+            progress_dialog.setValue(80 + int(p * 0.2))
+        
+        self.installer.install(
+            self.tmp_dir,
+            params['target_drive'],
+            progress_callback=install_progress_callback
+        )
+    
+    def get_distribution_iso_url(self, distro_name: str, version_name: str) -> Optional[str]:
+        """Get the ISO URL for a specific distribution and version.
+        
+        Args:
+            distro_name: Name of the distribution
+            version_name: Name of the version
+            
+        Returns:
+            URL string or None if not found
+        """
+        distro = self.distro_manager.get_distribution(distro_name)
+        if not distro:
+            logger.error(f"Distribution not found: {distro_name}")
+            return None
+        
+        # Find the version with matching name
+        for version in distro.versions:
+            if version.name == version_name:
+                if version.url:
+                    logger.info(f"Found ISO URL for {distro_name} {version_name}: {version.url}")
+                    return version.url
+                else:
+                    logger.error(f"Version {version_name} has no URL")
+                    return None
+        
+        # If version not found by name, try to find by pattern
+        if distro.versions:
+            # Return the first version's URL as fallback
+            logger.warning(f"Version {version_name} not found, using first available version")
+            return distro.versions[0].url
+        
+        logger.error(f"No versions available for distribution {distro_name}")
+        return None
     
     def on_cancel_clicked(self):
         """Handle cancel button click."""

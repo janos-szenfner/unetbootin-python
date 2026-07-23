@@ -431,7 +431,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Test the application on all platforms (Linux, macOS, Windows)
 - [x] Implement drive refresh functionality in UI - Done
 - [ ] Add more distributions to the built-in list (100+ from original)
-- [ ] Implement ISO download functionality from distribution URLs
+- [x] Implement ISO download functionality from distribution URLs - Done
 - [ ] Test ISO extraction with actual ISO files
 - [ ] Test USB installation with actual USB drives (carefully!)
 
