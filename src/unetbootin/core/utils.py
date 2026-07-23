@@ -14,6 +14,79 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Supported languages (language codes for translation files)
+# English (en_US/en_GB) is the default and doesn't need a translation file
+SUPPORTED_LANGUAGES = {'de', 'es', 'fr', 'it', 'hu'}
+
+# Full language code to short code mapping for Qt locale names
+LANGUAGE_CODE_MAP = {
+    'en_US': 'en',
+    'en_GB': 'en',
+    'de_DE': 'de',
+    'de_AT': 'de',
+    'de_CH': 'de',
+    'es_ES': 'es',
+    'es_MX': 'es',
+    'fr_FR': 'fr',
+    'fr_CA': 'fr',
+    'it_IT': 'it',
+    'hu_HU': 'hu',
+}
+
+
+def get_supported_languages() -> List[str]:
+    """Get list of supported language codes.
+    
+    Returns:
+        List of 2-letter language codes (de, es, fr, it, hu)
+    """
+    return sorted(SUPPORTED_LANGUAGES)
+
+
+def normalize_language_code(locale_str: str) -> Optional[str]:
+    """Normalize a locale string to a supported language code.
+    
+    Args:
+        locale_str: Locale string (e.g., 'en_US', 'de_DE', 'es_ES')
+        
+    Returns:
+        Normalized 2-letter language code if supported, None otherwise
+    """
+    if not locale_str:
+        return None
+    
+    # Try direct match first
+    if locale_str in SUPPORTED_LANGUAGES:
+        return locale_str
+    
+    # Try mapping from full locale name
+    if locale_str in LANGUAGE_CODE_MAP:
+        return LANGUAGE_CODE_MAP[locale_str]
+    
+    # Try extracting language code from locale (e.g., 'de_DE' -> 'de')
+    if '_' in locale_str:
+        lang_code = locale_str.split('_')[0]
+        if lang_code in SUPPORTED_LANGUAGES:
+            return lang_code
+    
+    # If it's already a 2-letter code, check if supported
+    if len(locale_str) == 2 and locale_str.lower() in SUPPORTED_LANGUAGES:
+        return locale_str.lower()
+    
+    return None
+
+
+def is_language_supported(locale_str: str) -> bool:
+    """Check if a language/locale is supported.
+    
+    Args:
+        locale_str: Locale string to check
+        
+    Returns:
+        True if the language is supported, False otherwise
+    """
+    return normalize_language_code(locale_str) is not None
+
 
 def check_root() -> bool:
     """Check if running as root (Linux/Unix)."""
@@ -113,7 +186,11 @@ def format_size(size_bytes: int) -> str:
 
 
 def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Parse command line arguments."""
+    """Parse command line arguments.
+    
+    Only the following languages are supported: en (default), de, es, fr, it, hu
+    Any other language specified via --lang will be ignored and system locale will be used.
+    """
     if args is None:
         args = sys.argv[1:]
     
@@ -133,11 +210,28 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
             # Long option
             if '=' in arg:
                 key, value = arg[2:].split('=', 1)
-                parsed[key.lower()] = value
+                if key.lower() == 'lang':
+                    # Validate language
+                    if is_language_supported(value) or normalize_language_code(value) is not None:
+                        parsed[key.lower()] = normalize_language_code(value)
+                    else:
+                        logger.warning(f"Language '{value}' is not supported. Supported languages: {get_supported_languages()}")
+                        # Don't set unsupported language, will use system default
+                else:
+                    parsed[key.lower()] = value
             else:
                 key = arg[2:]
                 if i + 1 < len(args) and not args[i + 1].startswith('-'):
-                    parsed[key.lower()] = args[i + 1]
+                    value = args[i + 1]
+                    if key.lower() == 'lang':
+                        # Validate language
+                        if is_language_supported(value) or normalize_language_code(value) is not None:
+                            parsed[key.lower()] = normalize_language_code(value)
+                        else:
+                            logger.warning(f"Language '{value}' is not supported. Supported languages: {get_supported_languages()}")
+                            # Don't set unsupported language
+                    else:
+                        parsed[key.lower()] = value
                     i += 1
                 else:
                     parsed[key.lower()] = True

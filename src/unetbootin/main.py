@@ -16,7 +16,7 @@ from PySide6.QtCore import QLocale, QTranslator, QLibraryInfo
 from PySide6.QtGui import QIcon
 
 from unetbootin.app import UNetbootinApp
-from unetbootin.core.utils import parse_command_line_args
+from unetbootin.core.utils import parse_command_line_args, normalize_language_code, is_language_supported
 from unetbootin import APP_NAME, APP_VERSION
 
 
@@ -34,30 +34,50 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-def load_translations(app: QApplication) -> QTranslator:
-    """Load translations based on system locale."""
+def load_translations(app: QApplication, lang: Optional[str] = None) -> QTranslator:
+    """Load translations based on system locale or specified language.
+    
+    Only loads translations for supported languages: de, es, fr, it, hu.
+    English (en) is the default and doesn't require a translation file.
+    
+    Args:
+        app: QApplication instance
+        lang: Optional language code to use (from command line args)
+        
+    Returns:
+        QTranslator instance that was installed
+    """
     translator = QTranslator()
-    locale = QLocale.system().name()
     
-    # Try to load translation from multiple locations
-    translation_paths = [
-        "translations",
-        "/usr/share/unetbootin/translations",
-        "/usr/local/share/unetbootin/translations",
-    ]
+    # Determine which language to use
+    if lang:
+        # Language specified via command line
+        locale_to_try = lang
+    else:
+        # Use system locale
+        locale_to_try = QLocale.system().name()
     
-    translation_file = f"unetbootin_{locale}"
+    # Normalize and validate the language code
+    normalized_lang = normalize_language_code(locale_to_try)
     
-    for path in translation_paths:
-        if translator.load(translation_file, path):
-            app.installTranslator(translator)
-            return translator
+    # Only try to load translation if it's a supported language
+    if normalized_lang:
+        # Try to load translation from multiple locations
+        translation_paths = [
+            "translations",
+            "/usr/share/unetbootin/translations",
+            "/usr/local/share/unetbootin/translations",
+        ]
+        
+        translation_file = f"unetbootin_{normalized_lang}"
+        
+        for path in translation_paths:
+            if translator.load(translation_file, path):
+                app.installTranslator(translator)
+                return translator
     
-    # Fallback to Qt's translation
-    qt_translator = QTranslator()
-    if qt_translator.load(locale, QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
-        app.installTranslator(qt_translator)
-    
+    # If language is not supported or translation file not found,
+    # the app will use English (default strings)
     return translator
 
 
@@ -75,8 +95,8 @@ def main():
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("UNetbootin")
     
-    # Load translations
-    load_translations(app)
+    # Load translations with language from command line if specified
+    load_translations(app, lang=cli_args.get('lang'))
     
     # Set application icon
     icon = QIcon()

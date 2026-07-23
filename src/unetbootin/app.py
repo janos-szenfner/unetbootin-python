@@ -29,7 +29,7 @@ from unetbootin.core.downloader import Downloader, AsyncDownloader
 from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
 from unetbootin.core.utils import (
     check_root, check_admin, get_platform_info,
-    format_size, parse_command_line_args
+    format_size, parse_command_line_args, normalize_language_code
 )
 from unetbootin.platform import get_drive_list
 
@@ -54,7 +54,8 @@ class UNetbootinApp(QMainWindow):
         self.cli_args = cli_args or {}
         self.app_dir = os.path.dirname(os.path.abspath(__file__))
         self.app_loc = sys.argv[0]
-        self.app_lang = self.cli_args.get('lang') or QLocale.system().name()
+        # Normalize language code; if not supported, will be None and app uses English
+        self.app_lang = normalize_language_code(self.cli_args.get('lang')) or normalize_language_code(QLocale.system().name())
         self.tmp_dir = None
         self.exit_on_completion = False
         self.testing_download = False

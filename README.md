@@ -436,7 +436,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Test USB installation with actual USB drives (carefully!)
 
 ### 📦 Medium Priority
-- [ ] Add translation support (port `.ts` files to `.qm`)
+- [x] Add translation support (port `.ts` files to `.qm`) - Done (Only en, de, es, fr, it, hu supported)
 - [ ] Implement auto-update checking
 - [x] Add ISO verification (checksum comparison) - Done
 - [x] Add support for more archive formats (zip, tar, etc.) - Done
