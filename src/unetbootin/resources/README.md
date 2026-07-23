@@ -39,20 +39,8 @@ resources/
 │   ├── ubnexlnx             # EXTLinux loader (32-bit)
 │   └── ubnexlnx64           # EXTLinux loader (64-bit)
 │
-├── translations/            # Qt translation files
-│   └── unetbootin_*.ts      # Translation files for various languages
-│
-├── misc/                   # Miscellaneous resources
-│   ├── 7zS.sfx              # 7-Zip self-extracting module
-│   ├── gpxe                 # gPXE network boot image
-│   ├── sevnz.dll            # 7-Zip DLL for Windows
-│   ├── sevnz.exe            # 7-Zip executable for Windows
-│   ├── asgd_en.htm          # ASGD English help
-│   └── asgd_es.htm          # ASGD Spanish help
-│
-└── qt/                     # Qt resource files (for reference)
-    ├── *.qrc                # Qt resource collection files
-    └── *.pro                # Qt project files
+└── translations/            # Translation files
+    └── unetbootin_*.ts      # Translation files for various languages
 ```
 
 ## Usage
@@ -94,7 +82,7 @@ icon_path = resources_dir / 'icons' / 'unetbootin_48.png'
 
 ## Security
 
-⚠️ **IMPORTANT**: Binary files in `bootloader/` and `misc/` (sevnz.exe, sevnz.dll, 7zS.sfx, ubnldr.exe, syslinux.exe) are committed to the repository without cryptographic verification.
+⚠️ **IMPORTANT**: Binary files in `bootloader/` (ubnldr.exe, syslinux.exe) are committed to the repository without cryptographic verification.
 
 ### Verification Recommended
 
