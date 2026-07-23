@@ -436,38 +436,38 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - **Windows**: Windows 11 (24H2, 23H2, 22H2), Windows 10 (22H2, 21H2)
 
 ### 🚀 High Priority
-- [x] Copy resources from original project (`src/unetbootin/*.png`, `*.xpm`) to `python_unetbootin/src/unetbootin/resources/` - Done
+- [x] Copy resources from original project (`src/unetbootin/*.png`, `*.xpm`) to `python_unetbootin/src/unetbootin/resources/` - ✅ Complete
 - [ ] Test the application on all platforms (Linux, macOS, Windows)
-- [x] Implement drive refresh functionality in UI - Done
-- [x] Implement ISO download functionality from distribution URLs - Done
+- [x] Implement drive refresh functionality in UI - ✅ Complete
+- [x] Implement ISO download functionality from distribution URLs - ✅ Complete
 
 ### 📦 Medium Priority
-- [x] Add translation support (port `.ts` files to `.qm`) - Done (Only en, de, es, fr, it, hu supported)
+- [x] Add translation support (port `.ts` files to `.qm`) - ✅ Complete (Only en, de, es, fr, it, hu supported)
 - [ ] Implement auto-update checking
-- [x] Add ISO verification (checksum comparison) - Done
-- [x] Add support for more archive formats (zip, tar, etc.) - Done
+- [x] Add ISO verification (checksum comparison) - ✅ Complete
+- [x] Add support for more archive formats (zip, tar, etc.) - ✅ Complete
 
 ### 🎨 Low Priority / Enhancements
 - [ ] Add themes/dark mode support
-- [x] Add persistence configuration UI - Done
-- [x] Add boot options editor for advanced users - Done
-- [x] Add support for UEFI-only installations - Done
-- [x] Add support for Secure Boot - Done
+- [x] Add persistence configuration UI - ✅ Complete
+- [x] Add boot options editor for advanced users - ✅ Complete
+- [x] Add support for UEFI-only installations - ✅ Complete
+- [x] Add support for Secure Boot - ✅ Complete
 - [ ] Add disk partitioning tool integration
-- [x] Add progress estimation for downloads - Done
-- [x] Add download resume support - Done
-- [x] Add download mirror selection - Done
+- [x] Add progress estimation for downloads - ✅ Complete
+- [x] Add download resume support - ✅ Complete
+- [x] Add download mirror selection - ✅ Complete
 
 ### 🧪 Testing
-- [x] Add unit tests for core functionality - Done
-- [x] Add unit tests for platform-specific code - Done
-- [x] Add integration tests - Done
-- [x] Add UI tests for PySimpleGUI - Done
+- [x] Add unit tests for core functionality - ✅ Complete
+- [x] Add unit tests for platform-specific code - ✅ Complete
+- [x] Add integration tests - ✅ Complete
+- [x] Add UI tests for PySimpleGUI - ✅ Complete
 
 ### 📝 Documentation
 - [ ] Add user documentation
 - [ ] Add developer documentation
-- [x] Add inline code documentation - Done
+- [x] Add inline code documentation - ✅ Complete
 
 ### 🔧 Build & Distribution
 - [ ] Create macOS .app bundle
@@ -477,7 +477,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Set up automatic updates
 
 ### 🏗️ Architecture Improvements
-- [x] Consider using async/await for I/O operations - Done
+- [x] Consider using async/await for I/O operations - ✅ Complete
 - [ ] Add plugin system for distribution definitions
 - [ ] Add plugin system for extraction methods
 - [ ] Add plugin system for bootloader installation
