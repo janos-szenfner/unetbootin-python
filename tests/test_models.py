@@ -82,6 +82,92 @@ class TestDistributionVersion(unittest.TestCase):
         self.assertIn('name', data)
         self.assertIn('url', data)
         self.assertEqual(data['name'], "1.0")
+    
+    def test_version_with_checksums(self):
+        """Test DistributionVersion with checksum fields."""
+        version = DistributionVersion(
+            name="24.04 LTS",
+            url="https://test.com/24.04.iso",
+            size=4500000000,
+            sha256="abc123",
+            sha1="def456",
+            md5="ghi789"
+        )
+        
+        self.assertEqual(version.sha256, "abc123")
+        self.assertEqual(version.sha1, "def456")
+        self.assertEqual(version.md5, "ghi789")
+    
+    def test_version_to_dict_with_checksums(self):
+        """Test to_dict includes checksums when present."""
+        version = DistributionVersion(
+            name="24.04 LTS",
+            url="https://test.com/24.04.iso",
+            sha256="abc123",
+            sha1="def456"
+        )
+        
+        data = version.to_dict()
+        
+        self.assertIn('sha256', data)
+        self.assertEqual(data['sha256'], "abc123")
+        self.assertIn('sha1', data)
+        self.assertEqual(data['sha1'], "def456")
+    
+    def test_version_to_dict_without_checksums(self):
+        """Test to_dict excludes checksums when not present."""
+        version = DistributionVersion(
+            name="24.04 LTS",
+            url="https://test.com/24.04.iso"
+        )
+        
+        data = version.to_dict()
+        
+        # Checksums should not be in dict if not set
+        self.assertNotIn('sha256', data)
+        self.assertNotIn('sha1', data)
+        self.assertNotIn('md5', data)
+    
+    def test_version_get_checksum_prefers_sha256(self):
+        """Test get_checksum prefers SHA256."""
+        version = DistributionVersion(
+            name="24.04 LTS",
+            url="https://test.com/24.04.iso",
+            sha256="sha256_value",
+            sha1="sha1_value",
+            md5="md5_value"
+        )
+        
+        # Default should be sha256
+        checksum = version.get_checksum()
+        self.assertEqual(checksum, "sha256_value")
+        
+        # Explicit types
+        self.assertEqual(version.get_checksum("sha256"), "sha256_value")
+        self.assertEqual(version.get_checksum("sha1"), "sha1_value")
+        self.assertEqual(version.get_checksum("md5"), "md5_value")
+    
+    def test_version_get_checksum_fallback(self):
+        """Test get_checksum falls back to available checksum."""
+        version = DistributionVersion(
+            name="24.04 LTS",
+            url="https://test.com/24.04.iso",
+            sha1="sha1_value"
+        )
+        
+        # Should fall back to sha1 since sha256 is not set
+        checksum = version.get_checksum()
+        self.assertEqual(checksum, "sha1_value")
+    
+    def test_version_get_checksum_none_available(self):
+        """Test get_checksum returns None when no checksums available."""
+        version = DistributionVersion(
+            name="24.04 LTS",
+            url="https://test.com/24.04.iso"
+        )
+        
+        checksum = version.get_checksum()
+        self.assertIsNone(checksum)
 
 
 class TestDistributionManager(unittest.TestCase):

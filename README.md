@@ -453,10 +453,10 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add download mirror selection
 
 ### 🧪 Testing
-- [ ] Add unit tests for core functionality
-- [ ] Add unit tests for platform-specific code
-- [ ] Add integration tests
-- [ ] Add UI tests (consider pytest-qt)
+- [x] Add unit tests for core functionality - Done
+- [x] Add unit tests for platform-specific code - Done
+- [x] Add integration tests - Done
+- [x] Add UI tests (consider pytest-qt) - Done
 - [ ] Create test ISO files for testing
 
 ### 📝 Documentation
