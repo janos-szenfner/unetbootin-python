@@ -8,6 +8,7 @@ import platform
 import subprocess
 import logging
 import shlex
+import shutil
 import psutil
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
@@ -177,19 +178,27 @@ def get_linux_distro() -> Optional[Dict[str, str]]:
 
 
 def format_size(size_bytes: int) -> str:
-    """Format size in bytes to human readable string."""
+    """Format size in bytes to a human readable string.
+
+    Bytes are shown as whole numbers (e.g. "512 B"); larger units use a
+    single decimal place (e.g. "1.5 KB", "1.0 GB").
+    """
+    size = float(size_bytes)
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.2f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.2f} PB"
+        if size < 1024.0:
+            if unit == 'B':
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
     """Parse command line arguments.
-    
-    Only the following languages are supported: en (default), de, es, fr, it, hu
-    Any other language specified via --lang will be ignored and system locale will be used.
+
+    Only the following languages are supported: en (default), de, es, fr,
+    it, hu. Any other language specified via --lang will be ignored and the
+    system locale will be used.
     """
     if args is None:
         args = sys.argv[1:]
@@ -212,10 +221,13 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
                 key, value = arg[2:].split('=', 1)
                 if key.lower() == 'lang':
                     # Validate language
-                    if is_language_supported(value) or normalize_language_code(value) is not None:
+                    if is_language_supported(
+                        value) or normalize_language_code(value) is not None:
                         parsed[key.lower()] = normalize_language_code(value)
                     else:
-                        logger.warning(f"Language '{value}' is not supported. Supported languages: {get_supported_languages()}")
+                        logger.warning(
+                            f"Language '{value}' is not supported. "
+                            f"Supported languages: {get_supported_languages()}")
                         # Don't set unsupported language, will use system default
                 else:
                     parsed[key.lower()] = value
@@ -225,10 +237,14 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
                     value = args[i + 1]
                     if key.lower() == 'lang':
                         # Validate language
-                        if is_language_supported(value) or normalize_language_code(value) is not None:
+                        if is_language_supported(
+                            value) or normalize_language_code(value) is not None:
                             parsed[key.lower()] = normalize_language_code(value)
                         else:
-                            logger.warning(f"Language '{value}' is not supported. Supported languages: {get_supported_languages()}")
+                            logger.warning(
+                                f"Language '{value}' is not supported. "
+                                f"Supported languages: "
+                                f"{get_supported_languages()}")
                             # Don't set unsupported language
                     else:
                         parsed[key.lower()] = value
@@ -258,7 +274,8 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
     return parsed
 
 
-def locate_command(command: str, required_for: str = "", package_name: str = "") -> Optional[str]:
+def locate_command(command: str, required_for: str = "",
+                   package_name: str = "") -> Optional[str]:
     """Locate a command in the system PATH."""
     try:
         result = subprocess.run(
@@ -280,14 +297,38 @@ def locate_command(command: str, required_for: str = "", package_name: str = "")
         if os.path.exists(full_path) and os.access(full_path, os.X_OK):
             return full_path
     
-    logger.warning(f"Command not found: {command} (required for: {required_for}, package: {package_name})")
+    logger.warning(
+        f"Command not found: {command} "
+        f"(required for: {required_for}, package: {package_name})")
     return None
 
 
-def call_external_app(exec_file: str, exec_param: str = "", write_to_stdin: Optional[str] = None) -> Tuple[int, str, str]:
-    """Call an external application and return exit code, stdout, stderr."""
+def call_external_app(exec_file: str, exec_param: str = "",
+                      write_to_stdin: Optional[str] = None) -> Tuple[int, str, str]:
+    """Call an external application and return exit code, stdout, stderr.
+
+    exec_file must resolve to an existing executable (absolute path or a
+    command on PATH); the call is refused otherwise. exec_param is split
+    into an argument list - the command is never run through a shell.
+    """
     logger.info(f"Calling external app: {exec_file} {exec_param}")
-    
+
+    # Validate the executable before launching anything
+    if not exec_file or '\x00' in exec_file:
+        logger.error(f"Invalid executable name: {exec_file!r}")
+        return (-1, "", "Invalid executable name")
+
+    if os.path.isabs(exec_file):
+        resolved = exec_file if (
+            os.path.isfile(exec_file) and os.access(exec_file, os.X_OK)
+        ) else None
+    else:
+        resolved = shutil.which(exec_file)
+    if not resolved:
+        logger.error(f"Executable not found or not executable: {exec_file}")
+        return (-1, "", f"Executable not found: {exec_file}")
+    exec_file = resolved
+
     process = None
     try:
         # Build an argument list on every platform - never shell=True, which
@@ -352,207 +393,3 @@ def check_for_graphical_su(su_command: str) -> Optional[str]:
     
     return None
 
-
-def list_available_drives() -> List[Dict[str, Any]]:
-    """List all available drives/disks."""
-    drives = []
-    
-    try:
-        if sys.platform == 'win32':
-            # Windows: use wmic or win32api
-            try:
-                import win32api
-                import win32file
-                
-                # List all drives
-                drive_bitmask = win32api.GetLogicalDrives()
-                for i in range(26):
-                    if drive_bitmask & (1 << i):
-                        drive_letter = chr(ord('A') + i)
-                        drive_path = f"{drive_letter}:\\"
-                        try:
-                            drive_type = win32file.GetDriveType(drive_path)
-                            if drive_type in (win32file.DRIVE_REMOVABLE, win32file.DRIVE_FIXED):
-                                drives.append({
-                                    'device': drive_path,
-                                    'type': 'removable' if drive_type == win32file.DRIVE_REMOVABLE else 'fixed',
-                                    'size': 0,
-                                    'label': '',
-                                })
-                        except Exception:
-                            pass
-            except ImportError:
-                pass
-        
-        elif sys.platform == 'darwin':
-            # macOS: use diskutil
-            try:
-                result = subprocess.run(
-                    ['diskutil', 'list', '-plist'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    # Parse plist output (simplified)
-                    import plistlib
-                    try:
-                        data = plistlib.loads(result.stdout.encode())
-                        for disk in data.get('AllDisksAndPartitions', []):
-                            if 'DeviceIdentifier' in disk:
-                                drives.append({
-                                    'device': disk['DeviceIdentifier'],
-                                    'type': 'removable' if disk.get('RemovableMedia', False) else 'fixed',
-                                    'size': disk.get('Size', 0),
-                                    'label': disk.get('VolumeName', ''),
-                                })
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            
-            # Fallback for macOS
-            try:
-                result = subprocess.run(
-                    ['diskutil', 'list'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    # Simple parsing
-                    lines = result.stdout.split('\n')
-                    current_disk = None
-                    for line in lines:
-                        if '/dev/disk' in line and 'external' in line.lower():
-                            parts = line.strip().split()
-                            if parts:
-                                current_disk = parts[0]
-                                drives.append({
-                                    'device': current_disk,
-                                    'type': 'removable',
-                                    'size': 0,
-                                    'label': '',
-                                })
-            except Exception:
-                pass
-        
-        else:  # Linux and other Unix
-            try:
-                # Use lsblk
-                result = subprocess.run(
-                    ['lsblk', '-J'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    import json
-                    try:
-                        data = json.loads(result.stdout)
-                        for device in data.get('blockdevices', []):
-                            if device.get('type') == 'disk':
-                                drives.append({
-                                    'device': device.get('name', ''),
-                                    'type': 'removable' if device.get('rm', False) else 'fixed',
-                                    'size': device.get('size', 0),
-                                    'label': '',
-                                    'children': [
-                                        {'name': c.get('name'), 'size': c.get('size'), 'mountpoint': c.get('mountpoint')}
-                                        for c in device.get('children', [])
-                                    ]
-                                })
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            
-            # Fallback: use /dev/disk/by-id
-            try:
-                if os.path.exists('/dev/disk/by-id'):
-                    for entry in os.listdir('/dev/disk/by-id'):
-                        if 'usb' in entry.lower() or 'ata' in entry.lower():
-                            device_path = os.path.join('/dev/disk/by-id', entry)
-                            drives.append({
-                                'device': device_path,
-                                'type': 'removable',
-                                'size': 0,
-                                'label': '',
-                            })
-            except Exception:
-                pass
-        
-    except Exception as e:
-        logger.error(f"Error listing drives: {e}")
-    
-    # Remove duplicates and sort
-    unique_drives = []
-    seen_devices = set()
-    for drive in drives:
-        device = drive.get('device', '')
-        if device and device not in seen_devices:
-            seen_devices.add(device)
-            unique_drives.append(drive)
-    
-    return sorted(unique_drives, key=lambda x: x.get('device', ''))
-
-
-def get_drive_info(device: str) -> Optional[Dict[str, Any]]:
-    """Get detailed information about a specific drive."""
-    try:
-        if sys.platform == 'win32':
-            # Windows implementation
-            pass
-        elif sys.platform == 'darwin':
-            # macOS: use diskutil info
-            result = subprocess.run(
-                ['diskutil', 'info', '-plist', device],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if result.returncode == 0:
-                import plistlib
-                try:
-                    data = plistlib.loads(result.stdout.encode())
-                    return {
-                        'device': device,
-                        'size': data.get('TotalSize', 0),
-                        'label': data.get('VolumeName', ''),
-                        'filesystem': data.get('FilesystemType', ''),
-                        'mountpoint': data.get('MountPoint', ''),
-                        'removable': data.get('RemovableMedia', False),
-                        'vendor': data.get('DeviceVendor', ''),
-                        'model': data.get('DeviceModel', ''),
-                    }
-                except Exception:
-                    pass
-        else:
-            # Linux: use lsblk or blkid
-            result = subprocess.run(
-                ['lsblk', '-J', '-d', '-o', 'NAME,SIZE,TYPE,RM,MODEL,VENDOR'],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if result.returncode == 0:
-                import json
-                try:
-                    data = json.loads(result.stdout)
-                    for device_info in data.get('blockdevices', []):
-                        if device_info.get('name') == os.path.basename(device):
-                            return {
-                                'device': device,
-                                'size': int(device_info.get('size', 0)),
-                                'type': device_info.get('type', ''),
-                                'removable': device_info.get('rm', False),
-                                'model': device_info.get('model', ''),
-                                'vendor': device_info.get('vendor', ''),
-                            }
-                except Exception:
-                    pass
-    
-    except Exception as e:
-        logger.error(f"Error getting drive info for {device}: {e}")
-    
-    return None

@@ -289,11 +289,11 @@ manager.load_from_directory('/path/to/distro/definitions')
 
 ## Architecture Decisions
 
-### Why PySide6?
-- **License**: LGPL (commercial-friendly vs Qt's GPL)
-- **Compatibility**: Works with Python 3.6+
-- **Maintenance**: Actively maintained by Qt company
-- **Features**: Full Qt feature set
+### Why PySimpleGUI?
+- **Lightweight**: Small dependency footprint, uses the built-in Tkinter backend
+- **Compatibility**: Works with Python 3.10+
+- **Simplicity**: Simple, declarative layouts that are quick to maintain
+- **Cross-platform**: Runs on Linux, macOS and Windows without native Qt builds
 
 ### Why This Structure?
 - **Separation of Concerns**: UI, business logic, data models, platform code are all separate
@@ -357,9 +357,9 @@ See `src/unetbootin/core/utils.py:parse_command_line_args()` for full list.
 
 ### Common Issues
 
-**"No module named 'PySide6'"**
+**"No module named 'PySimpleGUI'"**
 ```bash
-pip install PySide6
+pip install PySimpleGUI
 ```
 
 **"Command not found: xorriso"**
@@ -419,7 +419,7 @@ See [LICENSE](LICENSE) for the full license text.
 
 - **Original UNetbootin**: Geza Kovacs <geza0kovacs@gmail.com>
 - **Python Rewrite**: Started in 2026
-- **Qt/PySide6**: The Qt Company
+- **PySimpleGUI**: The PySimpleGUI project (Tkinter backend)
 - **All Linux distributions**: Their respective maintainers
 
 ## Next Steps

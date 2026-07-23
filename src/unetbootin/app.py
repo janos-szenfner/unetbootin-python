@@ -24,7 +24,9 @@ from unetbootin import APP_NAME, APP_VERSION
 from unetbootin.ui.main_window_pysg import MainWindowPySG
 from unetbootin.models.distro import DistributionManager
 from unetbootin.core.extractor import ISOExtractor
-from unetbootin.core.downloader import Downloader, AsyncDownloader, DownloadResumeManager
+from unetbootin.core.downloader import (
+    Downloader, AsyncDownloader, DownloadResumeManager
+)
 from unetbootin.core.installer import USBInstaller
 from unetbootin.core.utils import (
     check_root, check_admin, get_platform_info,
@@ -198,17 +200,44 @@ class UNetbootinAppPySG:
             sys.exit(1)
     
     def relaunch_with_sudo(self):
-        """Re-launch the application with sudo on macOS."""
+        """Re-launch the application with sudo on macOS.
+
+        Uses osascript to open a Terminal running `sudo <app>`. This only
+        works in a graphical session with Terminal.app available; when it
+        fails (headless system, Terminal missing, osascript unavailable)
+        the user gets the exact command to run manually instead of a
+        generic error.
+        """
         logger.info("Attempting to re-launch with sudo")
+        import shlex
+        quoted = shlex.quote(sys.argv[0])
+        manual_cmd = f"sudo {quoted}"
+
         try:
-            import shlex
-            quoted = shlex.quote(sys.argv[0])
-            script = f'tell application "Terminal" to do script "sudo {quoted}"'
-            subprocess.run(['osascript', '-e', script], check=True)
+            script = f'tell application "Terminal" to do script "{manual_cmd}"'
+            subprocess.run(
+                ['osascript', '-e', script],
+                check=True, capture_output=True, text=True, timeout=30
+            )
             sys.exit(0)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to re-launch with sudo: {e}")
-            self.show_error("Failed to elevate privileges")
+        except FileNotFoundError:
+            # osascript itself is missing (non-standard/stripped-down system)
+            logger.error("osascript not available; cannot open Terminal")
+        except subprocess.TimeoutExpired:
+            logger.error("Timed out asking Terminal to relaunch with sudo")
+        except (subprocess.CalledProcessError, OSError) as e:
+            # Terminal unavailable (e.g. headless session) or automation
+            # permission denied
+            detail = getattr(e, 'stderr', '') or str(e)
+            logger.error(f"Failed to re-launch with sudo: {detail}")
+
+        # Fallback: give the user the exact command to run themselves
+        self.show_error(
+            "Could not automatically relaunch with administrator "
+            "privileges.\n\n"
+            "Please open a terminal and run:\n\n"
+            f"    {manual_cmd}"
+        )
     
     def get_installation_parameters(self) -> Dict[str, Any]:
         """Get installation parameters from UI.
@@ -296,7 +325,8 @@ class UNetbootinAppPySG:
         if self.exit_on_completion:
             self.stop()
     
-    def get_distribution_checksum(self, distro_name: str, version_name: str) -> Optional[str]:
+    def get_distribution_checksum(self, distro_name: str,
+                                  version_name: str) -> Optional[str]:
         """Get the checksum for a specific distribution and version."""
         distro = self.distro_manager.get_distribution(distro_name)
         if not distro:
@@ -309,7 +339,8 @@ class UNetbootinAppPySG:
         
         return None
     
-    def get_distribution_iso_url(self, distro_name: str, version_name: str) -> Optional[str]:
+    def get_distribution_iso_url(self, distro_name: str,
+                                 version_name: str) -> Optional[str]:
         """Get the ISO URL for a specific distribution and version."""
         distro = self.distro_manager.get_distribution(distro_name)
         if not distro:
@@ -352,16 +383,21 @@ class UNetbootinAppPySG:
             # Show progress in a popup with a progress bar
             progress_layout = [
                 [sg.Text("Extracting image...")],
-                [sg.ProgressBar(100, orientation='h', size=(40, 20), key='-PROGRESS-BAR-')],
+                [sg.ProgressBar(100, orientation='h', size=(
+                    40, 20), key='-PROGRESS-BAR-')],
                 [sg.Button('Cancel', key='-CANCEL-INSTALL-')]
             ]
-            progress_window = sg.Window('Installation in Progress', progress_layout, finalize=True)
+            progress_window = sg.Window(
+    'Installation in Progress',
+    progress_layout,
+     finalize=True)
             
             try:
                 # Extract image
                 progress_text = progress_window['-PROGRESS-BAR-']
                 
                 def extract_progress(percent: int):
+                    """Forward extraction progress to the event loop."""
                     progress_window.write_event_value('-PROGRESS-', percent)
                 
                 success, message = self.extractor.extract_iso_sync(
@@ -376,7 +412,9 @@ class UNetbootinAppPySG:
                 progress_window['-PROGRESS-BAR-'].update(50)
                 
                 def install_progress(percent: int):
-                    progress_window.write_event_value('-PROGRESS-', 50 + int(percent * 0.5))
+                    """Forward install progress (mapped to 50-100%) to the loop."""
+                    progress_window.write_event_value(
+                        '-PROGRESS-', 50 + int(percent * 0.5))
                 
                 success, message = self.installer.install_sync(
                     self.tmp_dir,
@@ -406,12 +444,17 @@ class UNetbootinAppPySG:
     
     def download_and_install_distribution(self, params: Dict[str, Any]):
         """Download ISO from distribution URL and install."""
-        logger.info(f"Downloading distribution: {params.get('distro')}, version: {params.get('version')}")
-        
+        logger.info(
+            f"Downloading distribution: {params.get('distro')}, "
+            f"version: {params.get('version')}")
+
         # Get the ISO URL
-        iso_url = self.get_distribution_iso_url(params.get('distro'), params.get('version'))
+        iso_url = self.get_distribution_iso_url(
+            params.get('distro'), params.get('version'))
         if not iso_url:
-            raise ValueError(f"Could not find ISO URL for distribution {params.get('distro')} version {params.get('version')}")
+            raise ValueError(
+                f"Could not find ISO URL for distribution "
+                f"{params.get('distro')} version {params.get('version')}")
         
         iso_filename = os.path.basename(iso_url)
         iso_path = os.path.join(self.tmp_dir, iso_filename)
@@ -425,11 +468,15 @@ class UNetbootinAppPySG:
             [sg.Text("", size=(40, 1), key='-PROGRESS-TEXT-')],
             [sg.Button('Cancel', key='-CANCEL-DOWNLOAD-')]
         ]
-        progress_window = sg.Window('Download in Progress', progress_layout, finalize=True)
+        progress_window = sg.Window(
+    'Download in Progress',
+    progress_layout,
+     finalize=True)
         
         cancel_download = False
         
         def download_progress(bytes_received: int, bytes_total: int):
+            """Map download byte progress onto the 0-30% bar range."""
             if cancel_download:
                 return
             if bytes_total > 0:
@@ -437,16 +484,20 @@ class UNetbootinAppPySG:
                 progress_window['-PROGRESS-BAR-'].update(percent)
             else:
                 # No total size known
-                progress_window['-PROGRESS-BAR-'].update(30 * bytes_received // (bytes_received + 1024 * 1024))
+                progress_window['-PROGRESS-BAR-'].update(
+                    30 * bytes_received // (bytes_received + 1024 * 1024))
         
         def download_estimated(percentage: int, bytes_received: int, eta_or_speed: int):
+            """Update the progress text with percentage or transfer speed."""
             if cancel_download:
                 return
             if percentage >= 0:
-                progress_window['-PROGRESS-TEXT-'].update(f"{percentage}% - {format_size(bytes_received)}")
+                progress_window['-PROGRESS-TEXT-'].update(
+                    f"{percentage}% - {format_size(bytes_received)}")
             else:
                 speed_str = self.downloader.format_download_speed(eta_or_speed)
-                progress_window['-PROGRESS-TEXT-'].update(f"{format_size(bytes_received)} at {speed_str}")
+                progress_window['-PROGRESS-TEXT-'].update(
+                    f"{format_size(bytes_received)} at {speed_str}")
         
         try:
             # Download the ISO file
@@ -470,17 +521,21 @@ class UNetbootinAppPySG:
             progress_window['-PROGRESS-BAR-'].update(30)
             progress_window['-PROGRESS-TEXT-'].update("Verifying ISO checksum...")
             
-            checksum = self.get_distribution_checksum(params.get('distro'), params.get('version'))
+            checksum = self.get_distribution_checksum(
+                params.get('distro'), params.get('version'))
             if checksum:
                 if not self.downloader.verify_checksum(iso_path, checksum, "sha256"):
                     try:
                         os.remove(iso_path)
                     except Exception:
                         pass
-                    raise RuntimeError(f"ISO checksum verification failed for {iso_filename}")
+                    raise RuntimeError(
+                        f"ISO checksum verification failed for {iso_filename}")
                 logger.info(f"ISO checksum verified successfully")
             else:
-                logger.warning(f"No checksum available for {params.get('distro')} {params.get('version')}, skipping verification")
+                logger.warning(
+                    f"No checksum available for {params.get('distro')} "
+                    f"{params.get('version')}, skipping verification")
             
             progress_window['-PROGRESS-BAR-'].update(35)
             
@@ -488,6 +543,7 @@ class UNetbootinAppPySG:
             progress_window['-PROGRESS-TEXT-'].update("Extracting ISO...")
             
             def extract_progress(percent: int):
+                """Map extraction progress onto the 35-80% bar range."""
                 progress_window['-PROGRESS-BAR-'].update(35 + int(percent * 0.45))
             
             success, message = self.extractor.extract_iso_sync(
@@ -504,6 +560,7 @@ class UNetbootinAppPySG:
             progress_window['-PROGRESS-TEXT-'].update("Installing to USB...")
             
             def install_progress(percent: int):
+                """Map install progress onto the 80-100% bar range."""
                 progress_window['-PROGRESS-BAR-'].update(80 + int(percent * 0.2))
             
             success, message = self.installer.install_sync(
@@ -583,23 +640,30 @@ class UNetbootinAppPySG:
                 file_path = sg.popup_get_file(
                     "Select Disk Image",
                     default_path="",
-                    file_types=(("All files", "*.*"), ("ISO files", "*.iso"), ("IMG files", "*.img"))
+                    file_types=(
+    ("All files", "*.*"), ("ISO files", "*.iso"), ("IMG files", "*.img"))
                 )
                 if file_path:
                     self.ui.elements['floppy_file'].update(file_path)
             
             elif event == '-KERNEL_BROWSE-':
-                file_path = sg.popup_get_file("Select Kernel File", default_path="", file_types=(("All files", "*.*"),))
+                file_path = sg.popup_get_file(
+    "Select Kernel File", default_path="", file_types=(
+        ("All files", "*.*"),))
                 if file_path:
                     self.ui.elements['kernel_file'].update(file_path)
             
             elif event == '-INITRD_BROWSE-':
-                file_path = sg.popup_get_file("Select Initrd File", default_path="", file_types=(("All files", "*.*"),))
+                file_path = sg.popup_get_file(
+    "Select Initrd File", default_path="", file_types=(
+        ("All files", "*.*"),))
                 if file_path:
                     self.ui.elements['initrd_file'].update(file_path)
             
             elif event == '-CFG_BROWSE-':
-                file_path = sg.popup_get_file("Select Config File", default_path="", file_types=(("All files", "*.*"), ("CFG files", "*.cfg")))
+                file_path = sg.popup_get_file(
+    "Select Config File", default_path="", file_types=(
+        ("All files", "*.*"), ("CFG files", "*.cfg")))
                 if file_path:
                     self.ui.elements['cfg_file'].update(file_path)
             
@@ -617,16 +681,22 @@ class UNetbootinAppPySG:
         try:
             params = self.get_installation_parameters()
             logger.info(f"Installation parameters: {params}")
-            
+
             if not self.validate_parameters(params):
                 return
-            
+
             self.create_temp_directory()
             self.start_installation(params)
-            
+
         except Exception as e:
             logger.error(f"Error in installation process: {e}")
             self.show_error(f"Installation error: {str(e)}")
+        finally:
+            # Safety net: some error paths raise before start_installation's
+            # own finally-cleanup is reached (e.g. unsupported install type,
+            # missing ISO URL). cleanup() is idempotent, so calling it again
+            # after a successful run is harmless.
+            self.cleanup()
     
     def on_refresh_drive_list(self):
         """Handle refresh drive list request."""
@@ -643,3 +713,17 @@ class UNetbootinAppPySG:
         self.running = False
         self.ui.close()
         self.cleanup()
+
+
+def main():
+    """Entry point for running the application directly.
+
+    Delegates to unetbootin.main.main so `python -m unetbootin.app` and the
+    canonical launcher share identical startup (logging, CLI parsing, etc.).
+    """
+    from unetbootin.main import main as _main
+    _main()
+
+
+if __name__ == "__main__":
+    main()

@@ -104,15 +104,33 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
     return True
 
 
-def format_drive(drive: str, filesystem: str = "FAT32", label: str = "UNETBOOTIN") -> bool:
-    """Format a drive on Windows."""
-    logger.warning("Drive formatting not implemented on Windows")
+def format_drive(drive: str, filesystem: str = "FAT32",
+                 label: str = "UNETBOOTIN") -> bool:
+    """Format a drive on Windows.
+
+    Not implemented: automated formatting of arbitrary drives is too
+    destructive to run non-interactively. Reports failure so callers do
+    not assume the drive was formatted.
+    """
+    logger.warning(
+        f"Drive formatting is not implemented on Windows; format {drive} "
+        f"as {filesystem} manually (Explorer or diskpart) and retry"
+    )
     return False
 
 
 def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
-    """Install bootloader to a drive on Windows."""
-    logger.warning("Bootloader installation not implemented on Windows")
+    """Install bootloader to a drive on Windows.
+
+    Not implemented at the platform layer. The installer module handles
+    Windows bootloader installation via syslinux.exe when available; this
+    stub reports failure so callers never assume a bootable result.
+    """
+    logger.warning(
+        f"Platform-level bootloader installation ({bootloader_type}) is not "
+        f"implemented on Windows; install syslinux.exe and use the installer "
+        f"module instead"
+    )
     return False
 
 
@@ -140,8 +158,15 @@ def get_volume_label(drive: str) -> Optional[str]:
 
 
 def set_volume_label(drive: str, label: str) -> bool:
-    """Set volume label for a drive on Windows."""
-    logger.warning("Setting volume label not implemented on Windows")
+    """Set volume label for a drive on Windows.
+
+    Not implemented: reports failure so callers do not assume the label
+    was changed. Users can set the label manually with the `label` command.
+    """
+    logger.warning(
+        f"Setting the volume label is not implemented on Windows; "
+        f"run 'label {drive} {label}' in an elevated prompt instead"
+    )
     return False
 
 

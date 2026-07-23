@@ -176,10 +176,15 @@ class TestMainWindowDistributionHandling(unittest.TestCase):
         versions = ubuntu.versions
         self.assertGreater(len(versions), 0)
         
-        # Verify each version has required fields
+        # Verify each version has required fields. versions holds
+        # DistributionVersion dataclass instances, so check attributes
+        # (and their dict form) rather than treating them as dicts.
         for version in versions:
-            self.assertIn('name', version)
-            self.assertIn('url', version)
+            self.assertTrue(hasattr(version, 'name'))
+            self.assertTrue(hasattr(version, 'url'))
+            version_dict = version.to_dict()
+            self.assertIn('name', version_dict)
+            self.assertIn('url', version_dict)
 
 
 class TestMainWindowUIConnections(unittest.TestCase):
@@ -356,10 +361,11 @@ class TestUIComponents(unittest.TestCase):
         """Test format_size function used in app.py."""
         from unetbootin.core.utils import format_size
         
-        # Test various sizes
-        self.assertEqual(format_size(0), '0.00 B')
-        self.assertEqual(format_size(1024), '1.00 KB')
-        self.assertEqual(format_size(1024 * 1024), '1.00 MB')
+        # Bytes are whole numbers; larger units use one decimal place
+        # (consistent with test_core and test_integration).
+        self.assertEqual(format_size(0), '0 B')
+        self.assertEqual(format_size(1024), '1.0 KB')
+        self.assertEqual(format_size(1024 * 1024), '1.0 MB')
 
 
 if __name__ == '__main__':

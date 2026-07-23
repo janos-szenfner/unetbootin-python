@@ -15,6 +15,17 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+# --- Tunable constants (previously scattered magic numbers) ---
+# Timeout (seconds) for full archive extraction commands (can be slow).
+EXTRACT_TIMEOUT = 300
+# Timeout (seconds) for listing archive contents.
+LIST_TIMEOUT = 30
+# Timeout (seconds) for checking whether a helper command exists.
+COMMAND_CHECK_TIMEOUT = 5
+# Archive extensions handled by the tar code path.
+TAR_EXTENSIONS = ['.tar', '.tar.gz', '.tgz', '.tar.bz2',
+                  '.tbz2', '.tar.xz', '.txz']
+
 
 @dataclass
 class ArchiveFileInfo:
@@ -44,7 +55,28 @@ class ISOExtractor:
             '.7z'
         ]
         self.worker = None
-    
+
+    def get_supported_extensions(self) -> List[str]:
+        """Return the list of archive extensions this extractor supports."""
+        return self.supported_extensions
+
+    def _get_files_to_copy(self, source_dir: str,
+                           params: Optional[Dict[str, Any]] = None) -> List[str]:
+        """List extracted files as paths relative to source_dir.
+
+        Hidden files (names starting with '.') are skipped. `params` is
+        accepted for signature compatibility with the installer helper but
+        is not used for filtering here.
+        """
+        files_to_copy = []
+        for root, _dirs, files in os.walk(source_dir):
+            for file in files:
+                if file.startswith('.'):
+                    continue
+                full_path = os.path.join(root, file)
+                files_to_copy.append(os.path.relpath(full_path, source_dir))
+        return files_to_copy
+
     def extract_iso_sync_threaded(self, archive_path: str, dest_dir: str,
                                   files_to_extract: Optional[List[str]] = None,
                                   progress_callback: Optional[Callable[[int], None]] = None) -> tuple:
@@ -59,6 +91,7 @@ class ISOExtractor:
         exception = [None]
         
         def extract_wrapper():
+            """Run extraction in the worker thread, capturing any exception."""
             try:
                 result[0], result[1] = self.extract_iso_sync(
                     archive_path, dest_dir, files_to_extract, progress_callback
@@ -90,15 +123,19 @@ class ISOExtractor:
             archive_ext = os.path.splitext(archive_path)[1].lower()
             
             if archive_ext == '.iso':
-                return self._extract_iso(archive_path, dest_dir, files_to_extract, progress_callback)
+                return self._extract_iso(archive_path, dest_dir,
+                                         files_to_extract, progress_callback)
             elif archive_ext in ['.img', '.raw']:
                 return self._extract_raw(archive_path, dest_dir, progress_callback)
             elif archive_ext == '.zip':
-                return self._extract_zip(archive_path, dest_dir, files_to_extract, progress_callback)
-            elif archive_ext in ['.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz']:
-                return self._extract_tar(archive_path, dest_dir, files_to_extract, progress_callback)
+                return self._extract_zip(archive_path, dest_dir,
+                                         files_to_extract, progress_callback)
+            elif archive_ext in TAR_EXTENSIONS:
+                return self._extract_tar(archive_path, dest_dir,
+                                         files_to_extract, progress_callback)
             elif archive_ext == '.7z':
-                return self._extract_7z_file(archive_path, dest_dir, files_to_extract, progress_callback)
+                return self._extract_7z_file(
+                    archive_path, dest_dir, files_to_extract, progress_callback)
             else:
                 return False, f"Unsupported archive type: {archive_ext}"
                 
@@ -128,11 +165,13 @@ class ISOExtractor:
         methods_tried.append("bsdtar")
         
         # Try method 4: Python libraries
-        if self._try_python_libs(iso_path, dest_dir, files_to_extract, progress_callback):
+        if self._try_python_libs(
+            iso_path, dest_dir, files_to_extract, progress_callback):
             return True, "Extraction completed successfully"
         methods_tried.append("python libs")
         
-        return False, f"All extraction methods failed. Tried: {', '.join(methods_tried)}"
+        return False, ("All extraction methods failed. "
+                       f"Tried: {', '.join(methods_tried)}")
     
     def _extract_raw(self, img_path: str, dest_dir: str,
                     progress_callback: Optional[Callable[[int], None]]) -> tuple:
@@ -143,16 +182,18 @@ class ISOExtractor:
             if sys.platform == 'darwin':
                 # macOS: use hdiutil
                 result = subprocess.run(
-                    ['hdiutil', 'attach', '-imagekey', 'diskimage-class=CRawDiskImage', img_path],
+                    ['hdiutil', 'attach', '-imagekey',
+                        'diskimage-class=CRawDiskImage', img_path],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=LIST_TIMEOUT
                 )
                 if result.returncode != 0:
                     return False, f"Failed to attach raw image: {result.stderr}"
                 
                 # Copy files from mounted image
-                # This is simplified - actual implementation would need to find the mount point
+                # This is simplified - actual implementation would need to find the
+                # mount point
                 return True, "Raw image attached successfully"
             else:
                 # Linux: try to mount
@@ -160,7 +201,7 @@ class ISOExtractor:
                     ['sudo', 'mount', '-o', 'loop', img_path, dest_dir],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=LIST_TIMEOUT
                 )
                 if result.returncode == 0:
                     return True, "Raw image mounted successfully"
@@ -185,7 +226,8 @@ class ISOExtractor:
             return True, "Extraction completed successfully"
         methods_tried.append("zipfile")
         
-        return False, f"All ZIP extraction methods failed. Tried: {', '.join(methods_tried)}"
+        return False, ("All ZIP extraction methods failed. "
+                       f"Tried: {', '.join(methods_tried)}")
     
     def _extract_tar(self, tar_path: str, dest_dir: str,
                    files_to_extract: Optional[List[str]],
@@ -194,7 +236,8 @@ class ISOExtractor:
         methods_tried = []
         
         # Try method 1: tar command
-        if self._try_tar_command(tar_path, dest_dir, files_to_extract, progress_callback):
+        if self._try_tar_command(
+            tar_path, dest_dir, files_to_extract, progress_callback):
             return True, "Extraction completed successfully"
         methods_tried.append("tar command")
         
@@ -203,7 +246,8 @@ class ISOExtractor:
             return True, "Extraction completed successfully"
         methods_tried.append("tarfile")
         
-        return False, f"All TAR extraction methods failed. Tried: {', '.join(methods_tried)}"
+        return False, ("All TAR extraction methods failed. "
+                       f"Tried: {', '.join(methods_tried)}")
     
     def _extract_7z_file(self, archive_path: str, dest_dir: str,
                         files_to_extract: Optional[List[str]],
@@ -212,7 +256,8 @@ class ISOExtractor:
         methods_tried = []
         
         # Try method 1: 7z command
-        if self._try_7z_command(archive_path, dest_dir, files_to_extract, progress_callback):
+        if self._try_7z_command(archive_path, dest_dir,
+                                files_to_extract, progress_callback):
             return True, "Extraction completed successfully"
         methods_tried.append("7z command")
         
@@ -221,7 +266,8 @@ class ISOExtractor:
             return True, "Extraction completed successfully"
         methods_tried.append("py7zr")
         
-        return False, f"All 7z extraction methods failed. Tried: {', '.join(methods_tried)}"
+        return False, ("All 7z extraction methods failed. "
+                       f"Tried: {', '.join(methods_tried)}")
     
     def _try_xorriso(self, iso_path: str, dest_dir: str,
                     files_to_extract: Optional[List[str]],
@@ -231,19 +277,33 @@ class ISOExtractor:
             if not self._command_exists('xorriso'):
                 return False
             
-            cmd = ['xorriso', '-osirrox', 'on', '-indev', iso_path, '-extract', '/', dest_dir]
+            cmd = [
+    'xorriso',
+    '-osirrox',
+    'on',
+    '-indev',
+    iso_path,
+    '-extract',
+    '/',
+     dest_dir]
             
             if files_to_extract:
                 # Extract specific files
                 for file_pattern in files_to_extract:
                     file_cmd = cmd + ['-extract', file_pattern, dest_dir]
-                    result = subprocess.run(file_cmd, capture_output=True, text=True, timeout=300)
+                    result = subprocess.run(
+    file_cmd,
+    capture_output=True,
+    text=True,
+     timeout=EXTRACT_TIMEOUT)
                     if result.returncode != 0:
-                        logger.warning(f"xorriso failed for {file_pattern}: {result.stderr}")
+                        logger.warning(
+                            f"xorriso failed for {file_pattern}: {result.stderr}")
                         return False
             else:
                 # Extract all files
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                result = subprocess.run(
+    cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
                 if result.returncode != 0:
                     logger.warning(f"xorriso failed: {result.stderr}")
                     return False
@@ -271,7 +331,11 @@ class ISOExtractor:
                 # So we'll extract all and filter later
                 pass
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+     timeout=EXTRACT_TIMEOUT)
             if result.returncode != 0:
                 logger.debug(f"7z extraction failed: {result.stderr}")
                 return False
@@ -299,7 +363,11 @@ class ISOExtractor:
             if files_to_extract:
                 cmd = ['unzip', '-o', '-d', dest_dir] + files_to_extract + [zip_path]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+     timeout=EXTRACT_TIMEOUT)
             if result.returncode != 0:
                 logger.debug(f"unzip extraction failed: {result.stderr}")
                 return False
@@ -364,7 +432,11 @@ class ISOExtractor:
             if files_to_extract:
                 cmd.extend(files_to_extract)
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+     timeout=EXTRACT_TIMEOUT)
             if result.returncode != 0:
                 logger.debug(f"tar extraction failed: {result.stderr}")
                 return False
@@ -413,11 +485,14 @@ class ISOExtractor:
                     dest_real = os.path.realpath(dest_dir)
                     for member in members:
                         target = os.path.realpath(os.path.join(dest_dir, member.name))
-                        if not target.startswith(dest_real + os.sep) and target != dest_real:
-                            logger.warning(f"Skipping unsafe archive member: {member.name}")
+                        if not target.startswith(
+                            dest_real + os.sep) and target != dest_real:
+                            logger.warning(
+                                f"Skipping unsafe archive member: {member.name}")
                             continue
                         if member.islnk() or member.issym() or member.isdev():
-                            logger.warning(f"Skipping link/device archive member: {member.name}")
+                            logger.warning(
+                                f"Skipping link/device archive member: {member.name}")
                             continue
                         safe_members.append(member)
                     tar_ref.extractall(path=dest_dir, members=safe_members)
@@ -449,13 +524,18 @@ class ISOExtractor:
                 # Extract specific files
                 for file_pattern in files_to_extract:
                     file_cmd = cmd + [file_pattern]
-                    result = subprocess.run(file_cmd, capture_output=True, text=True, timeout=300)
+                    result = subprocess.run(
+    file_cmd,
+    capture_output=True,
+    text=True,
+     timeout=EXTRACT_TIMEOUT)
                     if result.returncode != 0:
                         logger.debug(f"7z failed for {file_pattern}: {result.stderr}")
                         return False
             else:
                 # Extract all files
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                result = subprocess.run(
+    cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
                 if result.returncode != 0:
                     logger.debug(f"7z extraction failed: {result.stderr}")
                     return False
@@ -507,7 +587,11 @@ class ISOExtractor:
             if files_to_extract:
                 cmd.extend(files_to_extract)
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+     timeout=EXTRACT_TIMEOUT)
             if result.returncode != 0:
                 logger.debug(f"bsdtar extraction failed: {result.stderr}")
                 return False
@@ -577,7 +661,8 @@ class ISOExtractor:
                 from iso9660 import CD
                 cd = CD(archive_path)
                 for file in cd.files:
-                    if files_to_extract and not any(p in file.name for p in files_to_extract):
+                    if files_to_extract and not any(
+                        p in file.name for p in files_to_extract):
                         continue
                     try:
                         data = cd.read_file(file.name)
@@ -602,7 +687,9 @@ class ISOExtractor:
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in the system."""
         try:
-            result = subprocess.run(['which', command], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ['which', command], capture_output=True, text=True,
+                timeout=COMMAND_CHECK_TIMEOUT)
             return result.returncode == 0 and os.path.exists(result.stdout.strip())
         except Exception:
             return False
@@ -620,7 +707,7 @@ class ISOExtractor:
                 files = self._list_iso_contents(archive_path)
             elif archive_ext == '.zip':
                 files = self._list_zip_contents(archive_path)
-            elif archive_ext in ['.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz']:
+            elif archive_ext in TAR_EXTENSIONS:
                 files = self._list_tar_contents(archive_path)
             elif archive_ext == '.7z':
                 files = self._list_7z_contents(archive_path)
@@ -638,7 +725,7 @@ class ISOExtractor:
         if self._command_exists('xorriso'):
             result = subprocess.run(
                 ['xorriso', '-indev', archive_path, '-find', '/', '-type', 'f'],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, timeout=LIST_TIMEOUT
             )
             if result.returncode == 0:
                 for line in result.stdout.strip().split('\n'):
@@ -648,7 +735,7 @@ class ISOExtractor:
         elif self._command_exists('7z'):
             result = subprocess.run(
                 ['7z', 'l', archive_path],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, timeout=LIST_TIMEOUT
             )
             if result.returncode == 0:
                 for line in result.stdout.strip().split('\n')[2:]:  # Skip header
@@ -687,7 +774,7 @@ class ISOExtractor:
         if self._command_exists('7z'):
             result = subprocess.run(
                 ['7z', 'l', archive_path],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, timeout=LIST_TIMEOUT
             )
             if result.returncode == 0:
                 for line in result.stdout.strip().split('\n')[2:]:  # Skip header
@@ -735,7 +822,11 @@ class ISOExtractor:
             else:  # .tar
                 cmd = ['tar', '-tf', archive_path]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+     timeout=LIST_TIMEOUT)
             if result.returncode == 0:
                 for line in result.stdout.strip().split('\n'):
                     if line.strip():
@@ -780,7 +871,7 @@ class ISOExtractor:
         if self._command_exists('7z'):
             result = subprocess.run(
                 ['7z', 'l', archive_path],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, timeout=LIST_TIMEOUT
             )
             if result.returncode == 0:
                 for line in result.stdout.strip().split('\n')[2:]:  # Skip header
@@ -810,7 +901,8 @@ class ISOExtractor:
         
         return files
     
-    def locate_kernel(self, archive_path: str, archive_contents: Optional[List[ArchiveFileInfo]] = None) -> Optional[str]:
+    def locate_kernel(self, archive_path: str,
+                      archive_contents: Optional[List[ArchiveFileInfo]] = None) -> Optional[str]:
         """Locate kernel file in an archive."""
         if archive_contents is None:
             archive_contents = self.list_archive_contents(archive_path)
@@ -833,7 +925,8 @@ class ISOExtractor:
         
         return None
     
-    def locate_initrd(self, archive_path: str, archive_contents: Optional[List[ArchiveFileInfo]] = None) -> Optional[str]:
+    def locate_initrd(self, archive_path: str,
+                      archive_contents: Optional[List[ArchiveFileInfo]] = None) -> Optional[str]:
         """Locate initrd file in an archive."""
         if archive_contents is None:
             archive_contents = self.list_archive_contents(archive_path)
@@ -873,14 +966,15 @@ class ISOExtractor:
         
         return self._extract_single_file(archive_path, initrd_path, dest_path)
     
-    def _extract_single_file(self, archive_path: str, file_path: str, dest_path: str) -> bool:
+    def _extract_single_file(self, archive_path: str,
+                             file_path: str, dest_path: str) -> bool:
         """Extract a single file from archive."""
         try:
             # Try using 7z first
             if self._command_exists('7z'):
                 result = subprocess.run(
                     ['7z', 'e', archive_path, f'-o{dest_path}', file_path, '-y'],
-                    capture_output=True, text=True, timeout=30
+                    capture_output=True, text=True, timeout=LIST_TIMEOUT
                 )
                 return result.returncode == 0
             
@@ -967,6 +1061,7 @@ class AsyncISOExtractor:
         extractor = ISOExtractor()
         
         def sync_extract():
+            """Run the blocking extraction, to be dispatched in an executor."""
             try:
                 result = extractor._extract_with_tool(
                     archive_path, dest_dir, tool_name, progress_callback

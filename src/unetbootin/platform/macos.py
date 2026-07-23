@@ -273,7 +273,8 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
         return False
 
 
-def format_drive(drive: str, filesystem: str = "vfat", label: str = "UNETBOOTIN") -> bool:
+def format_drive(drive: str, filesystem: str = "vfat",
+                 label: str = "UNETBOOTIN") -> bool:
     """Format a drive on macOS."""
     try:
         if not drive.startswith('/dev/'):
@@ -419,13 +420,15 @@ def get_volume_label(drive: str) -> Optional[str]:
         )
         
         if result.returncode == 0:
-            for line in result.stdout.split('\n'):
+            for raw_line in result.stdout.split('\n'):
+                # `diskutil info` indents every field, so strip before matching
+                line = raw_line.strip()
                 if line.startswith('Volume Name:') or line.startswith('Name:'):
-                    return line.split(':')[1].strip()
-        
+                    return line.split(':', 1)[1].strip()
+
     except Exception as e:
         logger.error(f"Failed to get volume label for {drive}: {e}")
-    
+
     return None
 
 
@@ -456,6 +459,34 @@ def get_device_size(drive: str) -> Optional[int]:
     info = get_drive_info(drive)
     if info:
         return info.get('size')
+    return None
+
+
+def get_parent_disk(device: str) -> Optional[str]:
+    """Resolve the whole-disk device for a partition on macOS.
+
+    Uses ``diskutil info`` and its "Part of Whole" field. For a partition
+    like ``/dev/disk2s1`` this returns ``/dev/disk2``; for a whole disk it
+    returns the disk itself. Mirrors the Linux ``get_parent_disk`` so the
+    installer can find the correct device before writing boot records.
+    """
+    try:
+        if not device.startswith('/dev/'):
+            device = f'/dev/{device}'
+
+        result = subprocess.run(
+            ['diskutil', 'info', device],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                if 'Part of Whole' in line:
+                    whole = line.split(':', 1)[1].strip()
+                    if whole:
+                        return f'/dev/{whole}'
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.error(f"Failed to resolve parent disk for {device}: {e}")
+
     return None
 
 
@@ -497,7 +528,8 @@ def get_mount_point(device: str) -> Optional[str]:
             for line in result.stdout.split('\n'):
                 if line.startswith('Mount Point:') or line.startswith('Mount Points:'):
                     mount_point = line.split(':')[1].strip()
-                    if mount_point and mount_point != 'Not mounted' and mount_point != 'None':
+                    if (mount_point and mount_point != 'Not mounted'
+                            and mount_point != 'None'):
                         return mount_point
         
         # Try mount command

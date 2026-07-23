@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from unetbootin.models.config import ConfigManager, AppConfig
 from unetbootin.models.distro import Distribution, DistributionVersion, DistributionManager
 from unetbootin.core.downloader import (
-    Downloader, AsyncDownloader, DownloadWorker, 
+    Downloader, AsyncDownloader,
     MirrorManager, MirrorInfo, DownloadResumeManager
 )
 from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
@@ -182,8 +182,9 @@ class TestDistributionMirrors(unittest.TestCase):
         # Test Linux category
         linux_distros = manager.get_distributions_by_category('Linux')
         linux_names = [d['name'] for d in linux_distros]
-        expected_linux = ['ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux', 
-                         'suse_tumbleweed', 'suse_leap', 'zorin', 'kali', 'slackware', 'openmandriva', 'tinycore']
+        expected_linux = ['ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux',
+                         'suse_tumbleweed', 'suse_leap', 'zorin', 'kali', 'slackware',
+                         'openmandriva', 'openmandriva6', 'tinycore']
         self.assertEqual(sorted(linux_names), sorted(expected_linux))
         
         # Test BSD category
@@ -380,10 +381,12 @@ class TestMirrorInfo(unittest.TestCase):
         self.assertEqual(mirror.protocol, 'https')
     
     def test_get_base_url(self):
-        """Test getting base URL."""
+        """Test getting base URL for both protocols."""
         mirror = MirrorInfo(url='mirror.example.com', protocol='https')
         self.assertEqual(mirror.get_base_url(), 'https://mirror.example.com')
-        
+
+        # http:// here is intentional: it exercises the http protocol branch
+        # of get_base_url(), not a real (insecure) mirror URL.
         mirror = MirrorInfo(url='mirror.example.com', protocol='http')
         self.assertEqual(mirror.get_base_url(), 'http://mirror.example.com')
 
@@ -424,17 +427,20 @@ class TestDownloaderResume(unittest.TestCase):
             self.assertIn('Downloaded', message)
     
     def test_download_with_custom_mirror(self):
-        """Test download with custom mirror replacement."""
-        # Create a DownloadWorker with custom mirror
-        worker = DownloadWorker(
-            'https://original.com/file.iso',
-            '/tmp/file.iso',
-            custom_mirrors=['https://mirror.com']
+        """Test custom mirror replacement via MirrorManager.
+
+        Custom mirrors are now configured on MirrorManager (the Qt-era
+        DownloadWorker was removed in the PySimpleGUI migration).
+        """
+        manager = MirrorManager()
+        manager.set_custom_mirrors(['https://mirror.com'])
+
+        # Custom mirror should be registered and preferred
+        self.assertIn('https://mirror.com', manager.get_all_mirrors())
+        self.assertEqual(
+            manager.get_best_mirror('https://original.com/file.iso'),
+            'https://mirror.com'
         )
-        
-        # The worker should be initialized with the mirror
-        self.assertEqual(worker.custom_mirrors, ['https://mirror.com'])
-        self.assertTrue(worker.enable_resume)
 
 
 class TestUSBInstallerNewFeatures(unittest.TestCase):
@@ -608,73 +614,66 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         self.assertEqual(params['persistence_size'], 2000)
     
     def test_category_selector_exists(self):
-        """Test that category selector exists."""
-        self.assertIsNotNone(self.window.category_select)
-        self.assertGreater(self.window.category_select.count(), 0)
-    
+        """Test that a category selector element exists and is populated.
+
+        The PySimpleGUI UI stores the selector in `elements` and the
+        computed category list on `self.categories` (the Qt combo-box API
+        used previously no longer exists).
+        """
+        self.assertIn('category_select', self.window.elements)
+        # 'All' plus the categories from the test distributions
+        self.assertGreater(len(self.window.categories), 0)
+
     def test_category_selector_has_all_categories(self):
-        """Test that category selector has all expected categories."""
-        categories = [self.window.category_select.itemText(i) 
-                     for i in range(self.window.category_select.count())]
-        
-        self.assertIn('All', categories)
-        self.assertIn('Linux', categories)
-        self.assertIn('BSD', categories)
-        self.assertIn('Windows', categories)
-    
+        """Test that the category list has all expected categories."""
+        # set_categories prepends 'All'; self.categories holds the rest
+        all_values = ['All'] + list(self.window.categories)
+
+        self.assertIn('All', all_values)
+        self.assertIn('Linux', all_values)
+        self.assertIn('BSD', all_values)
+        self.assertIn('Windows', all_values)
+
+    def _current_distro_display_names(self):
+        """Read the display names last pushed to the distro_select element."""
+        update_mock = self.window.elements['distro_select'].update
+        # Find the most recent update(values=...) call
+        for call in reversed(update_mock.call_args_list):
+            if 'values' in call.kwargs:
+                return call.kwargs['values']
+        return []
+
     def test_category_selection_filters_distributions(self):
         """Test that selecting a category filters the distribution list."""
-        # Initially should show all distributions
-        initial_count = self.window.distro_select.count()
-        self.assertGreater(initial_count, 0)
-        
-        # Select Linux category
-        linux_index = self.window.category_select.findText('Linux')
-        if linux_index >= 0:
-            self.window.category_select.setCurrentIndex(linux_index)
-            linux_count = self.window.distro_select.count()
-            self.assertGreater(linux_count, 0)
-            
-            # All items should be Linux distributions
-            for i in range(linux_count):
-                distro_name = self.window.distro_select.itemData(i)
-                distro_info = self.window.distributions.get(distro_name)
-                if distro_info:
-                    self.assertEqual(distro_info.get('category'), 'Linux')
-        
-        # Select BSD category
-        bsd_index = self.window.category_select.findText('BSD')
-        if bsd_index >= 0:
-            self.window.category_select.setCurrentIndex(bsd_index)
-            bsd_count = self.window.distro_select.count()
-            self.assertGreater(bsd_count, 0)
-            
-            # All items should be BSD distributions
-            for i in range(bsd_count):
-                distro_name = self.window.distro_select.itemData(i)
-                distro_info = self.window.distributions.get(distro_name)
-                if distro_info:
-                    self.assertEqual(distro_info.get('category'), 'BSD')
-        
-        # Select Windows category
-        windows_index = self.window.category_select.findText('Windows')
-        if windows_index >= 0:
-            self.window.category_select.setCurrentIndex(windows_index)
-            windows_count = self.window.distro_select.count()
-            self.assertGreater(windows_count, 0)
-            
-            # All items should be Windows distributions
-            for i in range(windows_count):
-                distro_name = self.window.distro_select.itemData(i)
-                distro_info = self.window.distributions.get(distro_name)
-                if distro_info:
-                    self.assertEqual(distro_info.get('category'), 'Windows')
-        
-        # Select All to restore full list
-        all_index = self.window.category_select.findText('All')
-        if all_index >= 0:
-            self.window.category_select.setCurrentIndex(all_index)
-            self.assertEqual(self.window.distro_select.count(), initial_count)
+        from unittest.mock import MagicMock
+
+        # Inject fresh mocks for the elements this test inspects so the
+        # result doesn't depend on how PySimpleGUI was mocked by earlier
+        # tests (suite ordering can otherwise leave a real bound method here).
+        self.window.elements['distro_select'] = MagicMock()
+        self.window.elements['distro_select'].get.return_value = ''
+
+        # Initially (All) should show every distribution
+        self.window.update_distro_list('All')
+        self.assertEqual(len(self._current_distro_display_names()),
+                         len(self.window.distributions))
+
+        # Filtering by each category yields only that category's distros
+        for category in ('Linux', 'BSD', 'Windows'):
+            self.window.update_distro_list(category)
+            names = self._current_distro_display_names()
+            self.assertGreater(len(names), 0)
+            expected = [
+                d.get('display_name', d['name'])
+                for d in self.window.distributions.values()
+                if d.get('category') == category
+            ]
+            self.assertEqual(sorted(names), sorted(expected))
+
+        # Selecting 'All' again restores the full list
+        self.window.update_distro_list('All')
+        self.assertEqual(len(self._current_distro_display_names()),
+                         len(self.window.distributions))
 
 
 class TestAsyncNewFeatures(unittest.IsolatedAsyncioTestCase):

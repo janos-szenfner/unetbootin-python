@@ -29,7 +29,9 @@ class MainWindowPySG:
     def __init__(self, parent=None):
         """Initialize the main window UI."""
         if not HAS_PYSIMPLEGUI:
-            raise ImportError("PySimpleGUI is required but not installed. Please install it with: pip install PySimpleGUI")
+            raise ImportError(
+                "PySimpleGUI is required but not installed. "
+                "Please install it with: pip install PySimpleGUI")
         
         logger.info("Creating MainWindow UI with PySimpleGUI")
         
@@ -60,23 +62,76 @@ class MainWindowPySG:
             
             # Install Type Radio Buttons
             [
-                sg.Radio("Distribution", "install_type", default=True, key='-RADIO_DISTRO-', enable_events=True, tooltip="Select from a list of supported distributions"),
-                sg.Radio("Disk image", "install_type", default=False, key='-RADIO_FLOPPY-', enable_events=True, tooltip="Specify a disk image file to load"),
-                sg.Radio("Custom", "install_type", default=False, key='-RADIO_MANUAL-', enable_events=True, tooltip="Manually specify a kernel and initrd to load"),
+                sg.Radio(
+    "Distribution",
+    "install_type",
+    default=True,
+    key='-RADIO_DISTRO-',
+    enable_events=True,
+     tooltip="Select from a list of supported distributions"),
+                sg.Radio(
+    "Disk image",
+    "install_type",
+    default=False,
+    key='-RADIO_FLOPPY-',
+    enable_events=True,
+     tooltip="Specify a disk image file to load"),
+                sg.Radio(
+    "Custom",
+    "install_type",
+    default=False,
+    key='-RADIO_MANUAL-',
+    enable_events=True,
+     tooltip="Manually specify a kernel and initrd to load"),
             ],
             
             # Distribution selection
             [
-                sg.Combo([], key='-CATEGORY_SELECT-', size=(20, 1), enable_events=True, tooltip="Select distribution category"),
-                sg.Combo([], key='-DISTRO_SELECT-', size=(30, 1), enable_events=True, tooltip="Select from a list of supported distributions"),
-                sg.Combo([], key='-VERSION_SELECT-', size=(25, 1), enable_events=True, disabled=True, tooltip="Select the distribution version"),
+                sg.Combo(
+    [],
+    key='-CATEGORY_SELECT-',
+    size=(
+        20,
+        1),
+        enable_events=True,
+         tooltip="Select distribution category"),
+                sg.Combo(
+    [],
+    key='-DISTRO_SELECT-',
+    size=(
+        30,
+        1),
+        enable_events=True,
+         tooltip="Select from a list of supported distributions"),
+                sg.Combo(
+    [],
+    key='-VERSION_SELECT-',
+    size=(
+        25,
+        1),
+        enable_events=True,
+        disabled=True,
+         tooltip="Select the distribution version"),
             ],
             
             # Floppy image selection (hidden initially)
             [
                 sg.Text("Disk image:", key='-FLOPPY_LABEL-', visible=False),
-                sg.Input(size=(45, 1), key='-FLOPPY_FILE-', visible=False, tooltip="Path to disk image file"),
-                sg.Button("...", size=(4, 1), key='-FLOPPY_BROWSE-', visible=False, tooltip="Browse for disk image file"),
+                sg.Input(
+    size=(
+        45,
+        1),
+        key='-FLOPPY_FILE-',
+        visible=False,
+         tooltip="Path to disk image file"),
+                sg.Button(
+    "...",
+    size=(
+        4,
+        1),
+        key='-FLOPPY_BROWSE-',
+        visible=False,
+         tooltip="Browse for disk image file"),
             ],
             
             # Manual installation options (hidden initially)
@@ -99,22 +154,45 @@ class MainWindowPySG:
             # Drive selection
             [
                 sg.Text("Target Drive:", size=(12, 1)),
-                sg.Combo([], key='-DRIVE_SELECT-', size=(50, 1), enable_events=True, tooltip="Select the target drive"),
-                sg.Button("Refresh", key='-REFRESH_DRIVES-', tooltip="Refresh the list of available drives"),
+                sg.Combo(
+    [],
+    key='-DRIVE_SELECT-',
+    size=(
+        50,
+        1),
+        enable_events=True,
+         tooltip="Select the target drive"),
+                sg.Button(
+    "Refresh",
+    key='-REFRESH_DRIVES-',
+     tooltip="Refresh the list of available drives"),
             ],
             
             # Install type (USB Drive / Hard Disk)
             [
                 sg.Text("Type:", size=(12, 1)),
-                sg.Combo(["USB Drive", "Hard Disk"], key='-TYPE_SELECT-', default_value="USB Drive", size=(20, 1), enable_events=True, tooltip="Select the installation target type"),
+                sg.Combo(["USB Drive",
+    "Hard Disk"],
+    key='-TYPE_SELECT-',
+    default_value="USB Drive",
+    size=(20,
+    1),
+    enable_events=True,
+     tooltip="Select the installation target type"),
             ],
             
             # Info message
-            [sg.Text("Select a distribution or ISO file, then select your USB drive below.", key='-INFO_MESSAGE-', size=(60, 1))],
+            [sg.Text("Select a distribution or ISO file, then select your "
+                     "USB drive below.",
+                     key='-INFO_MESSAGE-', size=(60, 1))],
             
             # Advanced options checkbox
             [
-                sg.Checkbox("Advanced Options", key='-ADVANCED_TOGGLE-', enable_events=True, default=False),
+                sg.Checkbox(
+    "Advanced Options",
+    key='-ADVANCED_TOGGLE-',
+    enable_events=True,
+     default=False),
             ],
             
             # Advanced options (initially hidden)
@@ -122,17 +200,38 @@ class MainWindowPySG:
                 sg.Column([
                     [sg.TabGroup([
                         [sg.Tab("Persistence", [
-                            [sg.Checkbox("Enable persistence", key='-PERSISTENCE_CHECK-', enable_events=True, tooltip="Enable persistence for live USB")],
-                            [sg.Text("Persistence (MB):", key='-PERSISTENCE_LABEL-'), sg.Spin([i for i in range(0, 10001)], initial_value=1000, size=(10, 1), key='-PERSISTENCE_SIZE-', disabled=True, tooltip="Size of persistence partition in MB")],
+                            [sg.Checkbox("Enable persistence",
+    key='-PERSISTENCE_CHECK-',
+    enable_events=True,
+     tooltip="Enable persistence for live USB")],
+                            [sg.Text("Persistence (MB):",
+    key='-PERSISTENCE_LABEL-'),
+    sg.Spin([i for i in range(0,
+    10001)],
+    initial_value=1000,
+    size=(10,
+    1),
+    key='-PERSISTENCE_SIZE-',
+    disabled=True,
+     tooltip="Size of persistence partition in MB")],
                         ])],
                         [sg.Tab("Boot Options", [
                             [sg.Text("Boot Options:", key='-BOOT_LABEL-')],
-                            [sg.Multiline(size=(50, 4), key='-BOOT_OPTIONS-', tooltip="Custom boot options for the live USB")],
-                            [sg.Text("Example: quiet splash persistent noapic", text_color='gray')],
+                            [sg.Multiline(size=(50, 4), key='-BOOT_OPTIONS-',
+                                          tooltip="Custom boot options for "
+                                                  "the live USB")],
+                            [sg.Text("Example: quiet splash persistent noapic",
+                                     text_color='gray')],
                         ])],
                         [sg.Tab("Firmware", [
-                            [sg.Checkbox("UEFI-only installation", key='-UEFI_ONLY-', tooltip="Install for UEFI systems only (no BIOS/CSM support)")],
-                            [sg.Checkbox("Enable Secure Boot", key='-SECURE_BOOT-', tooltip="Enable Secure Boot support (requires signed bootloader)")],
+                            [sg.Checkbox("UEFI-only installation", key='-UEFI_ONLY-',
+                                         tooltip="Install for UEFI systems only "
+                                                 "(no BIOS/CSM support)")],
+                            [
+    sg.Checkbox(
+        "Enable Secure Boot",
+        key='-SECURE_BOOT-',
+         tooltip="Enable Secure Boot support (requires signed bootloader)")],
                         ])],
                     ], key='-ADVANCED_TABS-', visible=False)]
                 ], key='-ADVANCED_COLUMN-', visible=False)
@@ -148,7 +247,16 @@ class MainWindowPySG:
         ]
         
         # Create the window
-        self.window = sg.Window("UNetbootin", layout, finalize=True, resizable=True, margins=(10, 10), use_default_focus=False, icon=transparent_gif)
+        self.window = sg.Window(
+    "UNetbootin",
+    layout,
+    finalize=True,
+    resizable=True,
+    margins=(
+        10,
+        10),
+        use_default_focus=False,
+         icon=transparent_gif)
         
         # Finalize the window immediately so elements can be updated
         self.window.finalize()
@@ -229,7 +337,16 @@ class MainWindowPySG:
         else:
             filtered_distros = list(self.distributions.values())
         
-        distro_names = [d.get('display_name', d['name']) for d in sorted(filtered_distros, key=lambda x: (x.get('display_name', x['name']), x['name']))]
+        distro_names = [
+    d.get(
+        'display_name',
+        d['name']) for d in sorted(
+            filtered_distros,
+            key=lambda x: (
+                x.get(
+                    'display_name',
+                    x['name']),
+                     x['name']))]
         current_value = self.elements['distro_select'].get()
         self.elements['distro_select'].update(values=distro_names)
         
@@ -274,7 +391,8 @@ class MainWindowPySG:
         distro = self.distributions[distro_name]
         versions = distro.get('versions', [])
         version_names = [v['name'] for v in versions]
-        self.elements['version_select'].update(values=version_names, disabled=len(versions) == 0)
+        self.elements['version_select'].update(
+    values=version_names, disabled=len(versions) == 0)
         
         if versions:
             self.elements['version_select'].set_value(version_names[0])

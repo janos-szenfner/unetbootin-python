@@ -113,7 +113,8 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                     if device.get('name') == target:
                                         device_info['size'] = int(device.get('size', 0))
                                         device_info['type'] = device.get('type', '')
-                                        device_info['removable'] = device.get('rm', False)
+                                        device_info['removable'] = device.get(
+                                            'rm', False)
                                         break
                             
                             drives.append(device_info)
@@ -198,7 +199,8 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
             data = json.loads(result.stdout)
             
             for device in data.get('blockdevices', []):
-                if f"/dev/{device.get('name')}" == drive or device.get('name') == drive.split('/')[-1]:
+                if f"/dev/{device.get('name')}" == drive or device.get(
+                    'name') == drive.split('/')[-1]:
                     info = {
                         'device': drive,
                         'name': device.get('name', ''),
@@ -227,7 +229,8 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                     if result2.returncode == 0:
                         data2 = json.loads(result2.stdout)
                         if 'filesystems' in data2:
-                            info['mountpoint'] = data2['filesystems'][0].get('target', '')
+                            info['mountpoint'] = data2['filesystems'][0].get(
+                                'target', '')
                     
                     return info
         
@@ -283,7 +286,8 @@ def unmount_drive(drive: str) -> bool:
                             timeout=10
                         )
                         if result.returncode != 0:
-                            logger.warning(f"Failed to unmount {mount_point}: {result.stderr}")
+                            logger.warning(
+                                f"Failed to unmount {mount_point}: {result.stderr}")
                             return False
                 return True
         
@@ -333,7 +337,8 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
         return False
 
 
-def format_drive(drive: str, filesystem: str = "vfat", label: str = "UNETBOOTIN") -> bool:
+def format_drive(drive: str, filesystem: str = "vfat",
+                 label: str = "UNETBOOTIN") -> bool:
     """Format a drive on Linux."""
     try:
         if not drive.startswith('/dev/'):
@@ -405,7 +410,8 @@ def get_parent_disk(device: str) -> Optional[str]:
             capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
-            pkname = result.stdout.strip().splitlines()[0].strip() if result.stdout.strip() else ''
+            pkname = result.stdout.strip().splitlines(
+            )[0].strip() if result.stdout.strip() else ''
             if pkname:
                 return f"/dev/{pkname}"
 
@@ -437,7 +443,8 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
             # to whatever this resolves to.
             whole_disk = get_parent_disk(drive)
             if not whole_disk:
-                logger.error(f"Cannot determine parent disk for {drive}; refusing to write MBR")
+                logger.error(
+                    f"Cannot determine parent disk for {drive}; refusing to write MBR")
                 return False
             
             # Check if syslinux is installed
@@ -447,7 +454,8 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
             
             # Install MBR
             result = subprocess.run(
-                ['sudo', 'dd', 'if=/usr/lib/syslinux/mbr/mbr.bin', f'of={whole_disk}', 'bs=440', 'count=1'],
+                ['sudo', 'dd', 'if=/usr/lib/syslinux/mbr/mbr.bin',
+                    f'of={whole_disk}', 'bs=440', 'count=1'],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -458,7 +466,8 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 # Try alternative location
                 if os.path.exists('/usr/share/syslinux/mbr.bin'):
                     result = subprocess.run(
-                        ['sudo', 'dd', 'if=/usr/share/syslinux/mbr.bin', f'of={whole_disk}', 'bs=440', 'count=1'],
+                        ['sudo', 'dd', 'if=/usr/share/syslinux/mbr.bin',
+                            f'of={whole_disk}', 'bs=440', 'count=1'],
                         capture_output=True,
                         text=True,
                         timeout=10
@@ -492,7 +501,8 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
         elif bootloader_type.lower() == 'grub':
             # Install grub bootloader
             result = subprocess.run(
-                ['sudo', 'grub-install', '--target=i386-pc', '--boot-directory=/boot', drive],
+                ['sudo', 'grub-install', '--target=i386-pc',
+                    '--boot-directory=/boot', drive],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -502,7 +512,8 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
         elif bootloader_type.lower() == 'grub2':
             # Install grub2
             result = subprocess.run(
-                ['sudo', 'grub2-install', '--target=i386-pc', '--boot-directory=/boot', drive],
+                ['sudo', 'grub2-install', '--target=i386-pc',
+                    '--boot-directory=/boot', drive],
                 capture_output=True,
                 text=True,
                 timeout=10

@@ -161,9 +161,15 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://ubuntu.com',
                 'versions': [
-                    {'name': '24.04 LTS', 'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso', 'size': 4500000000},
-                    {'name': '22.04 LTS', 'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso', 'size': 3800000000},
-                    {'name': '20.04 LTS', 'url': 'https://releases.ubuntu.com/20.04/ubuntu-20.04.6-desktop-amd64.iso', 'size': 3200000000},
+                    {'name': '24.04 LTS',
+    'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso',
+     'size': 4500000000},
+                    {'name': '22.04 LTS',
+    'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso',
+     'size': 3800000000},
+                    {'name': '20.04 LTS',
+    'url': 'https://releases.ubuntu.com/20.04/ubuntu-20.04.6-desktop-amd64.iso',
+     'size': 3200000000},
                 ],
                 'icon': 'ubuntu',
             },
@@ -174,7 +180,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://debian.org',
                 'versions': [
-                    {'name': '13 (Trixie)', 'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.6.0-amd64-DVD-1.iso', 'size': 4200000000},
+                    {
+    'name': '13 (Trixie)',
+    'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.6.0-amd64-DVD-1.iso',
+     'size': 4200000000},
                 ],
                 'icon': 'debian',
             },
@@ -185,8 +194,14 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://fedoraproject.org',
                 'versions': [
-                    {'name': '44', 'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-44-1.7.iso', 'size': 1200000000},
-                    {'name': '43', 'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-43-1.6.iso', 'size': 1100000000},
+                    {
+    'name': '44',
+    'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-44-1.7.iso',
+     'size': 1200000000},
+                    {
+    'name': '43',
+    'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-43-1.6.iso',
+     'size': 1100000000},
                 ],
                 'icon': 'fedora',
             },
@@ -197,8 +212,14 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://linuxmint.com',
                 'versions': [
-                    {'name': '22.3 (Zena)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso', 'size': 3500000000},
-                    {'name': '22.2 (Zara)', 'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso', 'size': 3500000000},
+                    {
+    'name': '22.3 (Zena)',
+    'url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso',
+     'size': 3500000000},
+                    {
+    'name': '22.2 (Zara)',
+    'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso',
+     'size': 3500000000},
                 ],
                 'icon': 'linuxmint',
             },
@@ -209,7 +230,9 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://archlinux.org',
                 'versions': [
-                    {'name': 'Latest', 'url': 'https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso', 'size': 800000000},
+                    {'name': 'Latest',
+    'url': 'https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso',
+     'size': 800000000},
                 ],
                 'icon': 'archlinux',
             },
@@ -220,7 +243,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://get.opensuse.org/tumbleweed',
                 'versions': [
-                    {'name': 'Latest', 'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso', 'size': 4700000000},
+                    {
+    'name': 'Latest',
+    'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso',
+     'size': 4700000000},
                 ],
                 'icon': 'opensuse',
             },
@@ -231,7 +257,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://get.opensuse.org/leap',
                 'versions': [
-                    {'name': '16.0', 'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64.install.iso', 'size': 4200000000},
+                    {
+    'name': '16.0',
+    'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64.install.iso',
+     'size': 4200000000},
                 ],
                 'icon': 'opensuse',
             },
@@ -242,7 +271,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://zorin.com/os',
                 'versions': [
-                    {'name': 'Latest Free (18.1)', 'url': 'https://cdn.zorincdn.com/zorin/os/18.1/zorin-os-18.1-core-64-bit.iso', 'size': 3800000000},
+                    {
+    'name': 'Latest Free (18.1)',
+    'url': 'https://cdn.zorincdn.com/zorin/os/18.1/zorin-os-18.1-core-64-bit.iso',
+     'size': 3800000000},
                 ],
                 'icon': 'zorin',
             },
@@ -253,7 +285,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.kali.org',
                 'versions': [
-                    {'name': 'Latest (2026.2)', 'url': 'https://cdimage.kali.org/kali-images/kali-linux-2026.2-installer-amd64.iso', 'size': 3800000000},
+                    {
+    'name': 'Latest (2026.2)',
+    'url': 'https://cdimage.kali.org/kali-images/kali-linux-2026.2-installer-amd64.iso',
+     'size': 3800000000},
                 ],
                 'icon': 'kali',
             },
@@ -264,7 +299,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.slackware.com',
                 'versions': [
-                    {'name': 'Latest (15.0)', 'url': 'https://mirrors.slackware.com/slackware/slackware64-15.0/iso/slackware64-15.0-install-dvd.iso', 'size': 4800000000},
+                    {
+    'name': 'Latest (15.0)',
+    'url': 'https://mirrors.slackware.com/slackware/slackware64-15.0/iso/slackware64-15.0-install-dvd.iso',
+     'size': 4800000000},
                 ],
                 'icon': 'slackware',
             },
@@ -275,7 +313,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.openmandriva.org',
                 'versions': [
-                    {'name': 'Latest (ROME)', 'url': 'https://downloads.openmandriva.org/ROME/OpenMandrivaLx-ROME-Plasma5-x86_64.iso', 'size': 2800000000},
+                    {
+    'name': 'Latest (ROME)',
+    'url': 'https://downloads.openmandriva.org/ROME/OpenMandrivaLx-ROME-Plasma5-x86_64.iso',
+     'size': 2800000000},
                 ],
                 'icon': 'openmandriva',
             },
@@ -286,7 +327,9 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.openmandriva.org',
                 'versions': [
-                    {'name': '6.0', 'url': 'https://downloads.openmandriva.org/6.0/OpenMandrivaLx-6.0-Plasma5-x86_64.iso', 'size': 2900000000},
+                    {'name': '6.0',
+    'url': 'https://downloads.openmandriva.org/6.0/OpenMandrivaLx-6.0-Plasma5-x86_64.iso',
+     'size': 2900000000},
                 ],
                 'icon': 'openmandriva',
             },
@@ -297,7 +340,10 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.tinycorelinux.net',
                 'versions': [
-                    {'name': 'Latest (17.0)', 'url': 'https://www.tinycorelinux.net/17.x/x86_64/release/TinyCore-current.iso', 'size': 210000000},
+                    {
+    'name': 'Latest (17.0)',
+    'url': 'https://www.tinycorelinux.net/17.x/x86_64/release/TinyCore-current.iso',
+     'size': 210000000},
                 ],
                 'icon': 'tinycore',
             },
@@ -312,7 +358,10 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.freebsd.org',
                 'versions': [
-                    {'name': 'Latest (15.1)', 'url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/15.1/FreeBSD-15.1-RELEASE-amd64-disc1.iso', 'size': 1900000000},
+                    {
+    'name': 'Latest (15.1)',
+    'url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/15.1/FreeBSD-15.1-RELEASE-amd64-disc1.iso',
+     'size': 1900000000},
                 ],
                 'icon': 'freebsd',
             },
@@ -323,7 +372,9 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.netbsd.org',
                 'versions': [
-                    {'name': 'Latest (10.1)', 'url': 'https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.1/amd64cd.iso', 'size': 360000000},
+                    {'name': 'Latest (10.1)',
+    'url': 'https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.1/amd64cd.iso',
+     'size': 360000000},
                 ],
                 'icon': 'netbsd',
             },
@@ -334,7 +385,10 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.midnightbsd.org',
                 'versions': [
-                    {'name': 'Latest (3.2.3)', 'url': 'https://mirror.midnightbsd.org/pub/MidnightBSD/ISO/3.2.3/amd64/MIDNIGHT323.iso', 'size': 1200000000},
+                    {
+    'name': 'Latest (3.2.3)',
+    'url': 'https://mirror.midnightbsd.org/pub/MidnightBSD/ISO/3.2.3/amd64/MIDNIGHT323.iso',
+     'size': 1200000000},
                 ],
                 'icon': 'midnightbsd',
             },
@@ -345,7 +399,10 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://ghostbsd.org',
                 'versions': [
-                    {'name': 'Latest (26.1-R15.0p2)', 'url': 'https://ghostbsd.org/releases/26.1-R15.0p2/iso/GhostBSD-26.1-R15.0p2-RELEASE-amd64.iso', 'size': 1900000000},
+                    {
+    'name': 'Latest (26.1-R15.0p2)',
+    'url': 'https://ghostbsd.org/releases/26.1-R15.0p2/iso/GhostBSD-26.1-R15.0p2-RELEASE-amd64.iso',
+     'size': 1900000000},
                 ],
                 'icon': 'ghostbsd',
             },
@@ -356,7 +413,10 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.dragonflybsd.org',
                 'versions': [
-                    {'name': 'Latest (6.4.2)', 'url': 'https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.2_REL.iso', 'size': 800000000},
+                    {
+    'name': 'Latest (6.4.2)',
+    'url': 'https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.2_REL.iso',
+     'size': 800000000},
                 ],
                 'icon': 'dragonflybsd',
             },
@@ -367,7 +427,10 @@ class DistributionManager:
                 'category': 'BSD',
                 'homepage': 'https://www.truenas.com',
                 'versions': [
-                    {'name': 'Latest (SCALE Goldeye 25.10.4)', 'url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/TrueNAS-SCALE-25.10.4.iso', 'size': 1600000000},
+                    {
+    'name': 'Latest (SCALE Goldeye 25.10.4)',
+    'url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/TrueNAS-SCALE-25.10.4.iso',
+     'size': 1600000000},
                 ],
                 'icon': 'truenas',
             },
@@ -382,9 +445,18 @@ class DistributionManager:
                 'category': 'Windows',
                 'homepage': 'https://www.microsoft.com/software-download/windows11',
                 'versions': [
-                    {'name': '24H2', 'url': 'https://download.microsoft.com/download/5/6/3/563ed5c9-354f-4d24-a30b-c26d4b965057/Win11_24H2_English_x64.iso', 'size': 5800000000},
-                    {'name': '23H2', 'url': 'https://download.microsoft.com/download/8/8/1/881f6949-78c6-4b02-8c2a-5ca1d8b8069d/Win11_23H2_English_x64.iso', 'size': 5500000000},
-                    {'name': '22H2', 'url': 'https://download.microsoft.com/download/6/7/d/67d659af-0b5d-4e48-8888-59627791019d/Win11_22H2_English_x64.iso', 'size': 5200000000},
+                    {
+    'name': '24H2',
+    'url': 'https://download.microsoft.com/download/5/6/3/563ed5c9-354f-4d24-a30b-c26d4b965057/Win11_24H2_English_x64.iso',
+     'size': 5800000000},
+                    {
+    'name': '23H2',
+    'url': 'https://download.microsoft.com/download/8/8/1/881f6949-78c6-4b02-8c2a-5ca1d8b8069d/Win11_23H2_English_x64.iso',
+     'size': 5500000000},
+                    {
+    'name': '22H2',
+    'url': 'https://download.microsoft.com/download/6/7/d/67d659af-0b5d-4e48-8888-59627791019d/Win11_22H2_English_x64.iso',
+     'size': 5200000000},
                 ],
                 'icon': 'windows',
             },
@@ -395,8 +467,14 @@ class DistributionManager:
                 'category': 'Windows',
                 'homepage': 'https://www.microsoft.com/software-download/windows10',
                 'versions': [
-                    {'name': '22H2', 'url': 'https://download.microsoft.com/download/9/7/N/97NDMP3FVML3P/Win10_22H2_English_x64.iso', 'size': 5500000000},
-                    {'name': '21H2', 'url': 'https://download.microsoft.com/download/1/7/D/17D422A7-A94D-4C89-96F8-927085F74E15/Win10_21H2_English_x64.iso', 'size': 5200000000},
+                    {
+    'name': '22H2',
+    'url': 'https://download.microsoft.com/download/9/7/N/97NDMP3FVML3P/Win10_22H2_English_x64.iso',
+     'size': 5500000000},
+                    {
+    'name': '21H2',
+    'url': 'https://download.microsoft.com/download/1/7/D/17D422A7-A94D-4C89-96F8-927085F74E15/Win10_21H2_English_x64.iso',
+     'size': 5200000000},
                 ],
                 'icon': 'windows',
             },
@@ -447,7 +525,8 @@ class DistributionManager:
                 self.distributions[distro.name] = distro
             
             self.loaded = True
-            logger.info(f"Loaded {len(self.distributions)} distributions from {filepath}")
+            logger.info(
+                f"Loaded {len(self.distributions)} distributions from {filepath}")
             
         except Exception as e:
             logger.error(f"Failed to load distributions from {filepath}: {e}")

@@ -96,7 +96,8 @@ class USBInstaller:
             
             # Stage 2: Copy files
             update_progress(0)
-            if not self._copy_files_to_device(source_dir, target_device, params, update_progress):
+            if not self._copy_files_to_device(
+                source_dir, target_device, params, update_progress):
                 return False, "File copying failed"
             update_progress(100)
             current_stage += 1
@@ -170,7 +171,8 @@ class USBInstaller:
                               params: Dict[str, Any],
                               progress_callback: Optional[Callable[[int], None]] = None) -> bool:
         """Copy files from source to target device."""
-        # Use mount point if available (for formatted devices), otherwise fall back to raw device
+        # Use mount point if available (for formatted devices), otherwise fall
+        # back to raw device
         actual_target = params.get('mount_point', target_device)
         logger.info(f"Copying files from {source_dir} to {actual_target}")
         
@@ -241,11 +243,14 @@ class USBInstaller:
                 logger.info("Secure Boot support enabled")
             
             if self.platform == 'win32':
-                return self._install_bootloader_windows(target_device, params, enable_uefi_only, enable_secure_boot)
+                return self._install_bootloader_windows(
+                    target_device, params, enable_uefi_only, enable_secure_boot)
             elif self.platform == 'darwin':
-                return self._install_bootloader_macos(target_device, params, enable_uefi_only, enable_secure_boot)
+                return self._install_bootloader_macos(
+                    target_device, params, enable_uefi_only, enable_secure_boot)
             else:  # Linux and other Unix
-                return self._install_bootloader_linux(target_device, params, enable_uefi_only, enable_secure_boot)
+                return self._install_bootloader_linux(
+                    target_device, params, enable_uefi_only, enable_secure_boot)
             
         except Exception as e:
             logger.error(f"Bootloader installation failed: {e}")
@@ -439,7 +444,8 @@ class USBInstaller:
                 
                 # Format as FAT32
                 result = subprocess.run(
-                    ['diskutil', 'eraseVolume', 'FAT32', 'UNETBOOTIN', 'MBRFormat', disk_identifier],
+                    ['diskutil', 'eraseVolume', 'FAT32',
+                        'UNETBOOTIN', 'MBRFormat', disk_identifier],
                     capture_output=True,
                     text=True,
                     timeout=60
@@ -452,7 +458,8 @@ class USBInstaller:
                 
                 # Check if this is a whole device or partition
                 # For safety, we should operate on partitions, not whole devices
-                # But for simplicity, we'll assume it's a partition or the user knows what they're doing
+                # But for simplicity, we'll assume it's a partition or the user knows
+                # what they're doing
                 result = subprocess.run(
                     ['sudo', 'mkfs.vfat', '-F32', '-n', 'UNETBOOTIN', device],
                     capture_output=True,
@@ -592,7 +599,10 @@ class USBInstaller:
                                        enable_uefi_only: bool = False, 
                                        enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Windows."""
-        logger.info(f"Installing bootloader for Windows on {device} (UEFI-only: {enable_uefi_only}, Secure Boot: {enable_secure_boot})")
+        logger.info(
+            f"Installing bootloader for Windows on {device} "
+            f"(UEFI-only: {enable_uefi_only}, "
+            f"Secure Boot: {enable_secure_boot})")
         
         try:
             # Windows: use external tools like syslinux, grub4dos, etc.
@@ -607,7 +617,8 @@ class USBInstaller:
                 # For UEFI-only, we need to ensure the device has an EFI partition
                 # and install UEFI bootloader files
                 if not self._ensure_efi_partition(device):
-                    logger.error("Failed to create EFI partition for UEFI-only installation")
+                    logger.error(
+                        "Failed to create EFI partition for UEFI-only installation")
                     return False
                 
                 if enable_secure_boot:
@@ -657,7 +668,8 @@ class USBInstaller:
 
             # No known bootloader tool available - report failure honestly
             # instead of producing a non-bootable stick marked as success.
-            logger.error("Windows bootloader installation requires syslinux.exe on PATH")
+            logger.error(
+                "Windows bootloader installation requires syslinux.exe on PATH")
             return False
             
         except Exception as e:
@@ -668,7 +680,10 @@ class USBInstaller:
                                     enable_uefi_only: bool = False, 
                                     enable_secure_boot: bool = False) -> bool:
         """Install bootloader on macOS."""
-        logger.info(f"Installing bootloader for macOS on {device} (UEFI-only: {enable_uefi_only}, Secure Boot: {enable_secure_boot})")
+        logger.info(
+            f"Installing bootloader for macOS on {device} "
+            f"(UEFI-only: {enable_uefi_only}, "
+            f"Secure Boot: {enable_secure_boot})")
         
         try:
             # macOS: use diskutil and possibly bless
@@ -703,8 +718,10 @@ class USBInstaller:
                             logger.error("Failed to copy Secure Boot files")
                             return False
                 
-                # Use bless to make it bootable
-                # bless --mount /Volumes/USB --setBoot --folder /Volumes/USB/EFI --file /Volumes/USB/EFI/BOOT/BOOTX64.EFI
+                # Use bless to make it bootable, e.g.:
+                #   bless --mount /Volumes/USB --setBoot \
+                #         --folder /Volumes/USB/EFI \
+                #         --file /Volumes/USB/EFI/BOOT/BOOTX64.EFI
                 result = subprocess.run(
                     ['bless', '--mount', device, '--setBoot', '--folder', f'{device}/EFI', 
                      '--file', f'{device}/EFI/BOOT/BOOTX64.EFI'],
@@ -723,7 +740,10 @@ class USBInstaller:
                                      enable_uefi_only: bool = False, 
                                      enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Linux."""
-        logger.info(f"Installing bootloader for Linux on {device} (UEFI-only: {enable_uefi_only}, Secure Boot: {enable_secure_boot})")
+        logger.info(
+            f"Installing bootloader for Linux on {device} "
+            f"(UEFI-only: {enable_uefi_only}, "
+            f"Secure Boot: {enable_secure_boot})")
         
         try:
             # Linux: use various tools depending on what's available
@@ -798,7 +818,8 @@ class USBInstaller:
                     
                     # Install MBR
                     result = subprocess.run(
-                        ['sudo', 'dd', 'if=/usr/lib/syslinux/mbr/mbr.bin', f'of={device}', 'bs=440', 'count=1'],
+                        ['sudo', 'dd', 'if=/usr/lib/syslinux/mbr/mbr.bin',
+                            f'of={device}', 'bs=440', 'count=1'],
                         capture_output=True, text=True, timeout=10
                     )
                     if result.returncode != 0:
@@ -831,7 +852,8 @@ class USBInstaller:
                         device = f"/dev/{device}"
                     
                     result = subprocess.run(
-                        ['sudo', grub_install_path, '--target=i386-pc', '--boot-directory=' + device, device],
+                        ['sudo', grub_install_path, '--target=i386-pc',
+                            '--boot-directory=' + device, device],
                         capture_output=True, text=True, timeout=10
                     )
                     return result.return_code == 0
@@ -846,7 +868,8 @@ class USBInstaller:
                     
                     # Install grub to MBR
                     result = subprocess.run(
-                        ['sudo', grub_install_path, '--target=i386-pc', '--boot-directory=/boot', device],
+                        ['sudo', grub_install_path, '--target=i386-pc',
+                            '--boot-directory=/boot', device],
                         capture_output=True, text=True, timeout=10
                     )
                     return result.return_code == 0
@@ -1005,7 +1028,8 @@ set check_signatures=enforce
             if self.platform == 'win32':
                 # On Windows, use diskpart or other tools
                 # This is a simplified implementation
-                logger.info("EFI partition check on Windows - assuming partition exists")
+                logger.info(
+                    "EFI partition check on Windows - assuming partition exists")
                 return True
             elif self.platform == 'darwin':
                 # On macOS, use diskutil to check partition type
@@ -1160,7 +1184,8 @@ class AsyncUSBInstaller:
         
         Args:
             source_dir: Source directory containing files to install
-            target_device: Target device path (e.g., /dev/sdb or D:)\n            install_params: Optional installation parameters
+            target_device: Target device path (e.g., /dev/sdb or D:)
+            install_params: Optional installation parameters
             progress_callback: Optional callback for progress (0-100)
             
         Returns:

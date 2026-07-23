@@ -16,6 +16,16 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+# --- Tunable constants (previously scattered magic numbers) ---
+# Size of each streamed download chunk / hash read, in bytes.
+DOWNLOAD_CHUNK_SIZE = 8192
+# Timeout (seconds) for streaming GET requests that transfer file bodies.
+DOWNLOAD_TIMEOUT = 30
+# Timeout (seconds) for lightweight metadata requests (HEAD, directory pages).
+METADATA_TIMEOUT = 10
+# Minimum interval (seconds) between download-speed recalculations.
+SPEED_UPDATE_INTERVAL = 0.5
+
 # Try to import aiohttp for async downloads
 try:
     import aiohttp
@@ -307,8 +317,10 @@ class Downloader:
     
     def download_file_sync_threaded(self, url: str, dest_path: str, 
                                    min_size: int = 0,
-                                   progress_callback: Optional[Callable[[int, int], None]] = None,
-                                   progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None,
+                                   progress_callback: Optional[Callable[[
+                                       int, int], None]] = None,
+                                   progress_estimated_callback: Optional[Callable[[
+                                       int, int, int], None]] = None,
                                    cancel_check: Optional[Callable[[], bool]] = None,
                                    enable_resume: bool = True,
                                    resume_info: Optional[Dict[str, Any]] = None,
@@ -362,8 +374,10 @@ class Downloader:
     
     def download_file_sync(self, url: str, dest_path: str,
                            min_size: int = 0,
-                           progress_callback: Optional[Callable[[int, int], None]] = None,
-                           progress_estimated_callback: Optional[Callable[[int, int, int], None]] = None,
+                           progress_callback: Optional[Callable[[
+                               int, int], None]] = None,
+                           progress_estimated_callback: Optional[Callable[[
+                               int, int, int], None]] = None,
                            cancel_check: Optional[Callable[[], bool]] = None,
                            enable_resume: bool = True,
                            resume_info: Optional[Dict[str, Any]] = None,
@@ -393,7 +407,8 @@ class Downloader:
             # answer HEAD requests or omits Content-Length)
             file_size = self.get_remote_file_size(url)
             if min_size > 0 and file_size is not None and file_size < min_size:
-                return False, f"File size ({file_size}) is smaller than minimum required ({min_size})"
+                return False, (f"File size ({file_size}) is smaller than "
+                               f"minimum required ({min_size})")
             
             # Check if we can resume a partial download
             partial_size = 0
@@ -403,7 +418,7 @@ class Downloader:
             
             # Download with progress
             downloaded_bytes = partial_size if enable_resume and partial_size > 0 else 0
-            chunk_size = 8192
+            chunk_size = DOWNLOAD_CHUNK_SIZE
             start_time = time.time()
             last_bytes = downloaded_bytes
             last_time = start_time
@@ -419,7 +434,8 @@ class Downloader:
                 headers['Range'] = f'bytes={partial_size}-'
                 logger.info(f"Resuming download from byte {partial_size}")
             
-            with self.session.get(url, stream=True, timeout=30, headers=headers) as response:
+            with self.session.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT,
+                                  headers=headers) as response:
                 response.raise_for_status()
                 
                 total_size = int(response.headers.get('content-length', file_size or 0))
@@ -429,7 +445,9 @@ class Downloader:
                     total_size += partial_size
                 
                 if total_size < min_size and min_size > 0:
-                    return False, f"Downloaded file size ({total_size}) is smaller than minimum required ({min_size})"
+                    return False, (
+                        f"Downloaded file size ({total_size}) is smaller "
+                        f"than minimum required ({min_size})")
                 
                 # Use temporary file for resume support
                 temp_path = dest_path if not enable_resume else resume_manager.temp_path
@@ -456,7 +474,8 @@ class Downloader:
                             
                             # Calculate speed
                             elapsed = current_time - last_time
-                            if elapsed > 0.5:  # Update speed every 0.5 seconds
+                            # recalc speed at most this often
+                            if elapsed > SPEED_UPDATE_INTERVAL:
                                 bytes_diff = downloaded_bytes - last_bytes
                                 last_speed = bytes_diff / elapsed if elapsed > 0 else 0
                                 last_bytes = downloaded_bytes
@@ -471,11 +490,14 @@ class Downloader:
                                     downloaded_bytes, total_size, start_time, current_time
                                 )
                                 if total_size > 0:
-                                    percentage = min(int((downloaded_bytes / total_size) * 100), 100)
-                                    progress_estimated_callback(percentage, downloaded_bytes, int(eta_seconds or 0))
+                                    percentage = min(
+                                        int((downloaded_bytes / total_size) * 100), 100)
+                                    progress_estimated_callback(
+                                        percentage, downloaded_bytes, int(eta_seconds or 0))
                                 else:
                                     # No total size, emit speed instead
-                                    progress_estimated_callback(-1, downloaded_bytes, int(last_speed))
+                                    progress_estimated_callback(-1,
+                                                                downloaded_bytes, int(last_speed))
             
             # If we used a temporary file, move it to final destination
             if enable_resume and os.path.exists(temp_path) and temp_path != dest_path:
@@ -492,7 +514,9 @@ class Downloader:
                         os.remove(dest_path)
                     except OSError:
                         pass
-                return False, f"Downloaded file size ({actual_size}) is smaller than minimum required ({min_size})"
+                return False, (
+                    f"Downloaded file size ({actual_size}) is smaller "
+                    f"than minimum required ({min_size})")
             
             return True, f"Downloaded {actual_size} bytes"
             
@@ -510,7 +534,8 @@ class Downloader:
     def get_remote_file_size(self, url: str) -> Optional[int]:
         """Get the size of a remote file."""
         try:
-            response = self.session.head(url, timeout=10, allow_redirects=True)
+            response = self.session.head(
+    url, timeout=METADATA_TIMEOUT, allow_redirects=True)
             if response.status_code == 200:
                 content_length = response.headers.get('content-length')
                 if content_length:
@@ -526,6 +551,15 @@ class Downloader:
             return 0
         return bytes_received / elapsed_time
     
+    def format_size(self, size_bytes: int) -> str:
+        """Format a byte size to a human readable string.
+
+        Thin wrapper around utils.format_size so callers holding a
+        Downloader instance don't need a separate import.
+        """
+        from unetbootin.core.utils import format_size
+        return format_size(size_bytes)
+
     def format_download_speed(self, bytes_per_second: float) -> str:
         """Format download speed to human readable string."""
         if bytes_per_second < 1024:
@@ -610,18 +644,38 @@ class Downloader:
             logger.error(f"Failed to download page {url}: {e}")
             return None
     
-    def list_ftp_directory(self, url: str, min_size: int = 0, max_size: int = 0) -> List[str]:
-        """List files in an FTP directory."""
+    def list_ftp_directory(self, url: str, min_size: int = 0,
+                           max_size: int = 0) -> List[str]:
+        """List files in an FTP directory.
+
+        SECURITY: plain FTP transmits everything (including credentials, if
+        ever used) in cleartext and is vulnerable to tampering in transit.
+        Prefer HTTPS mirrors. FTPS is attempted first; plain FTP is only
+        used as a last resort, with a warning.
+        """
         files = []
         try:
             if not url.startswith('ftp://'):
                 url = 'ftp://' + url
-            
+
             parsed = urlparse(url)
             import ftplib
-            
-            ftp = ftplib.FTP(parsed.hostname)
-            ftp.login()
+
+            # Try FTPS (explicit TLS) first, fall back to plain FTP
+            try:
+                ftp = ftplib.FTP_TLS(parsed.hostname)
+                ftp.login()
+                ftp.prot_p()  # encrypt the data channel too
+                logger.info(f"Connected to {parsed.hostname} using FTPS (TLS)")
+            except Exception:
+                logger.warning(
+                    f"SECURITY: falling back to unencrypted FTP for "
+                    f"{parsed.hostname}; the directory listing can be "
+                    f"observed or tampered with in transit. Prefer an "
+                    f"HTTPS mirror if one is available."
+                )
+                ftp = ftplib.FTP(parsed.hostname)
+                ftp.login()
             
             # Change to directory
             directory = parsed.path or '/'
@@ -652,7 +706,7 @@ class Downloader:
             if not url.endswith('/'):
                 url += '/'
             
-            response = self.session.get(url, timeout=30)
+            response = self.session.get(url, timeout=DOWNLOAD_TIMEOUT)
             if response.status_code == 200:
                 # Parse HTML to find file links
                 from bs4 import BeautifulSoup
@@ -660,7 +714,8 @@ class Downloader:
                     soup = BeautifulSoup(response.text, 'html.parser')
                     for link in soup.find_all('a'):
                         href = link.get('href', '')
-                        if href and not href.startswith('?') and not href.startswith('#'):
+                        if href and not href.startswith(
+                            '?') and not href.startswith('#'):
                             files.append(href)
                 except ImportError:
                     # Fallback: simple regex parsing
@@ -668,14 +723,16 @@ class Downloader:
                     pattern = re.compile(r'href=["\']([^"\']+)["\']')
                     for match in pattern.finditer(response.text):
                         href = match.group(1)
-                        if href and not href.startswith('?') and not href.startswith('#'):
+                        if href and not href.startswith(
+                            '?') and not href.startswith('#'):
                             files.append(href)
         except Exception as e:
             logger.error(f"Failed to list HTTP directory {url}: {e}")
         
         return files
     
-    def list_directory(self, url: str, min_size: int = 0, max_size: int = 0) -> List[str]:
+    def list_directory(self, url: str, min_size: int = 0,
+                       max_size: int = 0) -> List[str]:
         """List files in a directory (HTTP, HTTPS, or FTP)."""
         parsed = urlparse(url)
         
@@ -728,7 +785,8 @@ class Downloader:
     def get_redirect_url(self, url: str) -> str:
         """Follow redirects and return final URL."""
         try:
-            response = self.session.head(url, allow_redirects=True, timeout=10)
+            response = self.session.head(
+    url, allow_redirects=True, timeout=METADATA_TIMEOUT)
             return response.url
         except Exception as e:
             logger.error(f"Failed to get redirect URL for {url}: {e}")
@@ -752,7 +810,7 @@ class Downloader:
             
             with open(file_path, 'rb') as f:
                 while True:
-                    chunk = f.read(8192)
+                    chunk = f.read(DOWNLOAD_CHUNK_SIZE)
                     if not chunk:
                         break
                     hasher.update(chunk)
@@ -794,7 +852,8 @@ class AsyncDownloader:
     async def __aenter__(self):
         """Async context manager entry."""
         if HAS_AIOHTTP:
-            self.session = aiohttp.ClientSession(headers={'User-Agent': self.user_agent})
+            self.session = aiohttp.ClientSession(
+                headers={'User-Agent': self.user_agent})
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -860,20 +919,25 @@ class AsyncDownloader:
         try:
             # Get file size first
             async with aiohttp.ClientSession() as temp_session:
-                async with temp_session.head(url, timeout=10) as response:
+                async with temp_session.head(url, timeout=METADATA_TIMEOUT) as response:
                     file_size = int(response.headers.get('content-length', 0))
                     if min_size > 0 and file_size < min_size:
-                        return False, f"File size ({file_size}) is smaller than minimum required ({min_size})"
+                        return False, (
+                            f"File size ({file_size}) is smaller than "
+                            f"minimum required ({min_size})")
             
             # Download the file
             downloaded_bytes = 0
-            chunk_size = 8192
+            chunk_size = DOWNLOAD_CHUNK_SIZE
             
             async with aiohttp.ClientSession(headers={'User-Agent': self.user_agent}) as temp_session:
-                async with temp_session.get(url, timeout=30) as response:
+                async with temp_session.get(url, timeout=DOWNLOAD_TIMEOUT) as response:
                     response.raise_for_status()
                     
-                    total_size = int(response.headers.get('content-length', file_size or 0))
+                    total_size = int(
+    response.headers.get(
+        'content-length',
+         file_size or 0))
                     
                     with open(dest_path, 'wb') as f:
                         while True:
@@ -892,7 +956,9 @@ class AsyncDownloader:
             
             # Verify minimum size
             if min_size > 0 and downloaded_bytes < min_size:
-                return False, f"Downloaded size ({downloaded_bytes}) is smaller than minimum required ({min_size})"
+                return False, (
+                    f"Downloaded size ({downloaded_bytes}) is smaller "
+                    f"than minimum required ({min_size})")
             
             return True, f"Downloaded {downloaded_bytes} bytes"
             
@@ -908,7 +974,7 @@ class AsyncDownloader:
         try:
             if HAS_AIOHTTP:
                 async with aiohttp.ClientSession() as session:
-                    async with session.head(url, timeout=10) as response:
+                    async with session.head(url, timeout=METADATA_TIMEOUT) as response:
                         if response.status == 200:
                             content_length = response.headers.get('content-length')
                             if content_length:

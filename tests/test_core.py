@@ -13,8 +13,8 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from unetbootin.core.downloader import Downloader, AsyncDownloader, DownloadWorker
-from unetbootin.core.extractor import ISOExtractor, AsyncISOExtractor, ExtractWorker
+from unetbootin.core.downloader import Downloader, AsyncDownloader
+from unetbootin.core.extractor import ISOExtractor, AsyncISOExtractor
 from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
 
 
@@ -375,46 +375,11 @@ class TestAsyncInstaller(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(result[0])
 
 
-class TestDownloadWorker(unittest.TestCase):
-    """Test DownloadWorker QThread class."""
-    
-    def test_worker_initialization(self):
-        """Test worker initialization."""
-        worker = DownloadWorker(
-            'https://example.com/file.iso',
-            '/tmp/file.iso',
-            min_size=1024
-        )
-        self.assertEqual(worker.url, 'https://example.com/file.iso')
-        self.assertEqual(worker.dest_path, '/tmp/file.iso')
-        self.assertEqual(worker.min_size, 1024)
-    
-    def test_worker_stop(self):
-        """Test worker stop."""
-        worker = DownloadWorker('https://example.com/file.iso', '/tmp/file.iso')
-        worker.stop()
-        self.assertTrue(worker.stop_requested)
-
-
-class TestExtractWorker(unittest.TestCase):
-    """Test ExtractWorker QThread class."""
-    
-    def test_worker_initialization(self):
-        """Test worker initialization."""
-        worker = ExtractWorker(
-            '/tmp/file.iso',
-            '/tmp/dest',
-            files_to_extract=['file1.txt']
-        )
-        self.assertEqual(worker.archive_path, '/tmp/file.iso')
-        self.assertEqual(worker.dest_dir, '/tmp/dest')
-        self.assertEqual(worker.files_to_extract, ['file1.txt'])
-    
-    def test_worker_stop(self):
-        """Test worker stop."""
-        worker = ExtractWorker('/tmp/file.iso', '/tmp/dest')
-        worker.stop()
-        self.assertTrue(worker.stop_requested)
+# NOTE: TestDownloadWorker and TestExtractWorker were removed. They tested
+# the Qt-based DownloadWorker/ExtractWorker QThread classes, which no longer
+# exist after the migration from PySide6 to PySimpleGUI. Cancellation is now
+# handled via the `cancel_check` callback on the *_sync download/extract
+# methods (see TestDownloader), so no equivalent worker classes remain.
 
 
 if __name__ == '__main__':

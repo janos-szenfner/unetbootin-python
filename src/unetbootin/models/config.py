@@ -116,18 +116,22 @@ class ConfigManager:
         if os.name == 'nt':  # Windows
             import winreg
             try:
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders')
+                key = winreg.OpenKey(
+    winreg.HKEY_CURRENT_USER,
+     r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders')
                 appdata = winreg.QueryValueEx(key, 'AppData')[0]
                 return os.path.join(appdata, self.DEFAULT_CONFIG_DIR)
             except Exception:
                 return os.path.join(os.path.expanduser('~'), self.DEFAULT_CONFIG_DIR)
         elif sys.platform == 'darwin':  # macOS
-            return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', self.DEFAULT_CONFIG_DIR)
+            return os.path.join(os.path.expanduser('~'), 'Library',
+                                'Application Support', self.DEFAULT_CONFIG_DIR)
         else:  # Linux and other Unix
             xdg_config = os.environ.get('XDG_CONFIG_HOME')
             if xdg_config:
                 return os.path.join(xdg_config, self.DEFAULT_CONFIG_DIR)
-            return os.path.join(os.path.expanduser('~'), '.config', self.DEFAULT_CONFIG_DIR)
+            return os.path.join(os.path.expanduser(
+                '~'), '.config', self.DEFAULT_CONFIG_DIR)
     
     def ensure_config_dir(self):
         """Ensure the configuration directory exists."""
@@ -166,22 +170,24 @@ class ConfigManager:
             logger.error(f"Failed to save configuration: {e}")
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Get a configuration value."""
+        """Get a configuration value (schema field or user-defined key)."""
         if not self.loaded:
             self.load()
-        
-        return getattr(self.config, key, default)
-    
+
+        if key in AppConfig._KNOWN_KEYS:
+            return getattr(self.config, key, default)
+        return self.config.extra.get(key, default)
+
     def set(self, key: str, value: Any):
-        """Set a configuration value."""
+        """Set a configuration value (schema field or user-defined key)."""
         if not self.loaded:
             self.load()
-        
-        if hasattr(self.config, key):
+
+        if key in AppConfig._KNOWN_KEYS:
             setattr(self.config, key, value)
-            self.save()
         else:
-            logger.warning(f"Unknown configuration key: {key}")
+            self.config.extra[key] = value
+        self.save()
     
     def reset(self):
         """Reset configuration to defaults."""

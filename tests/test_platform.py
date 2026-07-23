@@ -364,26 +364,27 @@ class TestMacOSPlatform(unittest.TestCase):
     def test_get_drive_info(self):
         """Test getting drive info on macOS."""
         with patch('subprocess.run') as mock_run:
-            # Mock diskutil info output
+            # macos.get_drive_info parses `diskutil info -plist` output
             mock_result = MagicMock()
-            mock_result.stdout = """
-   Device Identifier:        disk2
-   Device Node:              /dev/disk2
-   Whole:                   Yes
-   Part of Whole:            disk2
-   Device / Media Name:      MyUSB
-   Volume Name:              MYUSB
-   Mounted:                 Yes
-   File System:             MS-DOS FAT32
-   Size:                    15000000000
-   Free Space:              14000000000
-   """
+            mock_result.stdout = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>VolumeName</key>
+    <string>MYUSB</string>
+    <key>TotalSize</key>
+    <integer>15000000000</integer>
+    <key>FilesystemType</key>
+    <string>msdos</string>
+</dict>
+</plist>"""
             mock_result.returncode = 0
             mock_run.return_value = mock_result
-            
+
             info = macos.get_drive_info('/dev/disk2')
             self.assertIsNotNone(info)
             self.assertEqual(info.get('device'), '/dev/disk2')
+            self.assertEqual(info.get('label'), 'MYUSB')
     
     def test_check_drive_writable(self):
         """Test checking if drive is writable on macOS."""
@@ -414,13 +415,15 @@ class TestMacOSPlatform(unittest.TestCase):
     def test_format_drive(self):
         """Test formatting drive on macOS."""
         with patch('subprocess.run') as mock_run:
-            # First call is unmount, second is eraseVolume
-            mock_unmount = MagicMock()
-            mock_unmount.returncode = 0
-            mock_erase = MagicMock()
-            mock_erase.returncode = 0
-            mock_run.side_effect = [mock_unmount, mock_erase]
-            
+            # format_drive calls unmount_drive first (which may issue several
+            # diskutil calls), then diskutil eraseVolume. Return success for
+            # every subprocess call rather than a fixed-length side_effect
+            # list so the count of internal calls doesn't matter.
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_run.return_value = mock_result
+
             result = macos.format_drive('/dev/disk2', 'vfat', 'UNETBOOTIN')
             self.assertTrue(result)
     
@@ -437,11 +440,16 @@ class TestMacOSPlatform(unittest.TestCase):
     def test_get_volume_label(self):
         """Test getting volume label on macOS."""
         with patch('subprocess.run') as mock_run:
+            # get_volume_label parses `diskutil info` text for "Volume Name:"
             mock_result = MagicMock()
-            mock_result.stdout = "MYUSB"
+            mock_result.stdout = (
+                "   Device Identifier:        disk2\n"
+                "   Volume Name:              MYUSB\n"
+                "   Mounted:                  Yes\n"
+            )
             mock_result.returncode = 0
             mock_run.return_value = mock_result
-            
+
             label = macos.get_volume_label('/dev/disk2')
             self.assertEqual(label, 'MYUSB')
     
