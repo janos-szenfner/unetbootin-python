@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindow(QWidget):
-    """Main window widget for UNetbootin."""
+    """
+    Main window widget for UNetbootin.
+    
+    This class provides the complete Qt-based user interface for the application,
+    including distribution selection, installation type configuration, drive selection,
+    and advanced options with tabs for persistence, boot options, and firmware settings.
+    """
     
     # Signals
     distro_selected = Signal(str)
@@ -46,7 +52,12 @@ class MainWindow(QWidget):
         self.setup_connections()
     
     def init_ui(self):
-        """Initialize the user interface components."""
+        """
+        Initialize the user interface components.
+        
+        Creates and configures all UI elements including distribution selectors,
+        installation type options, drive selection, and advanced configuration tabs.
+        """
         # Main layout
         main_layout = QGridLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -301,7 +312,11 @@ class MainWindow(QWidget):
         )
     
     def setup_connections(self):
-        """Setup signal-slot connections for UI elements."""
+        """
+        Setup signal-slot connections for UI elements.
+        
+        Connects all UI element signals to their respective handlers.
+        """
         # Distribution selection
         self.distro_select.currentTextChanged.connect(self.on_distro_text_changed)
         self.version_select.currentTextChanged.connect(self.on_version_text_changed)

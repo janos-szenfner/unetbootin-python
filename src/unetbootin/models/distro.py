@@ -14,7 +14,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DistributionVersion:
-    """Represents a version of a distribution."""
+    """
+    Represents a version of a distribution.
+    
+    Attributes:
+        name: Version name/identifier
+        url: Download URL for this version
+        size: File size in bytes
+        description: Human-readable description
+        category: Version category
+        sha256: SHA256 checksum for verification
+        sha1: SHA1 checksum for verification
+        md5: MD5 checksum for verification
+        mirrors: List of mirror URLs for this version
+    """
     name: str
     url: str
     size: int = 0
@@ -57,7 +70,19 @@ class DistributionVersion:
 
 @dataclass
 class Distribution:
-    """Represents a Linux distribution."""
+    """
+    Represents a Linux distribution.
+    
+    Attributes:
+        name: Internal name/identifier
+        display_name: Human-readable display name
+        description: Distribution description
+        category: Distribution category (Ubuntu, Debian, etc.)
+        versions: List of available versions
+        icon: Icon filename for UI display
+        homepage: Distribution homepage URL
+        mirrors: List of default mirror URLs
+    """
     name: str
     display_name: str = ""
     description: str = ""
@@ -87,7 +112,12 @@ class Distribution:
 
 
 class DistributionManager:
-    """Manages the list of supported distributions."""
+    """
+    Manages the list of supported distributions.
+    
+    This class handles loading, organizing, and retrieving distribution information
+    from both built-in data and external sources like JSON files.
+    """
     
     def __init__(self):
         """Initialize the distribution manager."""
@@ -193,6 +223,19 @@ class DistributionManager:
                     {'name': 'Leap 15.6', 'url': 'https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-DVD-x86_64-Media.iso', 'size': 4600000000},
                 ],
                 'icon': 'opensuse',
+            },
+            {
+                'name': 'windows11',
+                'display_name': 'Windows 11',
+                'description': 'Windows 11 installation media',
+                'category': 'Windows',
+                'homepage': 'https://www.microsoft.com/software-download/windows11',
+                'versions': [
+                    {'name': '24H2', 'url': 'https://download.microsoft.com/download/5/6/3/563ed5c9-354f-4d24-a30b-c26d4b965057/Win11_24H2_English_x64.iso', 'size': 5800000000},
+                    {'name': '23H2', 'url': 'https://download.microsoft.com/download/8/8/1/881f6949-78c6-4b02-8c2a-5ca1d8b8069d/Win11_23H2_English_x64.iso', 'size': 5500000000},
+                    {'name': '22H2', 'url': 'https://download.microsoft.com/download/6/7/d/67d659af-0b5d-4e48-8888-59627791019d/Win11_22H2_English_x64.iso', 'size': 5200000000},
+                ],
+                'icon': 'windows',
             },
         ]
         

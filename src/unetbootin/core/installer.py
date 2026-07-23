@@ -1018,7 +1018,15 @@ set check_signatures=enforce
             return False
     
     def _ensure_efi_partition(self, device: str) -> bool:
-        """Ensure the device has an EFI partition."""
+        """
+        Ensure the device has an EFI partition.
+        
+        Args:
+            device: Device path to check
+            
+        Returns:
+            True if device has EFI partition or check passes, False otherwise
+        """
         logger.info(f"Checking for EFI partition on {device}")
         
         try:
@@ -1064,7 +1072,12 @@ set check_signatures=enforce
             return True  # Don't fail the installation, just proceed
     
     def _copy_efi_bootloader_files(self, efi_dir: str):
-        """Copy EFI bootloader files to the EFI directory."""
+        """
+        Copy EFI bootloader files to the EFI directory.
+        
+        Args:
+            efi_dir: Path to the EFI directory where files should be copied
+        """
         logger.info(f"Copying EFI bootloader files to {efi_dir}")
         
         try:
@@ -1110,7 +1123,15 @@ set check_signatures=enforce
             logger.error(f"Failed to copy EFI files: {e}")
     
     def _install_secure_boot_files_linux(self, efi_dir: str) -> bool:
-        """Install Secure Boot files for Linux."""
+        """
+        Install Secure Boot files for Linux.
+        
+        Args:
+            efi_dir: Path to the EFI directory
+            
+        Returns:
+            True if Secure Boot files were installed successfully
+        """
         logger.info(f"Installing Secure Boot files for Linux in {efi_dir}")
         
         try:

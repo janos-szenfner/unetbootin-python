@@ -463,7 +463,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add user documentation
 - [ ] Add developer documentation
 - [ ] Create man page
-- [ ] Add inline code documentation
+- [x] Add inline code documentation
 
 ### 🔧 Build & Distribution
 - [ ] Create macOS .app bundle

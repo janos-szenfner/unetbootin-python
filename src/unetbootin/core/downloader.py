@@ -40,7 +40,16 @@ class DownloadFileInfo:
 
 @dataclass
 class MirrorInfo:
-    """Information about a download mirror."""
+    """
+    Information about a download mirror.
+    
+    Attributes:
+        url: The hostname of the mirror (without protocol)
+        name: Human-readable name of the mirror
+        country: Country where the mirror is located
+        priority: Priority level (higher = preferred)
+        protocol: Protocol to use (http, https, ftp)
+    """
     url: str
     name: str = ""
     country: str = ""
@@ -48,22 +57,43 @@ class MirrorInfo:
     protocol: str = "https"
     
     def get_base_url(self) -> str:
-        """Get the base URL for this mirror."""
+        """
+        Get the base URL for this mirror.
+        
+        Returns:
+            The complete base URL with protocol and hostname
+        """
         return f"{self.protocol}://{self.url}"
 
 
 class DownloadResumeManager:
-    """Manages download resume functionality using partial downloads and checksums."""
+    """
+    Manages download resume functionality using partial downloads and checksums.
+    
+    This class handles the storage and retrieval of partial download state, allowing
+    interrupted downloads to be resumed from where they left off.
+    """
     
     def __init__(self, dest_path: str):
-        """Initialize the resume manager."""
+        """
+        Initialize the resume manager.
+        
+        Args:
+            dest_path: The final destination path for the downloaded file
+        """
         self.dest_path = dest_path
         self.temp_path = f"{dest_path}.part"
         self.checksum_path = f"{dest_path}.checksum"
         self.resume_info_path = f"{dest_path}.resume"
     
     def get_resume_info(self) -> Dict[str, Any]:
-        """Get saved resume information."""
+        """
+        Get saved resume information.
+        
+        Returns:
+            Dictionary containing resume information (URL, bytes downloaded, etc.)
+            or empty dict if no resume info exists
+        """
         try:
             if os.path.exists(self.resume_info_path):
                 with open(self.resume_info_path, 'r') as f:
@@ -74,7 +104,12 @@ class DownloadResumeManager:
         return {}
     
     def save_resume_info(self, info: Dict[str, Any]):
-        """Save resume information."""
+        """
+        Save resume information.
+        
+        Args:
+            info: Dictionary containing resume state to save
+        """
         try:
             os.makedirs(os.path.dirname(self.resume_info_path) or '.', exist_ok=True)
             with open(self.resume_info_path, 'w') as f:
@@ -84,13 +119,23 @@ class DownloadResumeManager:
             logger.error(f"Failed to save resume info: {e}")
     
     def get_partial_file_size(self) -> int:
-        """Get the size of the partial download file."""
+        """
+        Get the size of the partial download file.
+        
+        Returns:
+            Size in bytes of the partial file, or 0 if it doesn't exist
+        """
         if os.path.exists(self.temp_path):
             return os.path.getsize(self.temp_path)
         return 0
     
     def get_partial_file_checksum(self) -> Optional[str]:
-        """Get the checksum of the partial file."""
+        """
+        Get the checksum of the partial file.
+        
+        Returns:
+            The stored checksum, or None if not available
+        """
         if os.path.exists(self.checksum_path):
             try:
                 with open(self.checksum_path, 'r') as f:
@@ -100,7 +145,13 @@ class DownloadResumeManager:
         return None
     
     def save_partial_file_checksum(self, checksum: str, checksum_type: str = "sha256"):
-        """Save the checksum of the partial file."""
+        """
+        Save the checksum of the partial file.
+        
+        Args:
+            checksum: The checksum value to save
+            checksum_type: The type of checksum (sha256, sha1, md5)
+        """
         try:
             with open(self.checksum_path, 'w') as f:
                 f.write(f"{checksum_type}:{checksum}")
@@ -108,7 +159,11 @@ class DownloadResumeManager:
             logger.error(f"Failed to save partial checksum: {e}")
     
     def cleanup(self):
-        """Clean up temporary files."""
+        """
+        Clean up temporary files.
+        
+        Removes all temporary files created during the download process.
+        """
         for path in [self.temp_path, self.checksum_path, self.resume_info_path]:
             try:
                 if os.path.exists(path):
@@ -117,7 +172,14 @@ class DownloadResumeManager:
                 logger.error(f"Failed to clean up {path}: {e}")
     
     def rename_partial_to_final(self) -> bool:
-        """Rename partial file to final destination."""
+        """
+        Rename partial file to final destination.
+        
+        Finalizes the download by moving the temporary file to its final location.
+        
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             if os.path.exists(self.temp_path):
                 if os.path.exists(self.dest_path):
@@ -131,7 +193,12 @@ class DownloadResumeManager:
 
 
 class MirrorManager:
-    """Manages a list of download mirrors and selects the best one."""
+    """
+    Manages a list of download mirrors and selects the best one.
+    
+    This class handles mirror selection logic, allowing users to choose between
+    built-in mirrors and custom mirrors for faster or more reliable downloads.
+    """
     
     def __init__(self):
         """Initialize the mirror manager."""
@@ -139,28 +206,56 @@ class MirrorManager:
         self.custom_mirrors: List[str] = []
     
     def add_mirror(self, mirror: MirrorInfo):
-        """Add a mirror to the list."""
+        """
+        Add a mirror to the list.
+        
+        Args:
+            mirror: MirrorInfo object to add
+        """
         self.mirrors.append(mirror)
         # Sort by priority (higher priority first)
         self.mirrors.sort(key=lambda m: m.priority, reverse=True)
     
     def add_mirrors(self, mirrors: List[MirrorInfo]):
-        """Add multiple mirrors."""
+        """
+        Add multiple mirrors.
+        
+        Args:
+            mirrors: List of MirrorInfo objects to add
+        """
         for mirror in mirrors:
             self.add_mirror(mirror)
     
     def set_custom_mirrors(self, urls: List[str]):
-        """Set custom mirror URLs."""
+        """
+        Set custom mirror URLs.
+        
+        Args:
+            urls: List of custom mirror base URLs
+        """
         self.custom_mirrors = urls
     
     def get_all_mirrors(self) -> List[str]:
-        """Get all mirror base URLs."""
+        """
+        Get all mirror base URLs.
+        
+        Returns:
+            List of all available mirror URLs (built-in + custom)
+        """
         urls = [m.get_base_url() for m in self.mirrors]
         urls.extend(self.custom_mirrors)
         return urls
     
     def get_best_mirror(self, base_url: str) -> str:
-        """Get the best mirror for a given base URL."""
+        """
+        Get the best mirror for a given base URL.
+        
+        Args:
+            base_url: The original base URL as fallback
+            
+        Returns:
+            The best available mirror URL
+        """
         # If we have custom mirrors, prefer them
         if self.custom_mirrors:
             return self.custom_mirrors[0]
@@ -172,7 +267,16 @@ class MirrorManager:
         return base_url
     
     def replace_url_base(self, url: str, new_base: str) -> str:
-        """Replace the base URL of a URL with a new base."""
+        """
+        Replace the base URL of a URL with a new base.
+        
+        Args:
+            url: Original URL to modify
+            new_base: New base URL to use
+            
+        Returns:
+            URL with the new base but preserving path, query, and fragment
+        """
         parsed = urlparse(url)
         if parsed.scheme and parsed.netloc:
             # Extract the path from the original URL
