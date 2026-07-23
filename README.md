@@ -467,7 +467,6 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 📝 Documentation
 - [ ] Add user documentation
 - [ ] Add developer documentation
-- [ ] Create man page
 - [x] Add inline code documentation - Done
 
 ### 🔧 Build & Distribution
@@ -483,7 +482,6 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add plugin system for extraction methods
 - [ ] Add plugin system for bootloader installation
 - [ ] Implement proper error recovery
-- [ ] Add crash reporting
 
 
 ---
@@ -504,9 +502,9 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Core Utilities | ✅ Complete |
 | Unit Tests | ✅ Complete |
 | Documentation | ⚠️ Partial |
-| Resources | ❌ Not Started |
-| Full Distribution List | ❌ Not Started |
-| Translations | ❌ Not Started |
+| Resources | ✅ Complete |
+| Full Distribution List | ✅ Complete |
+| Translations | ✅ Complete|
 | Packaging | ❌ Not Started |
 
 ---
