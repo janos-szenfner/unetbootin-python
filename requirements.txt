@@ -10,6 +10,7 @@ pyobjc>=9.0 ; sys_platform == 'darwin'
 pywin32>=305 ; sys_platform == 'win32'
 
 # Development dependencies
-# pytest>=7.0.0
-# black>=23.0.0
-# mypy>=1.0.0
+pytest>=7.0.0
+black>=23.0.0
+mypy>=1.0.0
+setuptools>=61.0.0

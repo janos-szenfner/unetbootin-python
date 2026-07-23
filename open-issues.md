@@ -1,7 +1,8 @@
 # Open Issues - UNetbootin Python Rewrite
 
 > **Last Updated**: 2026-07-23
-
+> **Status**: Code Audit Complete | Issues H-001, H-002, M-007 Fixed
+> **Auditor**: Mistral Vibe CLI Agent
 
 This document tracks all identified issues, warnings, security concerns, and code quality problems in the UNetbootin Python rewrite codebase. Issues are categorized by priority and type.
 
@@ -12,9 +13,11 @@ This document tracks all identified issues, warnings, security concerns, and cod
 | Category | Count | Status |
 |----------|-------|--------|
 | Critical Issues | 0 | ✅ None |
-| High Priority | 2 | ⚠️ Needs Attention |
-| Medium Priority | 15+ | ⚠️ Needs Review |
+| High Priority | 0 | ✅ All Fixed |
+| Medium Priority | 14+ | ⚠️ Needs Review |
 | Low Priority | 20+ | 📋 Backlog |
+
+**Fixed in this update**: H-001, H-002, M-007
 
 ---
 
@@ -29,20 +32,24 @@ This document tracks all identified issues, warnings, security concerns, and cod
 ### H-001: Multiple Setup Files Conflict
 **Type**: Build/Dependency  
 **Files**: `setup.py`, `setup_pysg.py`  
-**Status**: Open  
+**Status**: ✅ Fixed  
+**Fixed On**: 2026-07-23  
 **Description**: Two setup files exist with different package names (`unetbootin` vs `unetbootin-pysg`), creating potential conflicts during installation.  
 **Impact**: Confuses users, may cause installation conflicts  
 **Recommendation**: Consolidate into a single `setup.py` with feature flags, or clearly document the purpose of each and ensure they don't conflict.
+**Resolution**: Removed `setup_pysg.py` to eliminate conflict. Only `setup.py` remains.
 
 ---
 
 ### H-002: Duplicate Requirements Files
 **Type**: Build/Dependency  
 **Files**: `requirements.txt`, `requirements_pysg.txt`  
-**Status**: Open  
+**Status**: ✅ Fixed  
+**Fixed On**: 2026-07-23  
 **Description**: Both files contain identical content.  
 **Impact**: Maintenance burden, potential for divergence  
 **Recommendation**: Remove `requirements_pysg.txt`. Use a single `requirements.txt` with `extras_require` in `setup.py` for optional dependencies.
+**Resolution**: Removed `requirements_pysg.txt`. All requirements consolidated in `requirements.txt`.
 
 ---
 
@@ -112,10 +119,12 @@ This document tracks all identified issues, warnings, security concerns, and cod
 ### M-007: Missing Build Dependency
 **Type**: Build/Dependency  
 **File**: `requirements.txt`  
-**Status**: Open  
+**Status**: ✅ Fixed  
+**Fixed On**: 2026-07-23  
 **Description**: `setuptools` is not listed in dependencies but is required for building.  
 **Impact**: Build may fail if setuptools is not pre-installed  
 **Recommendation**: Add `setuptools>=61.0.0` to development dependencies.
+**Resolution**: Added `setuptools>=61.0.0` to both `requirements.txt` and `setup.py` development extras.
 
 ---
 
@@ -253,15 +262,15 @@ This document tracks all identified issues, warnings, security concerns, and cod
 ### Current Status
 | Issue ID | Status | Assignee | Notes |
 |----------|--------|----------|-------|
-| H-001 | ⏳ Pending | - | Consolidate setup files |
-| H-002 | ⏳ Pending | - | Remove duplicate requirements |
+| H-001 | ✅ Fixed | - | Consolidate setup files - Removed setup_pysg.py |
+| H-002 | ✅ Fixed | - | Remove duplicate requirements - Removed requirements_pysg.txt |
 | M-001 | ⏳ Pending | - | Fix wildcard imports |
 | M-002 | ⏳ Pending | - | Narrow exception handling |
 | M-003 | ⏳ Pending | - | Fix line length violations |
 | M-004 | ⏳ Pending | - | Consistent logging |
 | M-005 | ⏳ Pending | - | Consolidate drive listing |
 | M-006 | ⏳ Pending | - | Improve temp file cleanup |
-| M-007 | ⏳ Pending | - | Add setuptools dependency |
+| M-007 | ✅ Fixed | - | Add setuptools dependency - Added to requirements.txt and setup.py |
 | M-008 | ⏳ Pending | - | Complete platform implementations |
 | M-009 | ⏳ Pending | - | Validate subprocess parameters |
 | M-010 | ⏳ Pending | - | Use secure FTP alternatives |
@@ -273,10 +282,10 @@ This document tracks all identified issues, warnings, security concerns, and cod
 ## 🎯 RECOMMENDED FIX ORDER
 
 ### Phase 1: High Priority (1-2 days)
-1. H-001: Consolidate setup files
-2. H-002: Remove duplicate requirements files
-3. M-001: Fix wildcard imports in platform/__init__.py
-4. M-007: Add setuptools to development dependencies
+- [x] H-001: Consolidate setup files - **COMPLETED** (Removed setup_pysg.py)
+- [x] H-002: Remove duplicate requirements files - **COMPLETED** (Removed requirements_pysg.txt)
+- [x] M-007: Add setuptools to development dependencies - **COMPLETED** (Added to requirements.txt and setup.py)
+- [ ] M-001: Fix wildcard imports in platform/__init__.py
 
 ### Phase 2: Medium Priority - Code Quality (3-5 days)
 1. M-002: Narrow exception handling in core modules
@@ -308,9 +317,10 @@ This document tracks all identified issues, warnings, security concerns, and cod
 - **Total Lines of Code**: ~8,000
 - **Test Files**: 6
 - **Critical Issues**: 0
-- **High Priority**: 2
-- **Medium Priority**: 12
+- **High Priority**: 0 (2 fixed)
+- **Medium Priority**: 12 (1 fixed)
 - **Low Priority**: 7+
+- **Total Fixed**: 3
 
 ---
 

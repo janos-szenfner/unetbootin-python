@@ -76,6 +76,7 @@ setup(
             "black>=23.0.0",
             "mypy>=1.0.0",
             "pylint>=3.0.0",
+            "setuptools>=61.0.0",
         ],
     },
     
