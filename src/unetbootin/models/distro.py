@@ -39,6 +39,7 @@ class DistributionVersion:
     mirrors: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
+        """Convert distribution version to dictionary."""
         result = {
             'name': self.name,
             'url': self.url,
@@ -93,10 +94,12 @@ class Distribution:
     mirrors: List[str] = field(default_factory=list)
     
     def __post_init__(self):
+        """Post-initialize: set display_name to name if not provided."""
         if not self.display_name:
             self.display_name = self.name
     
     def to_dict(self) -> Dict[str, Any]:
+        """Convert distribution to dictionary."""
         result = {
             'name': self.name,
             'display_name': self.display_name,

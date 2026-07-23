@@ -17,12 +17,12 @@ python_unetbootin/
 │   └── unetbootin/
 │       ├── __init__.py               # Package init with version info
 │       ├── __main__.py               # Allow python -m unetbootin
-│       ├── main.py                   # Main entry point
-│       ├── app.py                    # Main application class
+│       ├── main.py                   # Main entry point (PySimpleGUI)
+│       ├── app.py                    # Main application class (PySimpleGUI)
 │       │
 │       ├── ui/
 │       │   ├── __init__.py
-│       │   └── main_window.py        # Qt UI implementation
+│       │   └── main_window_pysg.py   # PySimpleGUI UI implementation
 │       │
 │       ├── models/
 │       │   ├── __init__.py
@@ -87,7 +87,7 @@ unetbootin
 
 ### Core Dependencies
 - **Python 3.10+**
-- **PySide6>=6.4.0** - Qt for Python (GUI framework)
+- **PySimpleGUI>=4.60.0** - Lightweight GUI framework (Tkinter backend)
 - **requests>=2.28.0** - HTTP downloads
 - **psutil>=5.9.0** - System information
 
@@ -109,15 +109,15 @@ unetbootin
 ## Features Implemented
 
 ### Application Framework
-- Main entry point with Qt application setup
+- Main entry point with PySimpleGUI application setup
 - Main window class coordinating all functionality
-- Signal-slot connections between components
+- Event-based UI interactions
 - Root/admin privilege checking on startup
 - Progress tracking for operations
 - Logging to file and console
 
 ### User Interface
-- Complete recreation of the original Qt UI using PySide6
+- Complete recreation of the original UI using PySimpleGUI + Tkinter
 - Distribution selection (radio button + combo boxes)
 - Installation type selection (Distribution, Disk Image, Custom/Manual)
 - Drive selection with refresh capability
@@ -452,27 +452,27 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🎨 Low Priority / Enhancements
 - [ ] Add themes/dark mode support
-- [x] Add persistence configuration UI
-- [x] Add boot options editor for advanced users
-- [x] Add support for UEFI-only installations
-- [x] Add support for Secure Boot
+- [x] Add persistence configuration UI - Done
+- [x] Add boot options editor for advanced users - Done
+- [x] Add support for UEFI-only installations - Done
+- [x] Add support for Secure Boot - Done
 - [ ] Add disk partitioning tool integration
 - [x] Add progress estimation for downloads - Done
-- [x] Add download resume support
-- [x] Add download mirror selection
+- [x] Add download resume support - Done
+- [x] Add download mirror selection - Done
 
 ### 🧪 Testing
 - [x] Add unit tests for core functionality - Done
 - [x] Add unit tests for platform-specific code - Done
 - [x] Add integration tests - Done
-- [x] Add UI tests (consider pytest-qt) - Done
+- [x] Add UI tests for PySimpleGUI - Done
 - [ ] Create test ISO files for testing
 
 ### 📝 Documentation
 - [ ] Add user documentation
 - [ ] Add developer documentation
 - [ ] Create man page
-- [x] Add inline code documentation
+- [x] Add inline code documentation - Done
 
 ### 🔧 Build & Distribution
 - [ ] Create macOS .app bundle

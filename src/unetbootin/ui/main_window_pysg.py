@@ -5,7 +5,7 @@ This replaces the Qt-based UI with a lightweight PySimpleGUI implementation.
 
 import os
 import logging
-from typing import Optional, List, Dict, Any, Callable, Tuple
+from typing import Optional, List, Dict, Any
 
 try:
     import PySimpleGUI as sg
@@ -39,6 +39,7 @@ class MainWindowPySG:
         self.current_version = None
         self.install_type = "distribution"
         self.window = None
+        self.drive_data = []
         
         # Initialize UI
         self.init_ui()
@@ -46,39 +47,39 @@ class MainWindowPySG:
     def init_ui(self):
         """
         Initialize the user interface components.
-        
-        Creates and configures all UI elements including distribution selectors,
-        installation type options, drive selection, and advanced configuration tabs.
         """
         sg.theme('Default1')
         
+        # Minimal transparent GIF icon (compatible with old tkinter)
+        transparent_gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
+        
         # Define the layout
         layout = [
-            # Row 0: Title
+            # Title
             [sg.Text("UNetbootin", font=('Helvetica', 16), pad=(0, (0, 10)))],
             
-            # Row 1: Install Type Radio Buttons
+            # Install Type Radio Buttons
             [
                 sg.Radio("Distribution", "install_type", default=True, key='-RADIO_DISTRO-', enable_events=True, tooltip="Select from a list of supported distributions"),
                 sg.Radio("Disk image", "install_type", default=False, key='-RADIO_FLOPPY-', enable_events=True, tooltip="Specify a disk image file to load"),
                 sg.Radio("Custom", "install_type", default=False, key='-RADIO_MANUAL-', enable_events=True, tooltip="Manually specify a kernel and initrd to load"),
             ],
             
-            # Row 2: Distribution selection (visible when Distribution is selected)
+            # Distribution selection
             [
                 sg.Combo([], key='-CATEGORY_SELECT-', size=(20, 1), enable_events=True, tooltip="Select distribution category"),
                 sg.Combo([], key='-DISTRO_SELECT-', size=(30, 1), enable_events=True, tooltip="Select from a list of supported distributions"),
                 sg.Combo([], key='-VERSION_SELECT-', size=(25, 1), enable_events=True, disabled=True, tooltip="Select the distribution version"),
             ],
             
-            # Row 2b: Floppy image selection (visible when Disk image is selected)
+            # Floppy image selection (hidden initially)
             [
                 sg.Text("Disk image:", key='-FLOPPY_LABEL-', visible=False),
                 sg.Input(size=(45, 1), key='-FLOPPY_FILE-', visible=False, tooltip="Path to disk image file"),
                 sg.Button("...", size=(4, 1), key='-FLOPPY_BROWSE-', visible=False, tooltip="Browse for disk image file"),
             ],
             
-            # Row 2c: Manual installation options (visible when Custom is selected)
+            # Manual installation options (hidden initially)
             [
                 sg.Text("Kernel:", key='-KERNEL_LABEL-', visible=False),
                 sg.Input(size=(40, 1), key='-KERNEL_FILE-', visible=False),
@@ -95,23 +96,23 @@ class MainWindowPySG:
                 sg.Button("...", size=(4, 1), key='-CFG_BROWSE-', visible=False),
             ],
             
-            # Row 3: Drive selection
+            # Drive selection
             [
                 sg.Text("Target Drive:", size=(12, 1)),
                 sg.Combo([], key='-DRIVE_SELECT-', size=(50, 1), enable_events=True, tooltip="Select the target drive"),
                 sg.Button("Refresh", key='-REFRESH_DRIVES-', tooltip="Refresh the list of available drives"),
             ],
             
-            # Row 4: Install type (USB Drive / Hard Disk)
+            # Install type (USB Drive / Hard Disk)
             [
                 sg.Text("Type:", size=(12, 1)),
                 sg.Combo(["USB Drive", "Hard Disk"], key='-TYPE_SELECT-', default_value="USB Drive", size=(20, 1), enable_events=True, tooltip="Select the installation target type"),
             ],
             
-            # Row 5: Info message
+            # Info message
             [sg.Text("Select a distribution or ISO file, then select your USB drive below.", key='-INFO_MESSAGE-', size=(60, 1))],
             
-            # Row 6: Advanced options (collapsible section)
+            # Advanced options checkbox
             [
                 sg.Checkbox("Advanced Options", key='-ADVANCED_TOGGLE-', enable_events=True, default=False),
             ],
@@ -137,7 +138,7 @@ class MainWindowPySG:
                 ], key='-ADVANCED_COLUMN-', visible=False)
             ],
             
-            # Row 7: Buttons
+            # Buttons
             [
                 sg.Push(),
                 sg.Button("OK", key='-OK-', tooltip="Start the installation"),
@@ -146,10 +147,11 @@ class MainWindowPySG:
             ],
         ]
         
-        # Create the window with a minimal transparent GIF icon (compatible with old tkinter)
-        # This avoids the PNG icon issue with old tkinter versions
-        transparent_gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
-        self.window = sg.Window("UNetbootin", layout, finalize=False, resizable=True, margins=(10, 10), use_default_focus=False, icon=transparent_gif)
+        # Create the window
+        self.window = sg.Window("UNetbootin", layout, finalize=True, resizable=True, margins=(10, 10), use_default_focus=False, icon=transparent_gif)
+        
+        # Finalize the window immediately so elements can be updated
+        self.window.finalize()
         
         # Store references to elements for easier access
         self.elements = {
@@ -185,21 +187,15 @@ class MainWindowPySG:
             'radio_manual': self.window['-RADIO_MANUAL-'],
         }
         
-        # Set up event handlers
-        self.setup_connections()
+        # Set up visibility based on initial install type
+        self.update_install_type_ui()
     
     def setup_connections(self):
         """Setup event handlers for UI elements."""
-        # This is handled differently in PySimpleGUI - we'll process events in the run() method
         pass
     
     def set_distributions(self, distros: List[Dict[str, Any]]):
-        """
-        Set the list of available distributions.
-        
-        Args:
-            distros: List of distribution dictionaries with name, display_name, category, etc.
-        """
+        """Set the list of available distributions."""
         logger.info(f"Setting {len(distros)} distributions")
         self.distributions = {d['name']: d for d in distros}
         
@@ -209,38 +205,22 @@ class MainWindowPySG:
             if distro.get('category'):
                 categories.add(distro['category'])
         
-        # Set categories in the category combo box
         self.set_categories(sorted(categories))
-        
-        # Update distribution list based on current category filter
         self.update_distro_list()
     
     def set_categories(self, categories: List[str]):
-        """
-        Set the list of available categories.
-        
-        Args:
-            categories: List of category names (e.g., ['Linux', 'BSD', 'Windows'])
-        """
+        """Set the list of available categories."""
         logger.info(f"Setting {len(categories)} categories")
         self.categories = categories
         
-        # Update the category combo
         category_values = ['All'] + categories
         self.elements['category_select'].update(values=category_values, value='All')
     
     def update_distro_list(self, category_filter: str = None):
-        """
-        Update the distribution list based on category filter.
-        
-        Args:
-            category_filter: Category to filter by, or None for current selection
-        """
-        # Get current category selection
+        """Update the distribution list based on category filter."""
         if category_filter is None:
             category_filter = self.elements['category_select'].get()
         
-        # Filter distributions by category if specified
         if category_filter and category_filter != "All":
             filtered_distros = [
                 d for d in self.distributions.values() 
@@ -249,44 +229,30 @@ class MainWindowPySG:
         else:
             filtered_distros = list(self.distributions.values())
         
-        # Update combo box with sorted list
         distro_names = [d.get('display_name', d['name']) for d in sorted(filtered_distros, key=lambda x: (x.get('display_name', x['name']), x['name']))]
         current_value = self.elements['distro_select'].get()
         self.elements['distro_select'].update(values=distro_names)
         
-        # Try to restore previous selection
         if current_value and current_value in distro_names:
             self.elements['distro_select'].set_value(current_value)
     
     def set_drive_list(self, drives: List[tuple]):
-        """Set the list of available drives.
-        
-        Args:
-            drives: List of (display_string, device_path) tuples.
-        """
+        """Set the list of available drives."""
         logger.info(f"Setting {len(drives)} drives")
         
-        # Remember current selection (by device path) if any
         current_value = self.elements['drive_select'].get()
         current_device = None
         if current_value and self.drive_data:
-            # Find matching device path
             for display, device in self.drive_data:
                 if display == current_value:
                     current_device = device
                     break
         
-        # Store drive data (display_text -> device_path mapping)
         self.drive_data = drives
-        
-        # Update the combo
         display_list = [display for display, device in drives]
         self.elements['drive_select'].update(values=display_list)
-        
-        # Enable/disable based on whether we have drives
         self.elements['drive_select'].update(disabled=len(drives) == 0)
         
-        # Try to restore previous selection
         if current_device:
             for display, device in drives:
                 if device == current_device:
@@ -299,7 +265,6 @@ class MainWindowPySG:
     
     def update_version_list(self, distro_name: str = None):
         """Update version list for selected distribution."""
-        # Get the current distro name
         if distro_name is None:
             distro_name = self.get_current_distro_name()
         
@@ -308,15 +273,12 @@ class MainWindowPySG:
         
         distro = self.distributions[distro_name]
         versions = distro.get('versions', [])
-        
-        # Update version combo
         version_names = [v['name'] for v in versions]
         self.elements['version_select'].update(values=version_names, disabled=len(versions) == 0)
         
         if versions:
             self.elements['version_select'].set_value(version_names[0])
         
-        # Update info message
         if distro_name and distro_name in self.distributions:
             distro = self.distributions[distro_name]
             info = distro.get('description', f"Selected: {distro_name}")
@@ -328,7 +290,6 @@ class MainWindowPySG:
         if not display_name:
             return None
         
-        # Map display name back to internal name
         for name, distro in self.distributions.items():
             if distro.get('display_name', name) == display_name:
                 return name
@@ -344,7 +305,6 @@ class MainWindowPySG:
         if not display_text:
             return None
         
-        # Find the device path for this display text
         for display, device in self.drive_data or []:
             if display == display_text:
                 return device
@@ -357,34 +317,28 @@ class MainWindowPySG:
     
     def update_install_type_ui(self):
         """Update UI visibility based on current install type."""
-        install_type = self.install_type
-        
-        # Get current radio button selection
         radio_distro = self.elements['radio_distro'].get()
         radio_floppy = self.elements['radio_floppy'].get()
         radio_manual = self.elements['radio_manual'].get()
         
-        # Determine current type from radio buttons
         if radio_distro:
             install_type = 'distribution'
         elif radio_floppy:
             install_type = 'floppy'
         elif radio_manual:
             install_type = 'manual'
+        else:
+            install_type = 'distribution'
         
         self.install_type = install_type
         
-        # Show/hide appropriate sections
         if install_type == 'distribution':
-            # Show distribution selectors
             self.elements['category_select'].update(visible=True)
             self.elements['distro_select'].update(visible=True)
             self.elements['version_select'].update(visible=True)
-            # Hide floppy
             self.elements['floppy_label'].update(visible=False)
             self.elements['floppy_file'].update(visible=False)
             self.elements['floppy_browse'].update(visible=False)
-            # Hide manual
             self.elements['kernel_label'].update(visible=False)
             self.elements['kernel_file'].update(visible=False)
             self.elements['kernel_browse'].update(visible=False)
@@ -395,15 +349,12 @@ class MainWindowPySG:
             self.elements['cfg_file'].update(visible=False)
             self.elements['cfg_browse'].update(visible=False)
         elif install_type == 'floppy':
-            # Hide distribution
             self.elements['category_select'].update(visible=False)
             self.elements['distro_select'].update(visible=False)
             self.elements['version_select'].update(visible=False)
-            # Show floppy
             self.elements['floppy_label'].update(visible=True)
             self.elements['floppy_file'].update(visible=True)
             self.elements['floppy_browse'].update(visible=True)
-            # Hide manual
             self.elements['kernel_label'].update(visible=False)
             self.elements['kernel_file'].update(visible=False)
             self.elements['kernel_browse'].update(visible=False)
@@ -414,15 +365,12 @@ class MainWindowPySG:
             self.elements['cfg_file'].update(visible=False)
             self.elements['cfg_browse'].update(visible=False)
         elif install_type == 'manual':
-            # Hide distribution
             self.elements['category_select'].update(visible=False)
             self.elements['distro_select'].update(visible=False)
             self.elements['version_select'].update(visible=False)
-            # Hide floppy
             self.elements['floppy_label'].update(visible=False)
             self.elements['floppy_file'].update(visible=False)
             self.elements['floppy_browse'].update(visible=False)
-            # Show manual
             self.elements['kernel_label'].update(visible=True)
             self.elements['kernel_file'].update(visible=True)
             self.elements['kernel_browse'].update(visible=True)
@@ -433,15 +381,10 @@ class MainWindowPySG:
             self.elements['cfg_file'].update(visible=True)
             self.elements['cfg_browse'].update(visible=True)
     
-    def update_advanced_visibility(self, visible: bool):
-        """Update advanced options visibility."""
-        self.elements['advanced_column'].update(visible=visible)
-    
     def get_installation_parameters(self) -> Dict[str, Any]:
         """Get current installation parameters from UI."""
         params = {}
         
-        # Install type
         if self.elements['radio_distro'].get():
             params['install_type'] = 'distribution'
         elif self.elements['radio_floppy'].get():
@@ -451,7 +394,6 @@ class MainWindowPySG:
         else:
             params['install_type'] = 'distribution'
         
-        # Drive type and target
         params['drive_type'] = self.elements['type_select'].get()
         params['target_drive'] = self.get_current_drive()
         
@@ -465,24 +407,22 @@ class MainWindowPySG:
             params['initrd'] = self.elements['initrd_file'].get()
             params['cfg'] = self.elements['cfg_file'].get()
         
-        # Advanced options
         if self.elements['advanced_toggle'].get():
             params['persistence_enabled'] = self.elements['persistence_check'].get()
             params['persistence_size'] = self.elements['persistence_size'].get()
             
-            # Boot options
             boot_options_text = self.elements['boot_options'].get().strip()
             if boot_options_text:
                 params['boot_options'] = boot_options_text
             
-            # UEFI and Secure Boot
             params['enable_uefi_only'] = self.elements['uefi_only'].get()
             params['enable_secure_boot'] = self.elements['secure_boot'].get()
         
         return params
     
     def show(self):
-        """Show the window and start the event loop."""
+        """Show the window."""
+        self.window.un_hide()
         return self.window
     
     def hide(self):

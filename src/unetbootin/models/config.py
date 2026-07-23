@@ -38,6 +38,7 @@ class AppConfig:
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary."""
         data = dict(self.extra)
         data.update({
             'lang': self.lang,
@@ -72,6 +73,7 @@ class AppConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
+        """Create AppConfig from dictionary."""
         return cls(
             lang=data.get('lang', 'en_US'),
             last_iso_path=data.get('last_iso_path', ''),

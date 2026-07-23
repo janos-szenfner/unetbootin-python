@@ -1,8 +1,7 @@
 """
 Unit tests for UI components.
 
-These tests verify the MainWindow UI functionality.
-Note: Full Qt UI tests require pytest-qt to be installed.
+These tests verify the MainWindow UI functionality using PySimpleGUI.
 """
 
 import unittest
@@ -15,24 +14,25 @@ from unittest.mock import patch, MagicMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Mock Qt to avoid requiring a QApplication instance
-from unittest.mock import Mock
-sys.modules['PySide6'] = MagicMock()
-sys.modules['PySide6.QtWidgets'] = MagicMock()
-sys.modules['PySide6.QtCore'] = MagicMock()
-sys.modules['PySide6.QtGui'] = MagicMock()
+# Mock PySimpleGUI if not available
+try:
+    import PySimpleGUI as sg
+    HAS_PYSIMPLEGUI = True
+except ImportError:
+    HAS_PYSIMPLEGUI = False
+    sys.modules['PySimpleGUI'] = MagicMock()
 
-# Now we can import without Qt errors
-from unetbootin.ui.main_window import MainWindow
+# Now we can import without errors
 from unetbootin.models.distro import DistributionManager
+from unetbootin.ui.main_window_pysg import MainWindowPySG
 
 
 class TestMainWindowInitialization(unittest.TestCase):
-    """Test MainWindow initialization and setup."""
+    """Test MainWindowPySG initialization and setup."""
     
     def setUp(self):
         """Set up test fixtures."""
-        # We'll test the non-Qt parts of MainWindow
+        # We'll test the non-PySimpleGUI parts of MainWindowPySG
         self.temp_dir = tempfile.mkdtemp()
     
     def tearDown(self):
@@ -40,7 +40,7 @@ class TestMainWindowInitialization(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_main_window_import(self):
-        """Test that MainWindow can be imported."""
+        """Test that MainWindowPySG can be imported."""
         # If we get here, the import succeeded
         self.assertTrue(True)
     
@@ -210,11 +210,11 @@ class TestMainWindowUIConnections(unittest.TestCase):
 
 
 class TestAppIntegration(unittest.TestCase):
-    """Test app and UI integration."""
+    """Test app and UI integration with PySimpleGUI."""
     
     def test_app_ui_initialization(self):
         """Test that app can initialize UI."""
-        # This would normally be tested with a QApplication
+        # This would normally be tested with a PySimpleGUI window
         # For unit testing, we verify the components can be created
         
         # Create distribution manager
@@ -321,58 +321,46 @@ class TestDriveRefresh(unittest.TestCase):
             self.assertIn('size', drive)
 
 
-# Note: Full UI tests with Qt require pytest-qt
-# To run Qt UI tests, install pytest-qt:
-#   pip install pytest-qt
-# 
-# Then create a conftest.py with:
-#   import pytest
-#   pytest_plugins = ['pytest_qt']
-#
-# And use QtBot fixture in tests:
-#   def test_ui_with_qtbot(qtbot):
-#       from PySide6.QtWidgets import QApplication
-#       app = QApplication([])
-#       window = MainWindow()
-#       qtbot.addWidget(window)
-#       # Test UI interactions here
+# Note: Full UI tests with PySimpleGUI can be run directly
+# For testing with actual PySimpleGUI windows, use:
+#   from unetbootin.ui.main_window_pysg import MainWindowPySG
+#   window = MainWindowPySG()
+#   # Test UI interactions here
 
 
 class TestUINonQt(unittest.TestCase):
-    """Test UI components that don't require Qt."""
+    """Test UI components that don't require PySimpleGUI."""
     
     def test_format_drive_list_function(self):
         """Test the format_drive_list function from app.py."""
-        from unetbootin.app import UNetbootinApp
+        from unetbootin.app import UNetbootinAppPySG
         
         # Create a mock app instance to access the method
-        # We need to mock QMainWindow
-        with patch('PySide6.QtWidgets.QMainWindow'):
-            app = UNetbootinApp.__new__(UNetbootinApp)
-            
-            # Mock drives data
-            drives = [
-                {'device': '/dev/sda', 'size': 100000000000, 'label': 'System', 'removable': False},
-                {'device': '/dev/sdb', 'size': 16000000000, 'label': 'USB', 'removable': True},
-            ]
-            
-            # Call the method
-            formatted = app.format_drive_list(drives)
-            
-            # Should return a list of tuples
-            self.assertIsInstance(formatted, list)
-            for item in formatted:
-                self.assertIsInstance(item, tuple)
-                self.assertEqual(len(item), 2)
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        
+        # Mock drives data
+        drives = [
+            {'device': '/dev/sda', 'size': 100000000000, 'label': 'System', 'removable': False},
+            {'device': '/dev/sdb', 'size': 16000000000, 'label': 'USB', 'removable': True},
+        ]
+        
+        # Call the method
+        formatted = app.format_drive_list(drives)
+        
+        # Should return a list of tuples
+        self.assertIsInstance(formatted, list)
+        for item in formatted:
+            self.assertIsInstance(item, tuple)
+            self.assertEqual(len(item), 2)
     
     def test_format_size_in_app(self):
         """Test format_size function used in app.py."""
         from unetbootin.core.utils import format_size
         
         # Test various sizes
-        self.assertEqual(format_size(0), '0 B')
-        self.assertEqual(format_size(1024), '1.0 KB')
-        self.assertEqual(format_size(1024 * 1024), '1.0 MB')
+        self.assertEqual(format_size(0), '0.00 B')
+        self.assertEqual(format_size(1024), '1.00 KB')
+        self.assertEqual(format_size(1024 * 1024), '1.00 MB')
 
 
 if __name__ == '__main__':

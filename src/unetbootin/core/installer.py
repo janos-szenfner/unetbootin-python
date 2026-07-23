@@ -21,6 +21,7 @@ class USBInstaller:
     """Handles USB installation process."""
     
     def __init__(self):
+        """Initialize the USB installer."""
         self.worker = None
         self.platform = sys.platform
     
@@ -38,6 +39,7 @@ class USBInstaller:
         exception = [None]
         
         def install_wrapper():
+            """Wrapper function to run installation in a thread."""
             try:
                 result[0], result[1] = self.install_sync(
                     source_dir, target_device, install_params, progress_callback
@@ -75,6 +77,7 @@ class USBInstaller:
             current_stage = 0
             
             def update_progress(percent_in_stage: int):
+                """Update overall progress based on current stage progress."""
                 nonlocal total_progress, current_stage
                 stage_name, stage_weight = stages[current_stage]
                 stage_progress = int(percent_in_stage * stage_weight / 100)

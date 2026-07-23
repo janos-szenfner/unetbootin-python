@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
 Main entry point for UNetbootin Python rewrite.
+Uses PySimpleGUI + Tkinter for a lightweight, no-Qt GUI.
 """
 
 import sys
 import os
 import logging
 from pathlib import Path
+from typing import Optional
 
-# Add src directory to path for development
-sys.path.insert(0, str(Path(__file__).parent.parent))
+try:
+    import PySimpleGUI as sg
+    HAS_PYSIMPLEGUI = True
+except ImportError:
+    HAS_PYSIMPLEGUI = False
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QLocale, QTranslator, QLibraryInfo
-from PySide6.QtGui import QIcon
-
-from unetbootin.app import UNetbootinApp
-from unetbootin.core.utils import parse_command_line_args, normalize_language_code, is_language_supported
+from unetbootin.core.utils import parse_command_line_args, normalize_language_code
 from unetbootin import APP_NAME, APP_VERSION
 
 
@@ -34,92 +34,60 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-def load_translations(app: QApplication, lang: Optional[str] = None) -> QTranslator:
+def load_translations(lang: Optional[str] = None):
     """Load translations based on system locale or specified language.
     
-    Only loads translations for supported languages: de, es, fr, it, hu.
-    English (en) is the default and doesn't require a translation file.
+    For now, this just sets the app language. Full translation support
+    would need to be implemented with gettext or similar.
     
     Args:
-        app: QApplication instance
         lang: Optional language code to use (from command line args)
-        
-    Returns:
-        QTranslator instance that was installed
     """
-    translator = QTranslator()
-    
     # Determine which language to use
     if lang:
-        # Language specified via command line
         locale_to_try = lang
     else:
-        # Use system locale
-        locale_to_try = QLocale.system().name()
+        # Use system locale or default to English
+        locale_to_try = 'en'
     
-    # Normalize and validate the language code
+    # Normalize the language code
     normalized_lang = normalize_language_code(locale_to_try)
-    
-    # Only try to load translation if it's a supported language
-    if normalized_lang:
-        # Try to load translation from multiple locations
-        translation_paths = [
-            "translations",
-            "/usr/share/unetbootin/translations",
-            "/usr/local/share/unetbootin/translations",
-        ]
-        
-        translation_file = f"unetbootin_{normalized_lang}"
-        
-        for path in translation_paths:
-            if translator.load(translation_file, path):
-                app.installTranslator(translator)
-                return translator
-    
-    # If language is not supported or translation file not found,
-    # the app will use English (default strings)
-    return translator
+    return normalized_lang
 
 
 def main():
     """Main entry point."""
     logger = setup_logging()
-    logger.info(f"Starting {APP_NAME} v{APP_VERSION}")
-
+    logger.info(f"Starting {APP_NAME} v{APP_VERSION} with PySimpleGUI")
+    
+    if not HAS_PYSIMPLEGUI:
+        logger.error("PySimpleGUI is not installed. Please install it with: pip install PySimpleGUI")
+        print("Error: PySimpleGUI is not installed.")
+        print("Please install it with: pip install PySimpleGUI")
+        sys.exit(1)
+    
     # Parse command line arguments (--lang, --rootcheck, --automate, ...)
     cli_args = parse_command_line_args()
-
-    # Create Qt application
-    app = QApplication(sys.argv)
-    app.setApplicationName(APP_NAME)
-    app.setApplicationVersion(APP_VERSION)
-    app.setOrganizationName("UNetbootin")
     
     # Load translations with language from command line if specified
-    load_translations(app, lang=cli_args.get('lang'))
+    app_lang = load_translations(lang=cli_args.get('lang'))
+    logger.info(f"Using language: {app_lang}")
     
-    # Set application icon
-    icon = QIcon()
-    icon_paths = [
-        "resources/unetbootin_16.png",
-        "resources/unetbootin_22.png", 
-        "resources/unetbootin_24.png",
-        "resources/unetbootin_32.png",
-        "resources/unetbootin_48.png",
-        "/usr/share/pixmaps/unetbootin.png",
-    ]
-    for path in icon_paths:
-        if os.path.exists(path):
-            icon.addFile(path)
-    app.setWindowIcon(icon)
+    # Set PySimpleGUI theme
+    sg.theme('Default1')
     
-    # Create and show main application
-    unetbootin = UNetbootinApp(cli_args=cli_args)
-    unetbootin.show()
+    # Import here to avoid import errors if PySimpleGUI is not installed
+    from unetbootin.app import UNetbootinAppPySG
     
-    # Execute application
-    logger.info("Application started, entering main loop")
-    sys.exit(app.exec())
+    # Create and run main application
+    try:
+        unetbootin = UNetbootinAppPySG(cli_args=cli_args)
+        unetbootin.run()
+        logger.info("Application exited successfully")
+    except Exception as e:
+        logger.error(f"Application failed: {e}")
+        sg.popup_error(f"Application failed: {str(e)}", title="Fatal Error")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -290,6 +290,7 @@ class Downloader:
     """Handles file downloads with progress tracking."""
     
     def __init__(self):
+        """Initialize the downloader with a requests session."""
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'UNetbootin/' + self.get_version()
@@ -336,6 +337,7 @@ class Downloader:
         exception = [None]
         
         def download_wrapper():
+            """Wrapper function to run download in a thread."""
             try:
                 result[0], result[1] = self.download_file_sync(
                     url, dest_path, min_size,

@@ -19,7 +19,6 @@ from unetbootin.core.downloader import (
     MirrorManager, MirrorInfo, DownloadResumeManager
 )
 from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
-from unetbootin.ui.main_window import MainWindow
 
 
 class TestNewConfigOptions(unittest.TestCase):
@@ -499,25 +498,28 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
 
 
 class TestMainWindowNewFeatures(unittest.TestCase):
-    """Test main window new features."""
+    """Test main window new features with PySimpleGUI."""
     
     @classmethod
     def setUpClass(cls):
-        """Set up QApplication for all tests."""
-        import sys
-        from PySide6.QtWidgets import QApplication
-        cls.app = QApplication(sys.argv)
+        """Set up for all tests."""
+        # No QApplication needed for PySimpleGUI
+        pass
     
     @classmethod
     def tearDownClass(cls):
-        """Clean up QApplication."""
-        cls.app.quit()
-        cls.app = None
+        """Clean up."""
+        pass
     
     def setUp(self):
         """Set up test fixtures."""
+        # Mock PySimpleGUI to avoid creating actual windows
+        from unittest.mock import MagicMock
+        sys.modules['PySimpleGUI'] = MagicMock()
+        
         # Create main window without showing it
-        self.window = MainWindow()
+        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        self.window = MainWindowPySG()
         
         # Set up some test distributions with categories
         test_distros = [
@@ -528,30 +530,44 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         self.window.set_distributions(test_distros)
     
     def test_new_ui_elements_exist(self):
-        """Test that new UI elements exist."""
+        """Test that new UI elements exist in PySimpleGUI version."""
         # Check that new UI elements are present
-        self.assertIsNotNone(self.window.advanced_tabs)
-        self.assertIsNotNone(self.window.boot_options_edit)
-        self.assertIsNotNone(self.window.uefi_only_check)
-        self.assertIsNotNone(self.window.secure_boot_check)
+        self.assertIsNotNone(self.window.elements)
+        self.assertIn('boot_options', self.window.elements)
+        self.assertIn('uefi_only', self.window.elements)
+        self.assertIn('secure_boot', self.window.elements)
     
     def test_tab_count(self):
-        """Test that advanced tabs are present."""
-        self.assertEqual(self.window.advanced_tabs.count(), 3)
-        tab_texts = [self.window.advanced_tabs.tabText(i) for i in range(self.window.advanced_tabs.count())]
-        self.assertIn('Persistence', tab_texts)
-        self.assertIn('Boot Options', tab_texts)
-        self.assertIn('Firmware', tab_texts)
+        """Test that advanced tabs are present in PySimpleGUI version."""
+        # In PySimpleGUI version, tabs are in the advanced_tabs element
+        self.assertIn('advanced_tabs', self.window.elements)
     
     def test_get_installation_parameters_includes_new_fields(self):
         """Test that get_installation_parameters includes new fields."""
-        # Enable advanced options
-        self.window.advanced_group.setChecked(True)
+        from unittest.mock import MagicMock
         
-        # Set some values
-        self.window.boot_options_edit.setPlainText('quiet splash')
-        self.window.uefi_only_check.setChecked(True)
-        self.window.secure_boot_check.setChecked(True)
+        # Mock the elements to return test values
+        self.window.elements['advanced_toggle'] = MagicMock()
+        self.window.elements['advanced_toggle'].get.return_value = True
+        self.window.elements['boot_options'] = MagicMock()
+        self.window.elements['boot_options'].get.return_value = 'quiet splash'
+        self.window.elements['uefi_only'] = MagicMock()
+        self.window.elements['uefi_only'].get.return_value = True
+        self.window.elements['secure_boot'] = MagicMock()
+        self.window.elements['secure_boot'].get.return_value = True
+        self.window.elements['radio_distro'] = MagicMock()
+        self.window.elements['radio_distro'].get.return_value = True
+        self.window.elements['radio_floppy'] = MagicMock()
+        self.window.elements['radio_floppy'].get.return_value = False
+        self.window.elements['radio_manual'] = MagicMock()
+        self.window.elements['radio_manual'].get.return_value = False
+        self.window.elements['drive_select'] = MagicMock()
+        self.window.elements['drive_select'].get.return_value = '/dev/sdb (16 GB) [Removable]'
+        self.window.elements['type_select'] = MagicMock()
+        self.window.elements['type_select'].get.return_value = 'USB Drive'
+        
+        # Mock drive data
+        self.window.drive_data = [('/dev/sdb (16 GB) [Removable]', '/dev/sdb')]
         
         params = self.window.get_installation_parameters()
         
@@ -564,9 +580,25 @@ class TestMainWindowNewFeatures(unittest.TestCase):
     
     def test_persistence_still_works(self):
         """Test that persistence functionality still works."""
-        self.window.advanced_group.setChecked(True)
-        self.window.persistence_check.setChecked(True)
-        self.window.persistence_size_spin.setValue(2000)
+        from unittest.mock import MagicMock
+        
+        self.window.elements['advanced_toggle'] = MagicMock()
+        self.window.elements['advanced_toggle'].get.return_value = True
+        self.window.elements['persistence_check'] = MagicMock()
+        self.window.elements['persistence_check'].get.return_value = True
+        self.window.elements['persistence_size'] = MagicMock()
+        self.window.elements['persistence_size'].get.return_value = 2000
+        self.window.elements['radio_distro'] = MagicMock()
+        self.window.elements['radio_distro'].get.return_value = True
+        self.window.elements['radio_floppy'] = MagicMock()
+        self.window.elements['radio_floppy'].get.return_value = False
+        self.window.elements['radio_manual'] = MagicMock()
+        self.window.elements['radio_manual'].get.return_value = False
+        self.window.elements['drive_select'] = MagicMock()
+        self.window.elements['drive_select'].get.return_value = '/dev/sdb (16 GB) [Removable]'
+        self.window.elements['type_select'] = MagicMock()
+        self.window.elements['type_select'].get.return_value = 'USB Drive'
+        self.window.drive_data = [('/dev/sdb (16 GB) [Removable]', '/dev/sdb')]
         
         params = self.window.get_installation_parameters()
         

@@ -41,7 +41,7 @@ if readme_path.exists():
 setup(
     name="unetbootin",
     version=version,
-    description="A cross-platform tool for creating bootable USB drives from ISO files",
+    description="A lightweight cross-platform tool for creating bootable USB drives from ISO files (PySimpleGUI)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="UNetbootin Team",
@@ -52,11 +52,11 @@ setup(
     # Package configuration
     package_dir={"": "src"},
     packages=find_packages(where="src"),
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     
     # Dependencies
     install_requires=[
-        "PySide6>=6.4.0",
+        "PySimpleGUI>=4.60.0",
         "requests>=2.28.0",
         "psutil>=5.9.0",
     ],

@@ -24,6 +24,7 @@ class ArchiveFileInfo:
     is_directory: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
+        """Convert archive file info to dictionary."""
         return {
             'name': self.name,
             'size': self.size,
@@ -35,6 +36,7 @@ class ISOExtractor:
     """Handles ISO and archive extraction."""
     
     def __init__(self):
+        """Initialize the extractor with supported file extensions."""
         self.supported_extensions = [
             '.iso', '.img', '.raw',
             '.zip',

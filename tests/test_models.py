@@ -229,6 +229,49 @@ class TestDistributionManager(unittest.TestCase):
             self.assertTrue('ubuntu' in result['name'].lower() or 
                           'ubuntu' in result['display_name'].lower() or
                           'ubuntu' in result['description'].lower())
+    
+    def test_all_requested_distributions_present(self):
+        """Test that all requested distributions are present."""
+        # List of distributions requested by user
+        requested_distros = [
+            'ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux',
+            'zorin', 'kali', 'slackware', 'openmandriva', 'tinycore',
+            'freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas',
+            'windows11', 'windows10',
+            'suse_tumbleweed', 'suse_leap'
+        ]
+        
+        all_distros = self.manager.get_distributions()
+        distro_names = [d['name'] for d in all_distros]
+        
+        for distro_name in requested_distros:
+            self.assertIn(distro_name, distro_names, 
+                         f"Distribution {distro_name} not found in the list")
+    
+    def test_distribution_categories(self):
+        """Test that distributions are properly categorized."""
+        categories = self.manager.get_categories()
+        
+        # Verify we have the main categories
+        self.assertIn('Linux', categories)
+        self.assertIn('BSD', categories)
+        self.assertIn('Windows', categories)
+        
+        # Verify distributions are in correct categories
+        linux_distros = self.manager.get_distributions_by_category('Linux')
+        linux_names = [d['name'] for d in linux_distros]
+        self.assertIn('ubuntu', linux_names)
+        self.assertIn('zorin', linux_names)
+        self.assertIn('suse_tumbleweed', linux_names)
+        
+        bsd_distros = self.manager.get_distributions_by_category('BSD')
+        bsd_names = [d['name'] for d in bsd_distros]
+        self.assertIn('freebsd', bsd_names)
+        self.assertIn('netbsd', bsd_names)
+        
+        windows_distros = self.manager.get_distributions_by_category('Windows')
+        windows_names = [d['name'] for d in windows_distros]
+        self.assertIn('windows11', windows_names)
 
 
 class TestConfigManager(unittest.TestCase):
