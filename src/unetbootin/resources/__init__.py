@@ -27,10 +27,20 @@ def _base_dirs():
         meipass = getattr(sys, '_MEIPASS', None)
         if meipass:
             meipass = Path(meipass)
-            # PyInstaller --add-data typically preserves the package path.
+            # One-file / one-dir: datas live under _MEIPASS.
             candidates.append(meipass / 'unetbootin' / 'resources')
             candidates.append(meipass / 'resources')
             candidates.append(meipass)
+            # macOS .app: _MEIPASS is Contents/Frameworks while datas are
+            # placed in the sibling Contents/Resources directory.
+            resources_dir = meipass.parent / 'Resources'
+            candidates.append(resources_dir / 'unetbootin' / 'resources')
+            candidates.append(resources_dir / 'resources')
+        # As a last frozen-app resort, look next to the executable and its
+        # macOS .app Contents/Resources sibling.
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / 'unetbootin' / 'resources')
+        candidates.append(exe_dir.parent / 'Resources' / 'unetbootin' / 'resources')
     # Normal layout: this file lives at <pkg>/unetbootin/resources/__init__.py
     candidates.append(Path(__file__).resolve().parent)
     return candidates

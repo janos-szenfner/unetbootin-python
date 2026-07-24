@@ -1,62 +1,49 @@
-# PyInstaller spec file for UNetbootin Windows
-# Build with: pyinstaller unetbootin-windows.spec --onefile --windowed
+# -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec — Windows (single-file windowed executable).
+# Build:  pyinstaller unetbootin-windows.spec --noconfirm --clean --distpath dist/windows
+# Compatible with PyInstaller 6.x (no bytecode-cipher options).
 
-block_cipher = None
+datas = [
+    ('src/unetbootin/resources/icons/*', 'unetbootin/resources/icons/'),
+    ('src/unetbootin/resources/logos/*', 'unetbootin/resources/logos/'),
+    ('src/unetbootin/resources/bootloader/*', 'unetbootin/resources/bootloader/'),
+    ('src/unetbootin/resources/translations/*', 'unetbootin/resources/translations/'),
+    ('resources/windows/unetbootin.exe.manifest', '.'),
+]
 
-_a = Analysis(
+a = Analysis(
     ['src/unetbootin/main.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        # Include all resources: icons, logos, bootloader, translations
-        ('src/unetbootin/resources/icons/*', 'unetbootin/resources/icons/'),
-        ('src/unetbootin/resources/logos/*', 'unetbootin/resources/logos/'),
-        ('src/unetbootin/resources/bootloader/*', 'unetbootin/resources/bootloader/'),
-        ('src/unetbootin/resources/translations/*', 'unetbootin/resources/translations/'),
-        # Include manifest for UAC elevation
-        ('resources/windows/unetbootin.exe.manifest', '.'),
-    ],
-    hiddenimports=[],
+    datas=datas,
+    hiddenimports=['PySimpleGUI'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
-_pyi_rth_hooks = (
-    ('pyi_rth_hooks.py', 60),
-    ('pyi_rth_pkgutil.py', 60),
-)
+pyz = PYZ(a.pure)
 
-pyz = PYZ(_a.pure, _a.zipped_data, cipher=block_cipher)
-
-_exe = EXE(
+exe = EXE(
     pyz,
-    _a,
+    a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='unetbootin',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=False,             # windowed (no console) GUI app
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
     icon='src/unetbootin/resources/icons/unetbootin.ico',
-)
-
-coll = COLLECT(
-    _exe,
-    _a.binaries,
-    _a.zipfiles,
-    _a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='unetbootin',
 )

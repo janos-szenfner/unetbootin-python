@@ -64,13 +64,9 @@ jobs:
           pip install pyinstaller==6.0.0
 
       - name: Build with PyInstaller
-        run: |
-          pyinstaller unetbootin-windows.spec \
-            --onefile \
-            --windowed \
-            --name ${{ env.APP_NAME }} \
-            --clean \
-            --distpath dist/windows
+        # A .spec file already encodes onefile/windowed/name, so only
+        # spec-compatible flags may be passed. Single line = PowerShell-safe.
+        run: pyinstaller unetbootin-windows.spec --noconfirm --clean --distpath dist/windows
 
       - name: Embed UAC manifest
         run: |
@@ -111,12 +107,7 @@ jobs:
           pip install pyinstaller==6.0.0
 
       - name: Build with PyInstaller (Universal 2 for Apple Silicon + Intel)
-        run: |
-          pyinstaller unetbootin-macos.spec \
-            --windowed \
-            --name ${{ env.APP_NAME }} \
-            --clean \
-            --distpath dist/macos
+        run: pyinstaller unetbootin-macos.spec --noconfirm --clean --distpath dist/macos
 
       - name: Create ZIP (Primary - No Gatekeeper issues)
         run: |
@@ -160,15 +151,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.0.0
           sudo apt-get update
-          sudo apt-get install -y libfuse2-dev patchelf wget
+          sudo apt-get install -y patchelf wget
+          # AppImage tooling needs libfuse2 at runtime. Ubuntu 24.04 renamed
+          # the package to libfuse2t64; fall back to libfuse2 on older runners.
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Build with PyInstaller
-        run: |
-          pyinstaller unetbootin.spec \
-            --onefile \
-            --name ${{ env.APP_NAME }} \
-            --clean \
-            --distpath dist/linux-appimage
+        run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-appimage
 
       - name: Create AppImage
         run: |
@@ -223,12 +212,7 @@ jobs:
           sudo gem install fpm -v 1.14.2
 
       - name: Build with PyInstaller
-        run: |
-          pyinstaller unetbootin.spec \
-            --onefile \
-            --name ${{ env.APP_NAME }} \
-            --clean \
-            --distpath dist/linux-deb
+        run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-deb
 
       - name: Create DEB package
         run: |
@@ -288,12 +272,7 @@ jobs:
           sudo gem install fpm -v 1.14.2
 
       - name: Build with PyInstaller
-        run: |
-          pyinstaller unetbootin.spec \
-            --onefile \
-            --name ${{ env.APP_NAME }} \
-            --clean \
-            --distpath dist/linux-rpm
+        run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-rpm
 
       - name: Create RPM package
         run: |
