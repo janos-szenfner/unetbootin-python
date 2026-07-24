@@ -32,15 +32,16 @@
             "sources": [
                 {
                     "type": "file",
-                    "path": "requirements.txt"
+                    "path": "../../requirements.txt"
                 },
                 {
                     "type": "dir",
-                    "path": "src"
+                    "path": "../../src",
+                    "dest": "src"
                 },
                 {
                     "type": "file",
-                    "path": "setup.py"
+                    "path": "../../setup.py"
                 }
             ]
         },
@@ -55,7 +56,8 @@
             "sources": [
                 {
                     "type": "dir",
-                    "path": "src/unetbootin/resources"
+                    "path": "../../src/unetbootin/resources",
+                    "dest": "resources"
                 }
             ]
         },
@@ -72,22 +74,15 @@
             "sources": [
                 {
                     "type": "dir",
-                    "path": "resources/linux"
+                    "path": "../../resources/linux",
+                    "dest": "resources/linux"
                 },
                 {
                     "type": "dir",
-                    "path": "src/unetbootin/resources/icons"
+                    "path": "../../src/unetbootin/resources/icons",
+                    "dest": "resources/icons"
                 }
             ]
         }
-    ],
-    "metadata": {
-        "name": "UNetbootin",
-        "summary": "Create bootable USB drives from ISO files",
-        "description": "UNetbootin is a lightweight tool that allows you to create bootable USB drives from ISO files. It supports a wide range of Linux distributions, Windows installations, and other bootable media.",
-        "homepage": "https://unetbootin.sourceforge.net",
-        "license": "GPL-2.0-or-later",
-        "maintainer": "UNetbootin Team <geza0kovacs@gmail.com>",
-        "categories": ["System", "Utility", "Boot"]
-    }
+    ]
 }
