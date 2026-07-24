@@ -23,21 +23,21 @@ from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
 
 class TestNewConfigOptions(unittest.TestCase):
     """Test new configuration options."""
-    
+
     def test_new_config_fields(self):
         """Test that new configuration fields are present."""
         config = AppConfig()
-        
+
         # Boot options
         self.assertEqual(config.boot_options, '')
         self.assertFalse(config.enable_uefi_only)
         self.assertFalse(config.enable_secure_boot)
-        
+
         # Download settings
         self.assertTrue(config.enable_download_resume)
         self.assertEqual(config.preferred_mirror, '')
         self.assertEqual(config.custom_mirrors, [])
-    
+
     def test_config_to_dict_with_new_fields(self):
         """Test that to_dict includes new fields."""
         config = AppConfig(
@@ -48,16 +48,16 @@ class TestNewConfigOptions(unittest.TestCase):
             preferred_mirror='https://mirror.example.com',
             custom_mirrors=['https://mirror1.com', 'https://mirror2.com']
         )
-        
+
         data = config.to_dict()
-        
+
         self.assertEqual(data['boot_options'], 'quiet splash')
         self.assertTrue(data['enable_uefi_only'])
         self.assertTrue(data['enable_secure_boot'])
         self.assertFalse(data['enable_download_resume'])
         self.assertEqual(data['preferred_mirror'], 'https://mirror.example.com')
         self.assertEqual(data['custom_mirrors'], ['https://mirror1.com', 'https://mirror2.com'])
-    
+
     def test_config_from_dict_with_new_fields(self):
         """Test that from_dict includes new fields."""
         data = {
@@ -68,21 +68,21 @@ class TestNewConfigOptions(unittest.TestCase):
             'preferred_mirror': 'https://test.com',
             'custom_mirrors': ['https://mirror1.com']
         }
-        
+
         config = AppConfig.from_dict(data)
-        
+
         self.assertEqual(config.boot_options, 'test options')
         self.assertTrue(config.enable_uefi_only)
         self.assertTrue(config.enable_secure_boot)
         self.assertFalse(config.enable_download_resume)
         self.assertEqual(config.preferred_mirror, 'https://test.com')
         self.assertEqual(config.custom_mirrors, ['https://mirror1.com'])
-    
+
     def test_config_manager_save_load_new_fields(self):
         """Test saving and loading new configuration fields."""
         temp_dir = tempfile.mkdtemp()
         config_manager = ConfigManager(config_dir=temp_dir)
-        
+
         try:
             # Set new fields
             config_manager.set('boot_options', 'quiet splash persistent')
@@ -91,24 +91,24 @@ class TestNewConfigOptions(unittest.TestCase):
             config_manager.set('enable_download_resume', False)
             config_manager.set('preferred_mirror', 'https://mirror.example.com')
             config_manager.set('custom_mirrors', ['https://mirror1.com', 'https://mirror2.com'])
-            
+
             # Load and verify
             config = config_manager.load()
-            
+
             self.assertEqual(config.boot_options, 'quiet splash persistent')
             self.assertTrue(config.enable_uefi_only)
             self.assertTrue(config.enable_secure_boot)
             self.assertFalse(config.enable_download_resume)
             self.assertEqual(config.preferred_mirror, 'https://mirror.example.com')
             self.assertEqual(config.custom_mirrors, ['https://mirror1.com', 'https://mirror2.com'])
-            
+
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 class TestDistributionMirrors(unittest.TestCase):
     """Test distribution mirror support."""
-    
+
     def test_distribution_version_with_mirrors(self):
         """Test DistributionVersion with mirrors."""
         version = DistributionVersion(
@@ -117,14 +117,14 @@ class TestDistributionMirrors(unittest.TestCase):
             size=4500000000,
             mirrors=['https://mirror1.ubuntu.com', 'https://mirror2.ubuntu.com']
         )
-        
+
         self.assertEqual(version.mirrors, ['https://mirror1.ubuntu.com', 'https://mirror2.ubuntu.com'])
-        
+
         # Test that mirrors are included in to_dict
         data = version.to_dict()
         self.assertIn('mirrors', data)
         self.assertEqual(data['mirrors'], version.mirrors)
-    
+
     def test_distribution_with_mirrors(self):
         """Test Distribution with mirrors."""
         distro = Distribution(
@@ -132,53 +132,53 @@ class TestDistributionMirrors(unittest.TestCase):
             display_name='Ubuntu',
             mirrors=['https://mirror1.ubuntu.com', 'https://mirror2.ubuntu.com']
         )
-        
+
         self.assertEqual(distro.mirrors, ['https://mirror1.ubuntu.com', 'https://mirror2.ubuntu.com'])
-        
+
         # Test that mirrors are included in to_dict
         data = distro.to_dict()
         self.assertIn('mirrors', data)
         self.assertEqual(data['mirrors'], distro.mirrors)
-    
+
     def test_distribution_manager_with_mirrors(self):
         """Test DistributionManager with mirrors."""
         manager = DistributionManager()
         distros = manager.get_distributions()
-        
+
         # Check that distributions can have mirrors
         for distro in distros:
             if 'mirrors' in distro:
                 self.assertIsInstance(distro['mirrors'], list)
-    
+
     def test_all_new_distributions_present(self):
         """Test that all new distributions are present."""
         manager = DistributionManager()
         distros = manager.get_distributions()
         distro_names = [d['name'] for d in distros]
-        
+
         # Check Linux distributions
         linux_distros = ['zorin', 'kali', 'slackware', 'openmandriva', 'tinycore']
         for distro in linux_distros:
             self.assertIn(distro, distro_names, f"Linux distro {distro} not found")
-        
+
         # Check BSD distributions
         bsd_distros = ['freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas']
         for distro in bsd_distros:
             self.assertIn(distro, distro_names, f"BSD distro {distro} not found")
-        
+
         # Check Windows distributions
         windows_distros = ['windows11', 'windows10']
         for distro in windows_distros:
             self.assertIn(distro, distro_names, f"Windows distro {distro} not found")
-    
+
     def test_distribution_categories(self):
         """Test that distributions are properly categorized."""
         manager = DistributionManager()
         categories = manager.get_categories()
-        
+
         # Should have exactly 3 main categories
         self.assertEqual(sorted(categories), ['BSD', 'Linux', 'Windows'])
-        
+
         # Test Linux category
         linux_distros = manager.get_distributions_by_category('Linux')
         linux_names = [d['name'] for d in linux_distros]
@@ -186,13 +186,13 @@ class TestDistributionMirrors(unittest.TestCase):
                          'suse_tumbleweed', 'suse_leap', 'zorin', 'kali', 'slackware',
                          'openmandriva', 'openmandriva6', 'tinycore']
         self.assertEqual(sorted(linux_names), sorted(expected_linux))
-        
+
         # Test BSD category
         bsd_distros = manager.get_distributions_by_category('BSD')
         bsd_names = [d['name'] for d in bsd_distros]
         expected_bsd = ['freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas']
         self.assertEqual(sorted(bsd_names), sorted(expected_bsd))
-        
+
         # Test Windows category
         windows_distros = manager.get_distributions_by_category('Windows')
         windows_names = [d['name'] for d in windows_distros]
@@ -202,44 +202,44 @@ class TestDistributionMirrors(unittest.TestCase):
 
 class TestDownloadResumeManager(unittest.TestCase):
     """Test DownloadResumeManager."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_file = os.path.join(self.temp_dir, 'test.iso')
         self.resume_manager = DownloadResumeManager(self.test_file)
-    
+
     def tearDown(self):
         """Clean up."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
+
     def test_resume_manager_initialization(self):
         """Test DownloadResumeManager initialization."""
         self.assertEqual(self.resume_manager.dest_path, self.test_file)
         self.assertEqual(self.resume_manager.temp_path, f"{self.test_file}.part")
         self.assertEqual(self.resume_manager.checksum_path, f"{self.test_file}.checksum")
         self.assertEqual(self.resume_manager.resume_info_path, f"{self.test_file}.resume")
-    
+
     def test_partial_file_size(self):
         """Test getting partial file size."""
         # Initially, no partial file
         self.assertEqual(self.resume_manager.get_partial_file_size(), 0)
-        
+
         # Create a partial file
         with open(self.resume_manager.temp_path, 'wb') as f:
             f.write(b'test data')
-        
+
         self.assertEqual(self.resume_manager.get_partial_file_size(), 9)
-    
+
     def test_save_and_get_resume_info(self):
         """Test saving and getting resume info."""
         info = {'url': 'https://example.com/file.iso', 'bytes_downloaded': 1024}
         self.resume_manager.save_resume_info(info)
-        
+
         loaded_info = self.resume_manager.get_resume_info()
         self.assertEqual(loaded_info['url'], info['url'])
         self.assertEqual(loaded_info['bytes_downloaded'], info['bytes_downloaded'])
-    
+
     def test_cleanup(self):
         """Test cleanup of temporary files."""
         # Create temporary files
@@ -249,40 +249,40 @@ class TestDownloadResumeManager(unittest.TestCase):
             f.write('checksum')
         with open(self.resume_manager.resume_info_path, 'w') as f:
             f.write('{}')
-        
+
         # Clean up
         self.resume_manager.cleanup()
-        
+
         # Verify files are removed
         self.assertFalse(os.path.exists(self.resume_manager.temp_path))
         self.assertFalse(os.path.exists(self.resume_manager.checksum_path))
         self.assertFalse(os.path.exists(self.resume_manager.resume_info_path))
-    
+
     def test_rename_partial_to_final(self):
         """Test renaming partial file to final destination."""
         # Create a partial file
         with open(self.resume_manager.temp_path, 'wb') as f:
             f.write(b'test data')
-        
+
         # Rename
         result = self.resume_manager.rename_partial_to_final()
-        
+
         # Verify
         self.assertTrue(result)
         self.assertTrue(os.path.exists(self.test_file))
         self.assertFalse(os.path.exists(self.resume_manager.temp_path))
-        
+
         with open(self.test_file, 'rb') as f:
             self.assertEqual(f.read(), b'test data')
 
 
 class TestMirrorManager(unittest.TestCase):
     """Test MirrorManager."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.mirror_manager = MirrorManager()
-    
+
     def test_add_mirror(self):
         """Test adding a mirror."""
         mirror = MirrorInfo(
@@ -292,12 +292,12 @@ class TestMirrorManager(unittest.TestCase):
             priority=1,
             protocol='https'
         )
-        
+
         self.mirror_manager.add_mirror(mirror)
-        
+
         self.assertEqual(len(self.mirror_manager.mirrors), 1)
         self.assertEqual(self.mirror_manager.mirrors[0].url, 'mirror.example.com')
-    
+
     def test_add_mirrors(self):
         """Test adding multiple mirrors."""
         mirrors = [
@@ -305,65 +305,65 @@ class TestMirrorManager(unittest.TestCase):
             MirrorInfo(url='mirror2.com', priority=1),
             MirrorInfo(url='mirror3.com', priority=3),
         ]
-        
+
         self.mirror_manager.add_mirrors(mirrors)
-        
+
         self.assertEqual(len(self.mirror_manager.mirrors), 3)
         # Should be sorted by priority (highest first)
         self.assertEqual(self.mirror_manager.mirrors[0].url, 'mirror3.com')
         self.assertEqual(self.mirror_manager.mirrors[1].url, 'mirror1.com')
         self.assertEqual(self.mirror_manager.mirrors[2].url, 'mirror2.com')
-    
+
     def test_set_custom_mirrors(self):
         """Test setting custom mirrors."""
         custom_mirrors = ['https://custom1.com', 'https://custom2.com']
         self.mirror_manager.set_custom_mirrors(custom_mirrors)
-        
+
         self.assertEqual(self.mirror_manager.custom_mirrors, custom_mirrors)
-    
+
     def test_get_all_mirrors(self):
         """Test getting all mirror URLs."""
         mirror = MirrorInfo(url='mirror.example.com', protocol='https')
         self.mirror_manager.add_mirror(mirror)
         self.mirror_manager.set_custom_mirrors(['https://custom.com'])
-        
+
         all_mirrors = self.mirror_manager.get_all_mirrors()
-        
+
         self.assertIn('https://mirror.example.com', all_mirrors)
         self.assertIn('https://custom.com', all_mirrors)
-    
+
     def test_get_best_mirror(self):
         """Test getting the best mirror."""
         # Test with custom mirrors
         self.mirror_manager.set_custom_mirrors(['https://custom.com'])
         best = self.mirror_manager.get_best_mirror('https://original.com')
         self.assertEqual(best, 'https://custom.com')
-        
+
         # Test with built-in mirrors
         self.mirror_manager.custom_mirrors = []
         mirror = MirrorInfo(url='mirror.example.com', protocol='https')
         self.mirror_manager.add_mirror(mirror)
         best = self.mirror_manager.get_best_mirror('https://original.com')
         self.assertEqual(best, 'https://mirror.example.com')
-        
+
         # Test with no mirrors
         self.mirror_manager.mirrors = []
         self.mirror_manager.custom_mirrors = []
         best = self.mirror_manager.get_best_mirror('https://original.com')
         self.assertEqual(best, 'https://original.com')
-    
+
     def test_replace_url_base(self):
         """Test replacing URL base."""
         new_base = 'https://mirror.example.com'
         original_url = 'https://original.com/path/to/file.iso'
-        
+
         replaced = self.mirror_manager.replace_url_base(original_url, new_base)
         self.assertEqual(replaced, 'https://mirror.example.com/path/to/file.iso')
 
 
 class TestMirrorInfo(unittest.TestCase):
     """Test MirrorInfo dataclass."""
-    
+
     def test_mirror_info_creation(self):
         """Test creating MirrorInfo."""
         mirror = MirrorInfo(
@@ -373,13 +373,13 @@ class TestMirrorInfo(unittest.TestCase):
             priority=1,
             protocol='https'
         )
-        
+
         self.assertEqual(mirror.url, 'mirror.example.com')
         self.assertEqual(mirror.name, 'Example Mirror')
         self.assertEqual(mirror.country, 'US')
         self.assertEqual(mirror.priority, 1)
         self.assertEqual(mirror.protocol, 'https')
-    
+
     def test_get_base_url(self):
         """Test getting base URL for both protocols."""
         mirror = MirrorInfo(url='mirror.example.com', protocol='https')
@@ -393,21 +393,21 @@ class TestMirrorInfo(unittest.TestCase):
 
 class TestDownloaderResume(unittest.TestCase):
     """Test downloader resume functionality."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.downloader = Downloader()
         self.temp_dir = tempfile.mkdtemp()
-    
+
     def tearDown(self):
         """Clean up."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         self.downloader.cleanup()
-    
+
     def test_download_with_resume_enabled(self):
         """Test download with resume enabled."""
         dest_path = os.path.join(self.temp_dir, 'test.iso')
-        
+
         # Mock the session.get to simulate a download
         with patch('requests.Session.get') as mock_get:
             mock_response = MagicMock()
@@ -415,17 +415,17 @@ class TestDownloaderResume(unittest.TestCase):
             mock_response.iter_content.return_value = [b'test data']
             mock_response.raise_for_status = MagicMock()
             mock_get.return_value.__enter__.return_value = mock_response
-            
+
             # Test with resume enabled
             success, message = self.downloader.download_file_sync(
                 'https://example.com/test.iso',
                 dest_path,
                 enable_resume=True
             )
-            
+
             # The download should work (though we're mocking it)
             self.assertIn('Downloaded', message)
-    
+
     def test_download_with_custom_mirror(self):
         """Test custom mirror replacement via MirrorManager.
 
@@ -445,16 +445,16 @@ class TestDownloaderResume(unittest.TestCase):
 
 class TestUSBInstallerNewFeatures(unittest.TestCase):
     """Test USB installer new features."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.installer = USBInstaller()
         self.temp_dir = tempfile.mkdtemp()
-    
+
     def tearDown(self):
         """Clean up."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
+
     def test_installer_handles_uefi_only(self):
         """Test that installer handles UEFI-only parameter."""
         # Test that the installer accepts the new parameters without crashing
@@ -464,11 +464,11 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
             'enable_secure_boot': True,
             'boot_options': 'quiet splash'
         }
-        
+
         # This should not crash
         source_dir = os.path.join(self.temp_dir, 'source')
         os.makedirs(source_dir)
-        
+
         # We're not actually testing the full installation, just parameter handling
         with patch.object(self.installer, '_prepare_installation', return_value=True):
             with patch.object(self.installer, '_copy_files_to_device', return_value=True):
@@ -479,11 +479,11 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
                         )
                         # Should succeed with parameter handling
                         self.assertTrue(success or 'failed' not in message.lower())
-    
+
     def test_bootloader_methods_accept_new_params(self):
         """Test that bootloader methods accept new parameters."""
         params = {'boot_options': 'test', 'install_type': 'distribution'}
-        
+
         # Test that methods accept the new parameters
         try:
             # These should not crash due to parameter errors
@@ -491,12 +491,12 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
         except Exception as e:
             # Should not be a parameter error
             self.assertNotIn('unexpected keyword argument', str(e))
-        
+
         try:
             self.installer._install_bootloader_macos('/dev/disk2', params, True, True)
         except Exception as e:
             self.assertNotIn('unexpected keyword argument', str(e))
-        
+
         try:
             self.installer._install_bootloader_linux('/dev/sdb', params, True, True)
         except Exception as e:
@@ -505,28 +505,28 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
 
 class TestMainWindowNewFeatures(unittest.TestCase):
     """Test main window new features with PySimpleGUI."""
-    
+
     @classmethod
     def setUpClass(cls):
         """Set up for all tests."""
         # No QApplication needed for PySimpleGUI
         pass
-    
+
     @classmethod
     def tearDownClass(cls):
         """Clean up."""
         pass
-    
+
     def setUp(self):
         """Set up test fixtures."""
         # Mock PySimpleGUI to avoid creating actual windows
         from unittest.mock import MagicMock
         sys.modules['PySimpleGUI'] = MagicMock()
-        
+
         # Create main window without showing it
         from unetbootin.ui.main_window_pysg import MainWindowPySG
         self.window = MainWindowPySG()
-        
+
         # Set up some test distributions with categories
         test_distros = [
             {'name': 'ubuntu', 'display_name': 'Ubuntu', 'category': 'Linux', 'versions': []},
@@ -534,7 +534,7 @@ class TestMainWindowNewFeatures(unittest.TestCase):
             {'name': 'windows11', 'display_name': 'Windows 11', 'category': 'Windows', 'versions': []},
         ]
         self.window.set_distributions(test_distros)
-    
+
     def test_new_ui_elements_exist(self):
         """Test that new UI elements exist in PySimpleGUI version."""
         # Check that new UI elements are present
@@ -542,16 +542,16 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         self.assertIn('boot_options', self.window.elements)
         self.assertIn('uefi_only', self.window.elements)
         self.assertIn('secure_boot', self.window.elements)
-    
+
     def test_tab_count(self):
         """Test that advanced tabs are present in PySimpleGUI version."""
         # In PySimpleGUI version, tabs are in the advanced_tabs element
         self.assertIn('advanced_tabs', self.window.elements)
-    
+
     def test_get_installation_parameters_includes_new_fields(self):
         """Test that get_installation_parameters includes new fields."""
         from unittest.mock import MagicMock
-        
+
         # Mock the elements to return test values
         self.window.elements['advanced_toggle'] = MagicMock()
         self.window.elements['advanced_toggle'].get.return_value = True
@@ -571,23 +571,23 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         self.window.elements['drive_select'].get.return_value = '/dev/sdb (16 GB) [Removable]'
         self.window.elements['type_select'] = MagicMock()
         self.window.elements['type_select'].get.return_value = 'USB Drive'
-        
+
         # Mock drive data
         self.window.drive_data = [('/dev/sdb (16 GB) [Removable]', '/dev/sdb')]
-        
+
         params = self.window.get_installation_parameters()
-        
+
         self.assertIn('boot_options', params)
         self.assertEqual(params['boot_options'], 'quiet splash')
         self.assertIn('enable_uefi_only', params)
         self.assertTrue(params['enable_uefi_only'])
         self.assertIn('enable_secure_boot', params)
         self.assertTrue(params['enable_secure_boot'])
-    
+
     def test_persistence_still_works(self):
         """Test that persistence functionality still works."""
         from unittest.mock import MagicMock
-        
+
         self.window.elements['advanced_toggle'] = MagicMock()
         self.window.elements['advanced_toggle'].get.return_value = True
         self.window.elements['persistence_check'] = MagicMock()
@@ -605,14 +605,14 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         self.window.elements['type_select'] = MagicMock()
         self.window.elements['type_select'].get.return_value = 'USB Drive'
         self.window.drive_data = [('/dev/sdb (16 GB) [Removable]', '/dev/sdb')]
-        
+
         params = self.window.get_installation_parameters()
-        
+
         self.assertIn('persistence_enabled', params)
         self.assertTrue(params['persistence_enabled'])
         self.assertIn('persistence_size', params)
         self.assertEqual(params['persistence_size'], 2000)
-    
+
     def test_category_selector_exists(self):
         """Test that a category selector element exists and is populated.
 
@@ -678,19 +678,19 @@ class TestMainWindowNewFeatures(unittest.TestCase):
 
 class TestAsyncNewFeatures(unittest.IsolatedAsyncioTestCase):
     """Test async functionality for new features."""
-    
+
     async def asyncSetUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-    
+
     async def asyncTearDown(self):
         """Clean up."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
+
     async def test_async_downloader_with_resume(self):
         """Test async downloader with resume support."""
         async_downloader = AsyncDownloader()
-        
+
         # Test that it can be initialized (actual download testing would require networking)
         self.assertIsNotNone(async_downloader)
 

@@ -22,7 +22,7 @@ _SUBPROCESS_PARSE_ERRORS = (subprocess.SubprocessError, OSError,
 def get_drive_list() -> List[Dict[str, Any]]:
     """Get list of available drives on Linux."""
     drives = []
-    
+
     try:
         # Method 1: Use lsblk (preferred)
         result = subprocess.run(
@@ -31,7 +31,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
             import json
             try:
@@ -51,7 +51,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                         'mountpoint': '',
                         'partitions': [],
                     }
-                    
+
                     # Get mount point and partitions
                     result2 = subprocess.run(
                         ['lsblk', '-J', '-o', 'NAME,SIZE,TYPE,MOUNTPOINT'],
@@ -59,7 +59,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                         text=True,
                         timeout=10
                     )
-                    
+
                     if result2.returncode == 0:
                         data2 = json.loads(result2.stdout)
                         for device2 in data2.get('blockdevices', []):
@@ -74,17 +74,17 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                             'mountpoint': partition.get('mountpoint', ''),
                                         })
                                 break
-                    
+
                     # Get serial number
                     if drive_info['type'] == 'disk':
                         serial = get_drive_serial(drive_info['device'])
                         if serial:
                             drive_info['serial'] = serial
-                    
+
                     drives.append(drive_info)
             except (ValueError, KeyError, TypeError) as e:
                 logger.error(f"Failed to parse lsblk output: {e}")
-        
+
         # Method 2: Fallback to /dev/disk/by-id
         if not drives:
             try:
@@ -95,7 +95,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                         try:
                             target = os.readlink(link_path)
                             device_path = f"/dev/{target}"
-                            
+
                             # Get device info
                             result = subprocess.run(
                                 ['lsblk', '-J', '-d', '-o', 'NAME,SIZE,TYPE,RM'],
@@ -103,7 +103,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                 text=True,
                                 timeout=5
                             )
-                            
+
                             device_info = {
                                 'device': device_path,
                                 'name': target,
@@ -112,7 +112,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                 'removable': 'usb' in entry.lower(),
                                 'serial': entry,
                             }
-                            
+
                             if result.returncode == 0:
                                 import json
                                 data = json.loads(result.stdout)
@@ -123,16 +123,16 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                         device_info['removable'] = device.get(
                                             'rm', False)
                                         break
-                            
+
                             drives.append(device_info)
                         except OSError:
                             continue
             except (OSError, ValueError) as e:
                 logger.error(f"Failed to read {by_id_dir}: {e}")
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get drive list: {e}")
-    
+
     return drives
 
 
@@ -141,7 +141,7 @@ def get_drive_serial(device: str) -> Optional[str]:
     try:
         if not device.startswith('/dev/'):
             device = f"/dev/{device}"
-        
+
         # Method 1: Use udevadm
         result = subprocess.run(
             ['udevadm', 'info', '--query=property', '--name=' + device],
@@ -149,12 +149,12 @@ def get_drive_serial(device: str) -> Optional[str]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
                 if line.startswith('ID_SERIAL='):
                     return line.split('=', 1)[1].strip()
-        
+
         # Method 2: Use sg_vpd
         result = subprocess.run(
             ['sg_vpd', '--page=0x80', device],
@@ -162,13 +162,13 @@ def get_drive_serial(device: str) -> Optional[str]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             # Parse VPD page 0x80 (Unit Serial Number)
             for line in result.stdout.split('\n'):
                 if 'Unit serial number' in line:
                     return line.split(':')[1].strip()
-        
+
         # Method 3: Use hdparm
         result = subprocess.run(
             ['hdparm', '-I', device],
@@ -176,15 +176,15 @@ def get_drive_serial(device: str) -> Optional[str]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
                 if 'Serial number' in line:
                     return line.split(':')[1].strip()
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get serial for {device}: {e}")
-    
+
     return None
 
 
@@ -193,18 +193,18 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         result = subprocess.run(
             ['lsblk', '-J', '-d', '-o', 'NAME,SIZE,TYPE,RM,MODEL,VENDOR,HCTL,TRAN,REV'],
             capture_output=True,
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             import json
             data = json.loads(result.stdout)
-            
+
             for device in data.get('blockdevices', []):
                 if f"/dev/{device.get('name')}" == drive or device.get(
                     'name') == drive.split('/')[-1]:
@@ -221,10 +221,10 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                         'serial': '',
                         'mountpoint': '',
                     }
-                    
+
                     # Get serial
                     info['serial'] = get_drive_serial(drive)
-                    
+
                     # Get mount point
                     result2 = subprocess.run(
                         ['findmnt', '-J', drive],
@@ -232,15 +232,15 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                         text=True,
                         timeout=5
                     )
-                    
+
                     if result2.returncode == 0:
                         data2 = json.loads(result2.stdout)
                         if 'filesystems' in data2:
                             info['mountpoint'] = data2['filesystems'][0].get(
                                 'target', '')
-                    
+
                     return info
-        
+
         # Fallback: use block device info
         result = subprocess.run(
             ['blockdev', '--getsize64', drive],
@@ -248,7 +248,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             size = int(result.stdout.strip())
             return {
@@ -257,10 +257,10 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                 'type': 'disk',
                 'removable': False,
             }
-        
+
     except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get drive info for {drive}: {e}")
-    
+
     return None
 
 
@@ -269,7 +269,7 @@ def unmount_drive(drive: str) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         # First, find mount points for the device
         result = subprocess.run(
             ['findmnt', '-J', drive],
@@ -277,11 +277,11 @@ def unmount_drive(drive: str) -> bool:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             import json
             data = json.loads(result.stdout)
-            
+
             if 'filesystems' in data:
                 for fs in data['filesystems']:
                     mount_point = fs.get('target', '')
@@ -297,7 +297,7 @@ def unmount_drive(drive: str) -> bool:
                                 f"Failed to unmount {mount_point}: {result.stderr}")
                             return False
                 return True
-        
+
         # Alternative: try to unmount by device
         result = subprocess.run(
             ['sudo', 'umount', drive],
@@ -305,9 +305,9 @@ def unmount_drive(drive: str) -> bool:
             text=True,
             timeout=10
         )
-        
+
         return result.returncode == 0
-        
+
     except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to unmount {drive}: {e}")
         return False
@@ -318,7 +318,7 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         if mount_point is None:
             # Let system choose mount point
             result = subprocess.run(
@@ -338,7 +338,7 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
                 timeout=10
             )
             return result.returncode == 0
-            
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to mount {drive}: {e}")
         return False
@@ -350,14 +350,14 @@ def format_drive(drive: str, filesystem: str = "vfat",
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         # First, unmount the drive
         unmount_drive(drive)
-        
+
         # Determine partition or whole device
         # For whole device formatting, we might need to use parted or fdisk
         # This is a simplified version that assumes we're formatting a partition
-        
+
         if filesystem.lower() in ['vfat', 'fat32', 'fat16']:
             # Use mkfs.vfat
             result = subprocess.run(
@@ -367,7 +367,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-            
+
         elif filesystem.lower() in ['ext2', 'ext3', 'ext4']:
             fs_type = filesystem.lower()
             result = subprocess.run(
@@ -377,7 +377,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-            
+
         elif filesystem.lower() == 'ntfs':
             result = subprocess.run(
                 ['sudo', 'mkfs.ntfs', '-f', '-L', label, drive],
@@ -386,7 +386,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-            
+
         elif filesystem.lower() == 'exfat':
             result = subprocess.run(
                 ['sudo', 'mkfs.exfat', '-n', label, drive],
@@ -395,10 +395,10 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-        
+
         logger.error(f"Unsupported filesystem type: {filesystem}")
         return False
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to format {drive} as {filesystem}: {e}")
         return False
@@ -440,7 +440,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         if bootloader_type.lower() == 'syslinux':
             # Install syslinux bootloader
 
@@ -453,12 +453,12 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 logger.error(
                     f"Cannot determine parent disk for {drive}; refusing to write MBR")
                 return False
-            
+
             # Check if syslinux is installed
             if not os.path.exists('/usr/lib/syslinux/mbr/mbr.bin'):
                 logger.error("syslinux MBR files not found")
                 return False
-            
+
             # Install MBR
             result = subprocess.run(
                 ['sudo', 'dd', 'if=/usr/lib/syslinux/mbr/mbr.bin',
@@ -467,7 +467,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 text=True,
                 timeout=10
             )
-            
+
             if result.returncode != 0:
                 logger.warning(f"Failed to install MBR: {result.stderr}")
                 # Try alternative location
@@ -483,7 +483,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                         return False
                 else:
                     return False
-            
+
             # Install bootloader to partition
             result = subprocess.run(
                 ['sudo', 'syslinux', drive],
@@ -491,7 +491,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 text=True,
                 timeout=10
             )
-            
+
             if result.returncode != 0:
                 # Try alternative: extlinux
                 result = subprocess.run(
@@ -502,9 +502,9 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 )
                 if result.returncode != 0:
                     return False
-            
+
             return True
-            
+
         elif bootloader_type.lower() == 'grub':
             # Install grub bootloader
             result = subprocess.run(
@@ -515,7 +515,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 timeout=10
             )
             return result.returncode == 0
-            
+
         elif bootloader_type.lower() == 'grub2':
             # Install grub2
             result = subprocess.run(
@@ -526,10 +526,10 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                 timeout=10
             )
             return result.returncode == 0
-        
+
         logger.error(f"Unsupported bootloader type: {bootloader_type}")
         return False
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to install bootloader to {drive}: {e}")
         return False
@@ -540,7 +540,7 @@ def get_volume_label(drive: str) -> Optional[str]:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         # Try blkid first
         result = subprocess.run(
             ['sudo', 'blkid', drive],
@@ -548,12 +548,12 @@ def get_volume_label(drive: str) -> Optional[str]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
                 if 'LABEL=' in line:
                     return line.split('LABEL=')[1].split()[0].strip('"')
-        
+
         # Try e2label for ext filesystem
         result = subprocess.run(
             ['sudo', 'e2label', drive],
@@ -561,10 +561,10 @@ def get_volume_label(drive: str) -> Optional[str]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             return result.stdout.strip()
-        
+
         # Try dosfslabel for FAT filesystem
         result = subprocess.run(
             ['sudo', 'dosfslabel', drive],
@@ -572,13 +572,13 @@ def get_volume_label(drive: str) -> Optional[str]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             return result.stdout.strip()
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get volume label for {drive}: {e}")
-    
+
     return None
 
 
@@ -587,7 +587,7 @@ def set_volume_label(drive: str, label: str) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         # Determine filesystem type
         result = subprocess.run(
             ['sudo', 'blkid', drive],
@@ -595,21 +595,21 @@ def set_volume_label(drive: str, label: str) -> bool:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode != 0:
             logger.error(f"Failed to get filesystem type for {drive}")
             return False
-        
+
         fs_type = None
         for line in result.stdout.split('\n'):
             if 'TYPE=' in line:
                 fs_type = line.split('TYPE=')[1].split()[0].strip('"')
                 break
-        
+
         if not fs_type:
             logger.error(f"Could not determine filesystem type for {drive}")
             return False
-        
+
         # Set label based on filesystem type
         if fs_type in ['vfat', 'fat32', 'fat16']:
             result = subprocess.run(
@@ -619,7 +619,7 @@ def set_volume_label(drive: str, label: str) -> bool:
                 timeout=10
             )
             return result.returncode == 0
-            
+
         elif fs_type in ['ext2', 'ext3', 'ext4']:
             result = subprocess.run(
                 ['sudo', 'e2label', drive, label],
@@ -628,7 +628,7 @@ def set_volume_label(drive: str, label: str) -> bool:
                 timeout=10
             )
             return result.returncode == 0
-            
+
         elif fs_type == 'ntfs':
             result = subprocess.run(
                 ['sudo', 'ntfslabel', drive, label],
@@ -637,10 +637,10 @@ def set_volume_label(drive: str, label: str) -> bool:
                 timeout=10
             )
             return result.returncode == 0
-        
+
         logger.error(f"Unsupported filesystem type for labeling: {fs_type}")
         return False
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to set volume label for {drive}: {e}")
         return False
@@ -651,17 +651,17 @@ def get_device_size(drive: str) -> Optional[int]:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         result = subprocess.run(
             ['blockdev', '--getsize64', drive],
             capture_output=True,
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             return int(result.stdout.strip())
-        
+
         # Fallback: use cat /sys/block/.../size
         if drive.startswith('/dev/'):
             base_device = drive.replace('/dev/', '')
@@ -669,7 +669,7 @@ def get_device_size(drive: str) -> Optional[int]:
             if os.path.exists(sys_path):
                 with open(sys_path, 'r') as f:
                     sector_count = int(f.read().strip())
-                
+
                 # Get sector size
                 sector_size_path = f'/sys/block/{base_device}/queue/hw_sector_size'
                 if os.path.exists(sector_size_path):
@@ -678,10 +678,10 @@ def get_device_size(drive: str) -> Optional[int]:
                     return sector_count * sector_size
                 else:
                     return sector_count * 512  # Default sector size
-        
+
     except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get size for {drive}: {e}")
-    
+
     return None
 
 
@@ -690,7 +690,7 @@ def check_drive_writable(drive: str) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         # Check if device is writable
         result = subprocess.run(
             ['test', '-w', drive],
@@ -699,7 +699,7 @@ def check_drive_writable(drive: str) -> bool:
             timeout=5
         )
         return result.returncode == 0
-        
+
     except _SUBPROCESS_ERRORS:
         return False
 
@@ -719,17 +719,17 @@ def get_mount_point(device: str) -> Optional[str]:
     try:
         if not device.startswith('/dev/'):
             device = f"/dev/{device}"
-        
+
         result = subprocess.run(
             ['findmnt', '-n', '-o', 'TARGET', '--first-only', device],
             capture_output=True,
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             return result.stdout.strip()
-        
+
         # Fallback: use mount command
         result = subprocess.run(['mount'], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
@@ -737,10 +737,10 @@ def get_mount_point(device: str) -> Optional[str]:
                 if device in line:
                     parts = line.split()
                     return parts[2] if len(parts) > 2 else None
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get mount point for {device}: {e}")
-    
+
     return None
 
 
@@ -749,7 +749,7 @@ def is_external_drive(drive: str) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
-        
+
         # Check if device is removable
         result = subprocess.run(
             ['lsblk', '-J', '-d', '-o', 'NAME,RM'],
@@ -757,7 +757,7 @@ def is_external_drive(drive: str) -> bool:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             import json
             data = json.loads(result.stdout)
@@ -765,7 +765,7 @@ def is_external_drive(drive: str) -> bool:
             for device in data.get('blockdevices', []):
                 if device.get('name') == device_name:
                     return device.get('rm', False)
-        
+
         # Check /dev/disk/by-id for usb
         by_id_dir = '/dev/disk/by-id'
         if os.path.exists(by_id_dir):
@@ -777,9 +777,9 @@ def is_external_drive(drive: str) -> bool:
                         return 'usb' in entry.lower() or 'ata' in entry.lower()
                 except OSError:
                     continue
-        
+
         return False
-        
+
     except _SUBPROCESS_PARSE_ERRORS:
         return False
 

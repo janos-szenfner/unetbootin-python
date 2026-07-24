@@ -99,17 +99,17 @@ class AppConfig:
 
 class ConfigManager:
     """Manages application configuration."""
-    
+
     DEFAULT_CONFIG_DIR = ".unetbootin"
     CONFIG_FILE = "config.json"
-    
+
     def __init__(self, config_dir: Optional[str] = None):
         """Initialize the configuration manager."""
         self.config_dir = config_dir or self.get_config_dir()
         self.config_file = os.path.join(self.config_dir, self.CONFIG_FILE)
         self.config = AppConfig()
         self.loaded = False
-    
+
     def get_config_dir(self) -> str:
         """Get the configuration directory path."""
         # Use XDG_CONFIG_HOME on Linux, AppData on Windows, Library on macOS
@@ -132,19 +132,19 @@ class ConfigManager:
                 return os.path.join(xdg_config, self.DEFAULT_CONFIG_DIR)
             return os.path.join(os.path.expanduser(
                 '~'), '.config', self.DEFAULT_CONFIG_DIR)
-    
+
     def ensure_config_dir(self):
         """Ensure the configuration directory exists."""
         if not os.path.exists(self.config_dir):
             os.makedirs(self.config_dir, exist_ok=True)
-    
+
     def load(self) -> AppConfig:
         """Load configuration from file."""
         if self.loaded:
             return self.config
-        
+
         self.ensure_config_dir()
-        
+
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -154,21 +154,21 @@ class ConfigManager:
             except (OSError, json.JSONDecodeError, TypeError) as e:
                 logger.error(f"Failed to load configuration: {e}")
                 # Keep default config
-        
+
         self.loaded = True
         return self.config
-    
+
     def save(self):
         """Save configuration to file."""
         self.ensure_config_dir()
-        
+
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config.to_dict(), f, indent=2)
             logger.info(f"Configuration saved to {self.config_file}")
         except (OSError, TypeError) as e:
             logger.error(f"Failed to save configuration: {e}")
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value (schema field or user-defined key)."""
         if not self.loaded:
@@ -188,7 +188,7 @@ class ConfigManager:
         else:
             self.config.extra[key] = value
         self.save()
-    
+
     def reset(self):
         """Reset configuration to defaults."""
         self.config = AppConfig()

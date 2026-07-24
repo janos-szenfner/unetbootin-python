@@ -12,7 +12,7 @@ a terminal or hardcoded sudo calls.
 Usage:
     # Run a single elevated command
     returncode, stdout, stderr = run_elevated(['mkfs.vfat', '-F32', '/dev/sdb1'])
-    
+
     # Or use the subprocess-like interface
     result = elevated_subprocess.run(['mount', '/dev/sdb1', '/mnt'])
 """
@@ -94,22 +94,22 @@ def run_elevated(
     text: bool = True
 ) -> Tuple[int, str, str]:
     """Run a command with elevated privileges.
-    
+
     This is the main entry point for running privileged operations.
     It uses platform-specific elevation mechanisms:
     - Linux: pkexec (GUI password prompt via PolicyKit)
     - macOS: osascript with Authorization Services (native GUI prompt)
     - Windows: ShellExecute with runas verb (UAC prompt)
-    
+
     Args:
         command: The command and arguments to run
         timeout: Optional timeout in seconds
         capture_output: Whether to capture stdout/stderr
         text: Whether to return strings (True) or bytes (False)
-        
+
     Returns:
         Tuple of (return_code, stdout, stderr)
-        
+
     Raises:
         ElevationNotAvailableError: If elevation is not available
         ElevationCancelledError: If user cancels the elevation prompt
@@ -130,7 +130,7 @@ def run_elevated(
         except (subprocess.SubprocessError, OSError) as e:
             # SubprocessError: Popen/communication errors; OSError: file/exec issues
             return (-1, '', str(e))
-    
+
     # Not elevated, need to elevate
     if _IS_LINUX:
         return _run_elevated_linux(command, timeout, capture_output, text)
@@ -156,7 +156,7 @@ def _run_elevated_linux(
             "PolicyKit/pkexec not available. "
             "Install polkit or run from a terminal with sudo."
         )
-    
+
     # pkexec runs the command directly, so we pass the full command
     # Note: pkexec doesn't capture output by itself, so we need to
     # handle that differently
@@ -167,7 +167,7 @@ def _run_elevated_linux(
             text=text,
             timeout=timeout
         )
-        
+
         # Check for specific pkexec error codes
         if result.returncode == 126:
             # pkexec: Not authorized (user cancelled or wrong password)
@@ -175,9 +175,9 @@ def _run_elevated_linux(
         elif result.returncode == 127:
             # pkexec: The specified command was not found
             raise ElevationError(f"Command not found: {' '.join(command)}")
-        
+
         return (result.returncode, result.stdout or '', result.stderr or '')
-        
+
     except subprocess.TimeoutExpired:
         return (-1, '', 'Elevated command timed out')
     except FileNotFoundError:
@@ -191,18 +191,18 @@ def _run_elevated_macos(
     text: bool
 ) -> Tuple[int, str, str]:
     """Run a command with elevated privileges on macOS using Authorization Services.
-    
+
     Uses osascript to execute the command with administrator privileges.
     This provides a native GUI password prompt.
     """
     import shlex
-    
+
     # Build the shell command
     cmd_str = shlex.join(command)
-    
+
     # Use osascript to run with admin privileges
     script = f'do shell script "{cmd_str}" with administrator privileges'
-    
+
     try:
         result = subprocess.run(
             ['osascript', '-e', script],
@@ -210,7 +210,7 @@ def _run_elevated_macos(
             text=text,
             timeout=timeout
         )
-        
+
         # Check for specific errors
         if result.returncode != 0:
             stderr = result.stderr or ''
@@ -218,9 +218,9 @@ def _run_elevated_macos(
                 raise ElevationCancelledError("User cancelled elevation")
             elif 'not authorized' in stderr:
                 raise ElevationError("Administrator authorization failed")
-        
+
         return (result.returncode, result.stdout or '', result.stderr or '')
-        
+
     except subprocess.TimeoutExpired:
         return (-1, '', 'Elevated command timed out')
     except FileNotFoundError:
@@ -234,23 +234,23 @@ def _run_elevated_windows(
     text: bool
 ) -> Tuple[int, str, str]:
     """Run a command with elevated privileges on Windows using UAC.
-    
+
     Uses ShellExecute with runas verb to trigger UAC elevation.
     """
     import ctypes
     from ctypes import wintypes
-    
+
     # ShellExecuteW constants
     SEE_MASK_NOCLOSEPROCESS = 0x00000040
     SEE_MASK_WAITFORINPUTIDLE = 0x00000200
     SW_SHOWNORMAL = 1
-    
+
     # Build command line
     cmd_line = ' '.join(command)
-    
+
     # Initialize process handle
     hProcess = wintypes.HANDLE()
-    
+
     try:
         # Call ShellExecuteW with runas verb
         ret = ctypes.windll.shell32.ShellExecuteW(
@@ -263,7 +263,7 @@ def _run_elevated_windows(
             SEE_MASK_NOCLOSEPROCESS | SEE_MASK_WAITFORINPUTIDLE,
             ctypes.byref(hProcess)
         )
-        
+
         # Check return value
         if ret <= 32:
             # Error occurred
@@ -278,7 +278,7 @@ def _run_elevated_windows(
                 raise ElevationError("Access denied")
             else:
                 raise ElevationError(f"ShellExecute failed with error code {ret}")
-        
+
         # Wait for process to complete
         if timeout is not None:
             wait_result = ctypes.windll.kernel32.WaitForSingleObject(
@@ -288,15 +288,15 @@ def _run_elevated_windows(
                 return (-1, '', 'Elevated command timed out')
         else:
             ctypes.windll.kernel32.WaitForSingleObject(hProcess, 0xFFFFFFFF)
-        
+
         # Get exit code
         exit_code = wintypes.DWORD()
         ctypes.windll.kernel32.GetExitCodeProcess(hProcess, ctypes.byref(exit_code))
-        
+
         # For Windows, we can't easily capture output from ShellExecute
         # So we return empty strings for stdout/stderr
         return (exit_code.value, '', '')
-        
+
     except (OSError, ctypes.ArgumentError, ValueError) as e:
         # OSError: system call failures; ArgumentError/ValueError: ctypes issues
         raise ElevationError(f"Failed to run elevated command: {e}")
@@ -315,10 +315,10 @@ def create_elevated_process(
     timeout: Optional[float] = None
 ) -> subprocess.Popen:
     """Create an elevated subprocess that can be communicated with.
-    
+
     This is useful for commands that need to maintain a connection
     with the elevated process for streaming output.
-    
+
     Note: This is more limited than run_elevated() and may not work
     on all platforms for all commands.
     """
@@ -329,7 +329,7 @@ def create_elevated_process(
             stderr=subprocess.PIPE,
             text=True
         )
-    
+
     raise NotImplementedError(
         "Interactive elevated processes not yet supported on non-elevated contexts"
     )
@@ -340,34 +340,34 @@ def run_elevated_subprocess(
     **kwargs: Any
 ) -> subprocess.CompletedProcess:
     """Drop-in replacement for subprocess.run that handles privilege elevation.
-    
+
     This function can be used as a replacement for subprocess.run calls that
     currently use sudo. It will:
     - If already elevated: run the command directly
     - If not elevated: use platform-specific elevation (pkexec, osascript, UAC)
-    
+
     Example:
         # Instead of: subprocess.run(['sudo', 'mkfs.vfat', ...])
         # Use: run_elevated_subprocess(['mkfs.vfat', ...])
-        
+
     Note: This doesn't prepend 'sudo' - pass the command without sudo.
     """
     if is_elevated():
         return subprocess.run(args, **kwargs)
-    
+
     # Not elevated - use our elevation mechanism
     capture_output = kwargs.get('capture_output', False)
     text = kwargs.get('text', False)
     timeout = kwargs.get('timeout', None)
-    
+
     try:
         returncode, stdout, stderr = run_elevated(
-            args, 
+            args,
             timeout=timeout,
             capture_output=capture_output,
             text=text
         )
-        
+
         # Create a mock CompletedProcess to match subprocess.run API
         class MockCompletedProcess:
             def __init__(self, args, returncode, stdout, stderr):
@@ -375,18 +375,18 @@ def run_elevated_subprocess(
                 self.returncode = returncode
                 self.stdout = stdout if text else stdout.encode() if stdout else b''
                 self.stderr = stderr if text else stderr.encode() if stderr else b''
-            
+
             def check_returncode(self):
                 if self.returncode != 0:
                     raise subprocess.CalledProcessError(
                         self.returncode, self.args, self.stdout, self.stderr
                     )
-            
+
             def __repr__(self):
                 return f"CompletedProcess(args={self.args!r}, returncode={self.returncode})"
-        
+
         return MockCompletedProcess(args, returncode, stdout, stderr)
-        
+
     except (ElevationError, ElevationNotAvailableError) as e:
         # Return a failed CompletedProcess
         class MockCompletedProcess:
@@ -395,21 +395,21 @@ def run_elevated_subprocess(
                 self.returncode = -1
                 self.stdout = ''
                 self.stderr = str(e)
-            
+
             def check_returncode(self):
                 raise subprocess.CalledProcessError(
                     self.returncode, self.args, self.stdout, self.stderr
                 )
-        
+
         return MockCompletedProcess(args, -1, '', str(e))
 
 
 def ensure_elevated() -> None:
     """Ensure the application is running with elevated privileges.
-    
+
     If not elevated, attempts to relaunch with elevation.
     If relaunch is not possible, raises an exception.
-    
+
     Raises:
         ElevationNotAvailableError: If elevation is not available
         ElevationCancelledError: If user cancels
@@ -417,17 +417,17 @@ def ensure_elevated() -> None:
     """
     if is_elevated():
         return
-    
+
     if not check_elevation_availability():
         raise ElevationNotAvailableError(
             "Privilege elevation not available on this system. "
             "Please run from a terminal with sudo or as administrator."
         )
-    
+
     # Try to relaunch with elevation
     import sys
     import shlex
-    
+
     if _IS_LINUX:
         # On Linux, we use pkexec to relaunch
         try:
@@ -441,7 +441,7 @@ def ensure_elevated() -> None:
             if e.returncode == 126:
                 raise ElevationCancelledError("User cancelled elevation")
             raise ElevationError(f"Failed to elevate: {e}")
-    
+
     elif _IS_MACOS:
         # On macOS, use osascript to relaunch
         cmd_str = shlex.join(sys.argv)
@@ -453,7 +453,7 @@ def ensure_elevated() -> None:
             sys.exit(0)
         except subprocess.CalledProcessError:
             raise ElevationError("Failed to elevate privileges")
-    
+
     elif _IS_WINDOWS:
         # On Windows, we can't easily relaunch ourselves with UAC
         # This would need a manifest and special handling
@@ -474,19 +474,19 @@ def ensure_elevated() -> None:
 
 def install_sudo_interceptor() -> None:
     """Install a monkey-patch that intercepts subprocess.run calls with sudo.
-    
+
     This allows existing code that uses subprocess.run(['sudo', ...]) to work
     with the new elevation system without modifying every call site.
-    
+
     Usage:
         from unetbootin.core.elevation import install_sudo_interceptor
         install_sudo_interceptor()
-        
+
         # Now subprocess.run(['sudo', 'mkfs.vfat', ...]) will use elevation
     """
     original_run = subprocess.run
     original_Popen = subprocess.Popen
-    
+
     def patched_run(args, **kwargs):
         """Patched subprocess.run that handles sudo commands."""
         # Check if this is a sudo command
@@ -496,24 +496,24 @@ def install_sudo_interceptor() -> None:
             if not actual_cmd:
                 # Just 'sudo' with no command - pass through
                 return original_run(args, **kwargs)
-            
+
             logger.debug(f"Intercepted sudo command: {actual_cmd}")
             return run_elevated_subprocess(actual_cmd, **kwargs)
-        
+
         return original_run(args, **kwargs)
-    
+
     def patched_Popen(args, **kwargs):
         """Patched subprocess.Popen that handles sudo commands."""
         if args and len(args) > 0 and args[0] == 'sudo':
             actual_cmd = args[1:]
             if not actual_cmd:
                 return original_Popen(args, **kwargs)
-            
+
             logger.debug(f"Intercepted sudo Popen: {actual_cmd}")
             # For Popen, we need to handle it differently
             # For now, just use run and return a mock
             result = run_elevated_subprocess(actual_cmd, **kwargs)
-            
+
             # Create a mock Popen that returns the result
             class MockPopen:
                 def __init__(self, result):
@@ -521,22 +521,22 @@ def install_sudo_interceptor() -> None:
                     self.stdout = result.stdout
                     self.stderr = result.stderr
                     self.args = args
-                
+
                 def communicate(self, input=None, timeout=None):
                     return (self.stdout, self.stderr)
-                
+
                 def wait(self, timeout=None):
                     return self.returncode
-                
+
                 def poll(self):
                     return self.returncode
-            
+
             return MockPopen(result)
-        
+
         return original_Popen(args, **kwargs)
-    
+
     # Apply the patches
     subprocess.run = patched_run
     subprocess.Popen = patched_Popen
-    
+
     logger.info("Sudo interceptor installed - subprocess.run(['sudo', ...]) will use elevation")

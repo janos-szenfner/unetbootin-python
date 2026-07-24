@@ -33,25 +33,25 @@ _SYSLINUX_MODULES = ('menu.c32', 'vesamenu.c32')
 
 class USBInstaller:
     """Handles USB installation process."""
-    
+
     def __init__(self):
         """Initialize the USB installer."""
         self.worker = None
         self.platform = sys.platform
-    
+
     def install_sync_threaded(self, source_dir: str, target_device: str,
                                        install_params: Optional[Dict[str, Any]] = None,
                                        progress_callback: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
         """Install to USB device in a thread (for use with PySimpleGUI).
-        
+
         This method runs the synchronous installation in a separate thread to avoid
         blocking the PySimpleGUI event loop.
         """
         import threading
-        
+
         result = [None, None]
         exception = [None]
-        
+
         def install_wrapper():
             """Wrapper function to run installation in a thread."""
             try:
@@ -60,16 +60,16 @@ class USBInstaller:
                 )
             except Exception as e:  # noqa: BLE001 - transparently re-raised on caller thread
                 exception[0] = e
-        
+
         thread = threading.Thread(target=install_wrapper, daemon=True)
         thread.start()
         thread.join()
-        
+
         if exception[0]:
             raise exception[0]
-        
+
         return result[0], result[1]
-    
+
     def install_sync(self, source_dir: str, target_device: str,
                     install_params: Optional[Dict[str, Any]] = None,
                     progress_callback: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
@@ -78,7 +78,7 @@ class USBInstaller:
             params = install_params or {}
             install_type = params.get('install_type', 'distribution')
             drive_type = params.get('drive_type', 'USB Drive')
-            
+
             # Progress stages
             stages = [
                 ('Preparing', 10),
@@ -86,10 +86,10 @@ class USBInstaller:
                 ('Installing bootloader', 20),
                 ('Cleaning up', 10),
             ]
-            
+
             total_progress = 0
             current_stage = 0
-            
+
             def update_progress(percent_in_stage: int):
                 """Update overall progress based on current stage progress."""
                 nonlocal total_progress, current_stage
@@ -100,14 +100,14 @@ class USBInstaller:
                 ) + stage_progress
                 if progress_callback:
                     progress_callback(min(total_progress, 99))
-            
+
             # Stage 1: Prepare
             update_progress(0)
             if not self._prepare_installation(source_dir, target_device, params):
                 return False, "Preparation failed"
             update_progress(100)
             current_stage += 1
-            
+
             # Stage 2: Copy files
             update_progress(0)
             if not self._copy_files_to_device(
@@ -115,33 +115,33 @@ class USBInstaller:
                 return False, "File copying failed"
             update_progress(100)
             current_stage += 1
-            
+
             # Stage 3: Install bootloader
             update_progress(0)
             if not self._install_bootloader(target_device, params, update_progress):
                 return False, "Bootloader installation failed"
             update_progress(100)
             current_stage += 1
-            
+
             # Stage 4: Clean up
             update_progress(0)
             self._cleanup_installation(source_dir, target_device, params)
             update_progress(100)
-            
+
             if progress_callback:
                 progress_callback(100)
-            
+
             return True, "Installation completed successfully"
-            
+
         except (OSError, subprocess.SubprocessError) as e:
             logger.error(f"Installation failed: {e}")
             return False, str(e)
-    
+
     def _prepare_installation(self, source_dir: str, target_device: str,
                               params: Dict[str, Any]) -> bool:
         """Prepare for installation."""
         logger.info("Preparing installation")
-        
+
         try:
             # HARD SAFETY GATE (last line of defense): refuse to touch anything
             # that is not a proven removable/external USB drive. This runs at
@@ -164,16 +164,16 @@ class USBInstaller:
                 if not self._unmount_device(target_device):
                     logger.error(f"Failed to unmount {target_device}")
                     return False
-            
+
             # Format the device with FAT32 filesystem
             logger.info(f"Formatting {target_device} with FAT32")
             if not self._format_device(target_device):
                 logger.error(f"Failed to format {target_device}")
                 return False
-            
+
             # Create temporary working directory
             params['temp_dir'] = tempfile.mkdtemp(prefix='unetbootin_install_')
-            
+
             # Create and mount the device to a temporary mount point
             mount_point = tempfile.mkdtemp(prefix='unetbootin_mount_')
             logger.info(f"Mounting {target_device} to {mount_point}")
@@ -183,16 +183,16 @@ class USBInstaller:
                 shutil.rmtree(params['temp_dir'], ignore_errors=True)
                 shutil.rmtree(mount_point, ignore_errors=True)
                 return False
-            
+
             # Store mount point in params for use during file copying
             params['mount_point'] = mount_point
-            
+
             return True
-            
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Preparation failed: {e}")
             return False
-    
+
     def _copy_files_to_device(self, source_dir: str, target_device: str,
                               params: Dict[str, Any],
                               progress_callback: Optional[Callable[[int], None]] = None) -> bool:
@@ -201,7 +201,7 @@ class USBInstaller:
         # back to raw device
         actual_target = params.get('mount_point', target_device)
         logger.info(f"Copying files from {source_dir} to {actual_target}")
-        
+
         try:
             # Get list of files to copy
             files_to_copy = self._get_files_to_copy(source_dir, params)
@@ -246,28 +246,28 @@ class USBInstaller:
         except _FILE_COPY_ERRORS as e:
             logger.error(f"File copying failed: {e}")
             return False
-    
+
     def _install_bootloader(self, target_device: str,
                             params: Dict[str, Any],
                             progress_callback: Optional[Callable[[int], None]] = None) -> bool:
         """Install bootloader to target device."""
         logger.info(f"Installing bootloader to {target_device}")
-        
+
         try:
             install_type = params.get('install_type', 'distribution')
             drive_type = params.get('drive_type', 'USB Drive')
             enable_uefi_only = params.get('enable_uefi_only', False)
             enable_secure_boot = params.get('enable_secure_boot', False)
-            
+
             # Store boot options in params for config file generation
             boot_options = params.get('boot_options', '')
             params['boot_options'] = boot_options
-            
+
             if enable_uefi_only:
                 logger.info("UEFI-only installation mode enabled")
             if enable_secure_boot:
                 logger.info("Secure Boot support enabled")
-            
+
             if self.platform == 'win32':
                 return self._install_bootloader_windows(
                     target_device, params, enable_uefi_only, enable_secure_boot)
@@ -277,16 +277,16 @@ class USBInstaller:
             else:  # Linux and other Unix
                 return self._install_bootloader_linux(
                     target_device, params, enable_uefi_only, enable_secure_boot)
-            
+
         except (OSError, subprocess.SubprocessError) as e:
             logger.error(f"Bootloader installation failed: {e}")
             return False
-    
+
     def _cleanup_installation(self, source_dir: str, target_device: str,
                               params: Dict[str, Any]):
         """Clean up after installation."""
         logger.info("Cleaning up installation")
-        
+
         try:
             # Unmount the device if it was mounted
             mount_point = params.get('mount_point')
@@ -320,22 +320,22 @@ class USBInstaller:
                         capture_output=True,
                         timeout=5
                     )
-                
+
                 # Remove the mount point directory
                 shutil.rmtree(mount_point, ignore_errors=True)
-            
+
             # Remove temporary directory
             temp_dir = params.get('temp_dir')
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
-            
+
             # Sync filesystem
             if self.platform != 'win32':
                 subprocess.run(['sync'], timeout=10)
-            
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Cleanup failed: {e}")
-    
+
     def _validate_target_device(self, device: str) -> bool:
         """Validate target device."""
         try:
@@ -352,7 +352,7 @@ class USBInstaller:
         except OSError as e:
             logger.error(f"Device validation failed: {e}")
             return False
-    
+
     def _is_device_mounted(self, device: str) -> bool:
         """Check if device is mounted."""
         try:
@@ -375,9 +375,9 @@ class USBInstaller:
                     return device in result.stdout
         except _SUBPROCESS_ERRORS:
             pass
-        
+
         return False
-    
+
     def _unmount_device(self, device: str) -> bool:
         """Unmount device."""
         try:
@@ -402,7 +402,7 @@ class USBInstaller:
             else:  # Linux
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
-                
+
                 # Find mount point
                 result = subprocess.run(
                     ['mount'],
@@ -419,9 +419,9 @@ class USBInstaller:
                             return result.returncode == 0
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to unmount {device}: {e}")
-        
+
         return False
-    
+
     def _macos_whole_disk(self, device: str) -> str:
         """Resolve the whole-disk node (e.g. /dev/disk4) via ``diskutil info -plist``.
 
@@ -477,14 +477,14 @@ class USBInstaller:
 
     def _format_device(self, device: str) -> bool:
         """Format the target device with FAT32 filesystem.
-        
+
         Uses the platform-specific format_drive function for consistency.
         """
         logger.info(f"Formatting device {device}")
 
         try:
             from unetbootin.platform import format_drive
-            
+
             # Normalize device for platform function
             if self.platform == 'win32':
                 # Windows: ensure drive letter format (e.g., 'E:')
@@ -492,18 +492,18 @@ class USBInstaller:
                     device = f"{device}:"
                 elif not device.endswith(':'):
                     device = f"{device}:"
-            
+
             # Use platform-specific formatting
             return format_drive(device, filesystem="FAT32", label="UNETBOOTIN")
-                
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to format device {device}: {e}")
             return False
-    
+
     def _mount_device(self, device: str, mount_point: str) -> bool:
         """Mount the target device to the specified mount point."""
         logger.info(f"Mounting {device} to {mount_point}")
-        
+
         try:
             if self.platform == 'win32':
                 # Windows: drives are already accessible via drive letters
@@ -544,10 +544,10 @@ class USBInstaller:
             else:  # Linux
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
-                
+
                 if not os.path.exists(mount_point):
                     os.makedirs(mount_point, exist_ok=True)
-                
+
                 result = subprocess.run(
                     ['sudo', 'mount', device, mount_point],
                     capture_output=True,
@@ -555,30 +555,30 @@ class USBInstaller:
                     timeout=10
                 )
                 return result.returncode == 0
-                
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to mount device {device} to {mount_point}: {e}")
             return False
-    
+
     def _get_files_to_copy(self, source_dir: str, params: Dict[str, Any]) -> List[str]:
         """Get list of files to copy from source directory."""
         files_to_copy = []
-        
+
         # Walk through source directory
         for root, dirs, files in os.walk(source_dir):
             for file in files:
                 # Skip hidden files and directories
                 if file.startswith('.'):
                     continue
-                
+
                 # Get relative path
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, source_dir)
                 files_to_copy.append(rel_path)
-        
+
         # Filter by install type
         install_type = params.get('install_type', 'distribution')
-        
+
         if install_type == 'distribution':
             # For distributions, we might want to exclude certain files
             exclude_patterns = [
@@ -587,7 +587,7 @@ class USBInstaller:
                 r'\.Spotlight',
                 r'\.fseventsd',
             ]
-            
+
             filtered_files = []
             for file_path in files_to_copy:
                 exclude = False
@@ -597,28 +597,28 @@ class USBInstaller:
                         break
                 if not exclude:
                     filtered_files.append(file_path)
-            
+
             return filtered_files
-        
+
         return files_to_copy
-    
-    def _install_bootloader_windows(self, device: str, params: Dict[str, Any], 
-                                       enable_uefi_only: bool = False, 
+
+    def _install_bootloader_windows(self, device: str, params: Dict[str, Any],
+                                       enable_uefi_only: bool = False,
                                        enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Windows."""
         logger.info(
             f"Installing bootloader for Windows on {device} "
             f"(UEFI-only: {enable_uefi_only}, "
             f"Secure Boot: {enable_secure_boot})")
-        
+
         try:
             # Windows: use external tools like syslinux, grub4dos, etc.
             # This is a simplified implementation
-            
+
             # For Windows, we would typically:
             # 1. Copy bootloader files to the USB drive
             # 2. Run a tool to make it bootable
-            
+
             if enable_uefi_only:
                 logger.info("Configuring for UEFI-only installation")
                 # For UEFI-only, we need to ensure the device has an EFI partition
@@ -627,13 +627,13 @@ class USBInstaller:
                     logger.error(
                         "Failed to create EFI partition for UEFI-only installation")
                     return False
-                
+
                 if enable_secure_boot:
                     # For Secure Boot, we need signed bootloader files
                     if not self._install_secure_boot_files(device):
                         logger.error("Failed to install Secure Boot files")
                         return False
-                
+
                 # Use EFISYS for UEFI bootloader installation
                 efisys_path = self._find_executable('efisys')
                 if efisys_path:
@@ -644,7 +644,7 @@ class USBInstaller:
                         capture_output=True, text=True, timeout=60
                     )
                     return result.returncode == 0
-            
+
             # Default BIOS/UEFI dual boot installation.
             # Prefer the BUNDLED syslinux.exe; fall back to a system one.
             bundled = bootloader_path('syslinux.exe')
@@ -672,20 +672,20 @@ class USBInstaller:
                 "Windows bootloader installation requires syslinux.exe "
                 "(bundled binary missing and none found on PATH)")
             return False
-            
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Windows bootloader installation failed: {e}")
             return False
-    
-    def _install_bootloader_macos(self, device: str, params: Dict[str, Any], 
-                                    enable_uefi_only: bool = False, 
+
+    def _install_bootloader_macos(self, device: str, params: Dict[str, Any],
+                                    enable_uefi_only: bool = False,
                                     enable_secure_boot: bool = False) -> bool:
         """Install bootloader on macOS."""
         logger.info(
             f"Installing bootloader for macOS on {device} "
             f"(UEFI-only: {enable_uefi_only}, "
             f"Secure Boot: {enable_secure_boot})")
-        
+
         try:
             mount_point = params.get('mount_point')
 
@@ -741,30 +741,30 @@ class USBInstaller:
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"macOS bootloader installation failed: {e}")
             return False
-    
-    def _install_bootloader_linux(self, device: str, params: Dict[str, Any], 
-                                     enable_uefi_only: bool = False, 
+
+    def _install_bootloader_linux(self, device: str, params: Dict[str, Any],
+                                     enable_uefi_only: bool = False,
                                      enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Linux."""
         logger.info(
             f"Installing bootloader for Linux on {device} "
             f"(UEFI-only: {enable_uefi_only}, "
             f"Secure Boot: {enable_secure_boot})")
-        
+
         try:
             # Linux: use various tools depending on what's available
-            
+
             install_type = params.get('install_type', 'distribution')
             drive_type = params.get('drive_type', 'USB Drive')
-            
+
             # For UEFI-only installation
             if enable_uefi_only:
                 logger.info("Configuring UEFI-only bootloader on Linux")
-                
+
                 # For UEFI-only, we need to install to the EFI partition
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
-                
+
                 # Try to find EFI partition (usually partition 1)
                 efi_partition = device
                 if not device.endswith('1') and not device.endswith('p1'):
@@ -774,34 +774,34 @@ class USBInstaller:
                         if os.path.exists(test_partition):
                             efi_partition = test_partition
                             break
-                
+
                 # Create EFI directory structure
                 efi_mount = tempfile.mkdtemp(prefix='unetbootin_efi_')
                 if self._mount_device(efi_partition, efi_mount):
                     try:
                         efi_boot_dir = os.path.join(efi_mount, 'EFI', 'BOOT')
                         os.makedirs(efi_boot_dir, exist_ok=True)
-                        
+
                         # Copy bootloader files
                         self._copy_efi_bootloader_files(efi_boot_dir)
-                        
+
                         if enable_secure_boot:
                             # Install Secure Boot files
                             if not self._install_secure_boot_files_linux(efi_boot_dir):
                                 logger.error("Failed to install Secure Boot files")
                                 return False
-                        
+
                         # Install UEFI bootloader
                         grub_efi_install_path = self._find_executable('grub-install')
                         if grub_efi_install_path:
                             result = subprocess.run(
-                                ['sudo', grub_efi_install_path, '--target=x86_64-efi', 
+                                ['sudo', grub_efi_install_path, '--target=x86_64-efi',
                                  '--efi-directory=' + efi_mount, '--bootloader-id=UNetbootin', device],
                                 capture_output=True, text=True, timeout=30
                             )
                             if result.returncode == 0:
                                 return True
-                        
+
                         # Try using efibootmgr
                         efibootmgr_path = self._find_executable('efibootmgr')
                         if efibootmgr_path:
@@ -810,10 +810,10 @@ class USBInstaller:
                     finally:
                         self._unmount_device(efi_partition)
                         shutil.rmtree(efi_mount, ignore_errors=True)
-                
+
                 logger.error("UEFI-only installation failed - no suitable method found")
                 return False
-            
+
             # For USB drives with BIOS/UEFI dual support
             if drive_type == 'USB Drive':
                 if not device.startswith('/dev/'):
@@ -865,7 +865,7 @@ class USBInstaller:
                         capture_output=True, text=True, timeout=60
                     )
                     return result.returncode == 0
-            
+
             # For Hard Disk installation
             elif drive_type == 'Hard Disk':
                 # Install to hard disk
@@ -873,7 +873,7 @@ class USBInstaller:
                 if grub_install_path:
                     if not device.startswith('/dev/'):
                         device = f"/dev/{device}"
-                    
+
                     # Install grub to MBR
                     result = subprocess.run(
                         ['sudo', grub_install_path, '--target=i386-pc',
@@ -881,15 +881,15 @@ class USBInstaller:
                         capture_output=True, text=True, timeout=60
                     )
                     return result.returncode == 0
-            
+
             logger.error("No suitable bootloader installation method found "
                          "(install syslinux, extlinux or grub)")
             return False
-            
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Linux bootloader installation failed: {e}")
             return False
-    
+
     def _find_executable(self, name: str) -> Optional[str]:
         """Find an executable in the system PATH."""
         try:
@@ -903,7 +903,7 @@ class USBInstaller:
                     return path
         except _SUBPROCESS_ERRORS:
             pass
-        
+
         # Try common locations
         common_locations = [
             '/usr/bin',
@@ -914,7 +914,7 @@ class USBInstaller:
             '/usr/local/sbin',
             '/opt',
         ]
-        
+
         for location in common_locations:
             full_path = os.path.join(location, name)
             if os.path.exists(full_path) and os.access(full_path, os.X_OK):
@@ -993,7 +993,7 @@ class USBInstaller:
             kernel = params.get('kernel', 'vmlinuz')
             initrd = params.get('initrd', 'initrd.img')
             boot_options = params.get('boot_options', '')
-            
+
             # Create syslinux.cfg content
             cfg_content = f"""UI menu.c32
 MENU TITLE UNetbootin
@@ -1019,18 +1019,18 @@ LABEL poweroff
     APPEND poweroff
     MENU LABEL Power Off
 """
-            
+
             # Write to file
             syslinux_cfg_path = os.path.join(target_device, 'syslinux.cfg')
             with open(syslinux_cfg_path, 'w') as f:
                 f.write(cfg_content)
-            
+
             return True
-            
+
         except OSError as e:
             logger.error(f"Failed to create syslinux.cfg: {e}")
             return False
-    
+
     def create_grub_cfg(self, target_device: str, params: Dict[str, Any]) -> bool:
         """Create grub configuration file."""
         try:
@@ -1041,7 +1041,7 @@ LABEL poweroff
             initrd = params.get('initrd', 'initrd.img')
             boot_options = params.get('boot_options', '')
             enable_secure_boot = params.get('enable_secure_boot', False)
-            
+
             # Create grub.cfg content
             grub_cfg_content = f"""set default="{distro}"
 set timeout=10
@@ -1063,37 +1063,37 @@ menuentry "Power Off" {{
     halt
 }}
 """
-            
+
             # For Secure Boot, we might need additional configuration
             if enable_secure_boot:
                 grub_cfg_content += """
 # Secure Boot configuration
 set check_signatures=enforce
 """
-            
+
             # Write to file
             grub_cfg_path = os.path.join(target_device, 'grub.cfg')
             with open(grub_cfg_path, 'w') as f:
                 f.write(grub_cfg_content)
-            
+
             return True
-            
+
         except OSError as e:
             logger.error(f"Failed to create grub.cfg: {e}")
             return False
-    
+
     def _ensure_efi_partition(self, device: str) -> bool:
         """
         Ensure the device has an EFI partition.
-        
+
         Args:
             device: Device path to check
-            
+
         Returns:
             True if device has EFI partition or check passes, False otherwise
         """
         logger.info(f"Checking for EFI partition on {device}")
-        
+
         try:
             if self.platform == 'win32':
                 # On Windows, use diskpart or other tools
@@ -1114,7 +1114,7 @@ set check_signatures=enforce
                 # On Linux, check partition type using blkid or lsblk
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
-                
+
                 result = subprocess.run(
                     ['sudo', 'blkid', device],
                     capture_output=True, text=True, timeout=10
@@ -1122,7 +1122,7 @@ set check_signatures=enforce
                 if result.returncode == 0:
                     # Check for EFI system partition type
                     return 'TYPE="vfat"' in result.stdout and 'EFI' in result.stdout
-                
+
                 # Alternative: check lsblk output
                 result = subprocess.run(
                     ['lsblk', '-f', device],
@@ -1130,37 +1130,37 @@ set check_signatures=enforce
                 )
                 if result.returncode == 0:
                     return 'vfat' in result.stdout.lower()
-            
+
             return True  # Assume it's okay for now
-            
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to check EFI partition: {e}")
             return True  # Don't fail the installation, just proceed
-    
+
     def _copy_efi_bootloader_files(self, efi_dir: str):
         """
         Copy EFI bootloader files to the EFI directory.
-        
+
         Args:
             efi_dir: Path to the EFI directory where files should be copied
         """
         logger.info(f"Copying EFI bootloader files to {efi_dir}")
-        
+
         try:
             # Common EFI bootloader files
             efi_files = [
                 '/usr/lib/grub/x86_64-efi/core.efi',
                 '/usr/lib/grub/x86_64-efi/grubx64.efi',
             ]
-            
+
             # Also look for syslinux EFI files
             syslinux_efi_files = [
                 '/usr/lib/syslinux/efi64/ldlinux.e64',
                 '/usr/lib/syslinux/efi64/syslinux.efi',
             ]
-            
+
             all_files = efi_files + syslinux_efi_files
-            
+
             for src_file in all_files:
                 if os.path.exists(src_file):
                     dest_file = os.path.join(efi_dir, os.path.basename(src_file))
@@ -1169,13 +1169,13 @@ set check_signatures=enforce
                         logger.info(f"Copied {src_file} to {dest_file}")
                     except _FILE_COPY_ERRORS as e:
                         logger.warning(f"Failed to copy {src_file}: {e}")
-            
+
             # Also copy shim for Secure Boot if available
             shim_files = [
                 '/usr/lib/shim/shimx64.efi',
                 '/usr/share/shim/shimx64.efi',
             ]
-            
+
             for src_file in shim_files:
                 if os.path.exists(src_file):
                     dest_file = os.path.join(efi_dir, os.path.basename(src_file))
@@ -1184,48 +1184,48 @@ set check_signatures=enforce
                         logger.info(f"Copied {src_file} to {dest_file}")
                     except _FILE_COPY_ERRORS as e:
                         logger.warning(f"Failed to copy {src_file}: {e}")
-                        
+
         except _FILE_COPY_ERRORS as e:
             logger.error(f"Failed to copy EFI files: {e}")
-    
+
     def _install_secure_boot_files_linux(self, efi_dir: str) -> bool:
         """
         Install Secure Boot files for Linux.
-        
+
         Args:
             efi_dir: Path to the EFI directory
-            
+
         Returns:
             True if Secure Boot files were installed successfully
         """
         logger.info(f"Installing Secure Boot files for Linux in {efi_dir}")
-        
+
         try:
             # Copy shim and signed grub files
             shim_locations = [
                 '/usr/lib/shim/shimx64.efi',
                 '/usr/share/shim/shimx64.efi',
             ]
-            
+
             for shim_path in shim_locations:
                 if os.path.exists(shim_path):
                     try:
                         shutil.copy2(shim_path, os.path.join(efi_dir, 'shimx64.efi'))
                         logger.info(f"Copied Secure Boot shim from {shim_path}")
-                        
+
                         # Also copy mmx64.efi if available
                         mm_path = shim_path.replace('shimx64.efi', 'mmx64.efi')
                         if os.path.exists(mm_path):
                             shutil.copy2(mm_path, os.path.join(efi_dir, 'mmx64.efi'))
-                        
+
                         return True
                     except _FILE_COPY_ERRORS as e:
                         logger.warning(f"Failed to copy shim: {e}")
-            
+
             # If no shim found, try other signed bootloaders
             logger.info("No shim found, Secure Boot may not work")
             return True  # Don't fail, just warn
-            
+
         except _FILE_COPY_ERRORS as e:
             logger.error(f"Failed to install Secure Boot files: {e}")
             return False
@@ -1236,7 +1236,7 @@ set check_signatures=enforce
 
         Args:
             device: Device path to install Secure Boot files to
-            
+
         Returns:
             True if Secure Boot files were installed successfully
         """
@@ -1268,7 +1268,7 @@ set check_signatures=enforce
 
         Args:
             efi_dir: Path to the EFI directory where files should be copied
-            
+
         Returns:
             True if Secure Boot files were copied successfully
         """
@@ -1314,16 +1314,16 @@ set check_signatures=enforce
 
 class AsyncUSBInstaller:
     """Async USB installer for non-blocking I/O operations.
-    
+
     This class provides async/await compatible methods for USB installation,
     which can be used with asyncio event loops. It runs the installation in a
     thread pool executor since most filesystem operations are synchronous.
     """
-    
+
     def __init__(self):
         """Initialize the async installer."""
         self.platform = sys.platform
-    
+
     async def install_async(
         self,
         source_dir: str,
@@ -1332,21 +1332,21 @@ class AsyncUSBInstaller:
         progress_callback: Optional[Callable[[int], None]] = None
     ) -> Tuple[bool, str]:
         """Install to USB device asynchronously.
-        
+
         Args:
             source_dir: Source directory containing files to install
             target_device: Target device path (e.g., /dev/sdb or D:)
             install_params: Optional installation parameters
             progress_callback: Optional callback for progress (0-100)
-            
+
         Returns:
             Tuple of (success: bool, message: str)
         """
         logger.info(f"Async installing from {source_dir} to {target_device}")
-        
+
         loop = asyncio.get_event_loop()
         installer = USBInstaller()
-        
+
         # Run sync installation in executor
         return await loop.run_in_executor(
             None,
@@ -1357,7 +1357,7 @@ class AsyncUSBInstaller:
                 progress_callback=progress_callback
             )
         )
-    
+
     async def format_device_async(self, device: str) -> bool:
         """Format device asynchronously."""
         loop = asyncio.get_event_loop()
@@ -1367,7 +1367,7 @@ class AsyncUSBInstaller:
             installer._format_device,
             device
         )
-    
+
     async def mount_device_async(self, device: str, mount_point: str) -> bool:
         """Mount device asynchronously."""
         loop = asyncio.get_event_loop()
@@ -1377,7 +1377,7 @@ class AsyncUSBInstaller:
             installer._mount_device,
             device, mount_point
         )
-    
+
     async def copy_files_to_device_async(
         self,
         source_dir: str,
@@ -1393,7 +1393,7 @@ class AsyncUSBInstaller:
             installer._copy_files_to_device,
             source_dir, target_device, params, progress_callback
         )
-    
+
     async def install_bootloader_async(
         self,
         target_device: str,
@@ -1408,7 +1408,7 @@ class AsyncUSBInstaller:
             installer._install_bootloader,
             target_device, params, progress_callback
         )
-    
+
     async def cleanup_installation_async(
         self,
         source_dir: str,

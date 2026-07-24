@@ -37,7 +37,7 @@ LANGUAGE_CODE_MAP = {
 
 def get_supported_languages() -> List[str]:
     """Get list of supported language codes.
-    
+
     Returns:
         List of 2-letter language codes (de, es, fr, it, hu)
     """
@@ -46,43 +46,43 @@ def get_supported_languages() -> List[str]:
 
 def normalize_language_code(locale_str: str) -> Optional[str]:
     """Normalize a locale string to a supported language code.
-    
+
     Args:
         locale_str: Locale string (e.g., 'en_US', 'de_DE', 'es_ES')
-        
+
     Returns:
         Normalized 2-letter language code if supported, None otherwise
     """
     if not locale_str:
         return None
-    
+
     # Try direct match first
     if locale_str in SUPPORTED_LANGUAGES:
         return locale_str
-    
+
     # Try mapping from full locale name
     if locale_str in LANGUAGE_CODE_MAP:
         return LANGUAGE_CODE_MAP[locale_str]
-    
+
     # Try extracting language code from locale (e.g., 'de_DE' -> 'de')
     if '_' in locale_str:
         lang_code = locale_str.split('_')[0]
         if lang_code in SUPPORTED_LANGUAGES:
             return lang_code
-    
+
     # If it's already a 2-letter code, check if supported
     if len(locale_str) == 2 and locale_str.lower() in SUPPORTED_LANGUAGES:
         return locale_str.lower()
-    
+
     return None
 
 
 def is_language_supported(locale_str: str) -> bool:
     """Check if a language/locale is supported.
-    
+
     Args:
         locale_str: Locale string to check
-        
+
     Returns:
         True if the language is supported, False otherwise
     """
@@ -127,7 +127,7 @@ def get_platform_info() -> Dict[str, Any]:
         'python_version': platform.python_version(),
         'python_implementation': platform.python_implementation(),
     }
-    
+
     # Add system-specific info
     if sys.platform == 'linux':
         info['linux_distro'] = get_linux_distro()
@@ -135,7 +135,7 @@ def get_platform_info() -> Dict[str, Any]:
         info['mac_ver'] = platform.mac_ver()
     elif sys.platform == 'win32':
         info['windows_version'] = platform.win32_ver()
-    
+
     # Add memory info
     try:
         mem = psutil.virtual_memory()
@@ -144,7 +144,7 @@ def get_platform_info() -> Dict[str, Any]:
     except (psutil.Error, OSError):
         info['memory_total'] = 0
         info['memory_available'] = 0
-    
+
     # Add disk info
     try:
         partitions = psutil.disk_partitions()
@@ -154,7 +154,7 @@ def get_platform_info() -> Dict[str, Any]:
         ]
     except (psutil.Error, OSError):
         info['partitions'] = []
-    
+
     return info
 
 
@@ -164,7 +164,7 @@ def get_linux_distro() -> Optional[Dict[str, str]]:
         if os.path.exists('/etc/os-release'):
             with open('/etc/os-release', 'r') as f:
                 lines = f.readlines()
-            
+
             distro_info = {}
             for line in lines:
                 if '=' in line:
@@ -173,7 +173,7 @@ def get_linux_distro() -> Optional[Dict[str, str]]:
             return distro_info
     except (OSError, ValueError) as e:
         logger.error(f"Failed to get Linux distro info: {e}")
-    
+
     return None
 
 
@@ -202,7 +202,7 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     if args is None:
         args = sys.argv[1:]
-    
+
     parsed = {
         'lang': None,
         'rootcheck': True,
@@ -210,11 +210,11 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
         'iso': None,
         'target': None,
     }
-    
+
     i = 0
     while i < len(args):
         arg = args[i]
-        
+
         if arg.startswith('--'):
             # Long option
             if '=' in arg:
@@ -268,9 +268,9 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
                 parsed['iso'] = arg
             elif not parsed.get('target'):
                 parsed['target'] = arg
-        
+
         i += 1
-    
+
     return parsed
 
 
@@ -290,13 +290,13 @@ def locate_command(command: str, required_for: str = "",
                 return path
     except (subprocess.SubprocessError, OSError):
         pass
-    
+
     # Try alternative methods
     for path in os.environ.get('PATH', '').split(':'):
         full_path = os.path.join(path, command)
         if os.path.exists(full_path) and os.access(full_path, os.X_OK):
             return full_path
-    
+
     logger.warning(
         f"Command not found: {command} "
         f"(required for: {required_for}, package: {package_name})")
@@ -376,13 +376,13 @@ def check_for_graphical_su(su_command: str) -> Optional[str]:
         'gnomesu': ['gnomesu'],
         'pkexec': ['pkexec'],
     }
-    
+
     # If specific command requested
     if su_command in graphical_su_commands:
         for cmd in graphical_su_commands[su_command]:
             if locate_command(cmd):
                 return cmd
-    
+
     # Check for any available graphical su
     for su_type, commands in graphical_su_commands.items():
         if su_type == su_command:
@@ -390,6 +390,6 @@ def check_for_graphical_su(su_command: str) -> Optional[str]:
         for cmd in commands:
             if locate_command(cmd):
                 return cmd
-    
+
     return None
 

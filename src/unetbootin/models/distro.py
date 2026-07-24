@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class DistributionVersion:
     """
     Represents a version of a distribution.
-    
+
     Attributes:
         name: Version name/identifier
         url: Download URL for this version
@@ -63,7 +63,7 @@ class DistributionVersion:
         if self.mirrors:
             result['mirrors'] = self.mirrors
         return result
-    
+
     def get_checksum(self, checksum_type: str = "sha256") -> Optional[str]:
         """Get checksum by type, preferring SHA256 if available."""
         if checksum_type == "sha256" and self.sha256:
@@ -80,7 +80,7 @@ class DistributionVersion:
 class Distribution:
     """
     Represents a Linux distribution.
-    
+
     Attributes:
         name: Internal name/identifier
         display_name: Human-readable display name
@@ -99,12 +99,12 @@ class Distribution:
     icon: str = ""
     homepage: str = ""
     mirrors: List[str] = field(default_factory=list)
-    
+
     def __post_init__(self):
         """Post-initialize: set display_name to name if not provided."""
         if not self.display_name:
             self.display_name = self.name
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert distribution to dictionary."""
         result = {
@@ -124,40 +124,40 @@ class Distribution:
 class DistributionManager:
     """
     Manages the list of supported distributions.
-    
+
     This class handles loading, organizing, and retrieving distribution information
     from both built-in data and external sources like JSON files.
     """
-    
+
     def __init__(self):
         """Initialize the distribution manager."""
         self.distributions: Dict[str, Distribution] = {}
         self.loaded = False
-    
+
     def get_distributions(self) -> List[Dict[str, Any]]:
         """Get the list of all distributions."""
         if not self.loaded:
             self.load_distributions()
-        
+
         return [d.to_dict() for d in self.distributions.values()]
-    
+
     def get_distribution(self, name: str) -> Optional[Distribution]:
         """Get a specific distribution by name."""
         if not self.loaded:
             self.load_distributions()
         return self.distributions.get(name)
-    
+
     def get_versions(self, distro_name: str) -> List[Dict[str, Any]]:
         """Get versions for a specific distribution."""
         distro = self.get_distribution(distro_name)
         if distro:
             return [v.to_dict() for v in distro.versions]
         return []
-    
+
     def load_distributions(self):
         """Load distributions from built-in data and/or external sources."""
         logger.info("Loading distributions")
-        
+
         # Built-in distribution list organized by categories
         # Linux distributions
         linux_distros = [
@@ -361,7 +361,7 @@ class DistributionManager:
                 'icon': 'tinycore',
             },
         ]
-        
+
         # BSD distributions
         bsd_distros = [
             {
@@ -448,7 +448,7 @@ class DistributionManager:
                 'icon': 'truenas',
             },
         ]
-        
+
         # Windows distributions
         windows_distros = [
             {
@@ -492,14 +492,14 @@ class DistributionManager:
                 'icon': 'windows',
             },
         ]
-        
+
         # Combine all distributions
         builtin_distros = linux_distros + bsd_distros + windows_distros
-        
+
         # Convert to Distribution objects
         for distro_data in builtin_distros:
             versions = [
-                DistributionVersion(**version_data) 
+                DistributionVersion(**version_data)
                 for version_data in distro_data.get('versions', [])
             ]
             distro = Distribution(
@@ -512,16 +512,16 @@ class DistributionManager:
                 homepage=distro_data.get('homepage', ''),
             )
             self.distributions[distro.name] = distro
-        
+
         self.loaded = True
         logger.info(f"Loaded {len(self.distributions)} distributions")
-    
+
     def load_from_file(self, filepath: str):
         """Load distributions from a JSON file."""
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
+
             for distro_data in data.get('distributions', []):
                 versions = [
                     DistributionVersion(**v) for v in distro_data.get('versions', [])
@@ -536,14 +536,14 @@ class DistributionManager:
                     homepage=distro_data.get('homepage', ''),
                 )
                 self.distributions[distro.name] = distro
-            
+
             self.loaded = True
             logger.info(
                 f"Loaded {len(self.distributions)} distributions from {filepath}")
 
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
             logger.error(f"Failed to load distributions from {filepath}: {e}")
-    
+
     def load_from_directory(self, directory: str):
         """Load distributions from a directory of JSON files."""
         try:
@@ -553,41 +553,41 @@ class DistributionManager:
                     self.load_from_file(str(json_file))
         except OSError as e:
             logger.error(f"Failed to load distributions from {directory}: {e}")
-    
+
     def get_categories(self) -> List[str]:
         """Get list of all categories."""
         if not self.loaded:
             self.load_distributions()
-        
+
         categories = set()
         for distro in self.distributions.values():
             if distro.category:
                 categories.add(distro.category)
-        
+
         return sorted(categories)
-    
+
     def get_distributions_by_category(self, category: str) -> List[Dict[str, Any]]:
         """Get distributions filtered by category."""
         if not self.loaded:
             self.load_distributions()
-        
+
         return [
             d.to_dict() for d in self.distributions.values()
             if d.category == category
         ]
-    
+
     def search_distributions(self, query: str) -> List[Dict[str, Any]]:
         """Search distributions by name or description."""
         if not self.loaded:
             self.load_distributions()
-        
+
         query = query.lower()
         results = []
-        
+
         for distro in self.distributions.values():
-            if (query in distro.name.lower() or 
-                query in distro.display_name.lower() or 
+            if (query in distro.name.lower() or
+                query in distro.display_name.lower() or
                 query in distro.description.lower()):
                 results.append(distro.to_dict())
-        
+
         return results

@@ -27,7 +27,7 @@ _PLIST_PARSE_ERRORS = (ValueError, KeyError, TypeError, AttributeError,
 def get_drive_list() -> List[Dict[str, Any]]:
     """Get list of available drives on macOS."""
     drives = []
-    
+
     try:
         # Use diskutil to list all disks
         result = subprocess.run(
@@ -36,13 +36,13 @@ def get_drive_list() -> List[Dict[str, Any]]:
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
             # Parse plist output
             import plistlib
             try:
                 data = plistlib.loads(result.stdout.encode())
-                
+
                 for disk in data.get('AllDisksAndPartitions', []):
                     if 'DeviceIdentifier' in disk:
                         drive_info = {
@@ -56,7 +56,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                             'model': disk.get('DeviceModel', ''),
                             'removable': disk.get('RemovableMedia', False),
                         }
-                        
+
                         # Add partitions if available
                         if 'Partitions' in disk:
                             drive_info['partitions'] = []
@@ -67,9 +67,9 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                     'type': partition.get('Content', ''),
                                     'mountpoint': partition.get('MountPoint', ''),
                                 })
-                        
+
                         drives.append(drive_info)
-                        
+
             except _PLIST_PARSE_ERRORS as e:
                 logger.error(f"Failed to parse diskutil plist output: {e}")
                 # Fallback to text output parsing
@@ -81,10 +81,10 @@ def get_drive_list() -> List[Dict[str, Any]]:
                 )
                 if result.returncode == 0:
                     drives = parse_diskutil_text_output(result.stdout)
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get drive list: {e}")
-    
+
     return drives
 
 
@@ -92,12 +92,12 @@ def parse_diskutil_text_output(output: str) -> List[Dict[str, Any]]:
     """Parse diskutil text output."""
     drives = []
     current_disk = None
-    
+
     for line in output.split('\n'):
         line = line.strip()
         if not line:
             continue
-        
+
         # Check for disk identifier
         disk_match = re.match(r'^/dev/(disk\d+):', line)
         if disk_match:
@@ -114,7 +114,7 @@ def parse_diskutil_text_output(output: str) -> List[Dict[str, Any]]:
             }
             drives.append(current_disk)
             continue
-        
+
         if current_disk:
             # Parse disk information
             if line.startswith('Type: '):
@@ -134,20 +134,20 @@ def parse_diskutil_text_output(output: str) -> List[Dict[str, Any]]:
                     current_disk['filesystem'] = content
             elif line.startswith('Removable Media: '):
                 current_disk['removable'] = line[18:].strip().lower() == 'yes'
-        
+
         # Check for partition information
         partition_match = re.match(r'\s+(\d+):\s+(.+)', line)
         if partition_match and current_disk:
             # This is a partition line
             pass
-    
+
     return drives
 
 
 def parse_size_string(size_str: str) -> int:
     """Parse size string like '123.4 GB' to bytes."""
     size_str = size_str.upper().strip()
-    
+
     if 'TB' in size_str:
         size = float(size_str.replace('TB', '').strip()) * 1024**4
     elif 'GB' in size_str:
@@ -160,7 +160,7 @@ def parse_size_string(size_str: str) -> int:
         size = int(size_str.replace('B', '').strip())
     else:
         size = 0
-    
+
     return int(size)
 
 
@@ -169,7 +169,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         # Use diskutil info
         result = subprocess.run(
             ['diskutil', 'info', '-plist', drive],
@@ -177,7 +177,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
             import plistlib
             try:
@@ -195,10 +195,10 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                 }
             except _PLIST_PARSE_ERRORS as e:
                 logger.error(f"Failed to parse diskutil info plist: {e}")
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get drive info for {drive}: {e}")
-    
+
     return None
 
 
@@ -207,7 +207,7 @@ def unmount_drive(drive: str) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         # Find mount point first
         result = subprocess.run(
             ['diskutil', 'info', drive],
@@ -215,7 +215,7 @@ def unmount_drive(drive: str) -> bool:
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
                 if line.startswith('Mount Point:') or line.startswith('Mount Points:'):
@@ -239,7 +239,7 @@ def unmount_drive(drive: str) -> bool:
                             timeout=10
                         )
                         return result.returncode == 0
-        
+
         # Try direct unmount
         result = subprocess.run(
             ['diskutil', 'unmountDisk', drive],
@@ -248,7 +248,7 @@ def unmount_drive(drive: str) -> bool:
             timeout=10
         )
         return result.returncode == 0
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to unmount {drive}: {e}")
         return False
@@ -259,7 +259,7 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         if mount_point is None:
             # Let system choose mount point
             result = subprocess.run(
@@ -278,7 +278,7 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
                 timeout=10
             )
             return result.returncode == 0
-            
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to mount {drive}: {e}")
         return False
@@ -290,10 +290,10 @@ def format_drive(drive: str, filesystem: str = "vfat",
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         # First, unmount the drive
         unmount_drive(drive)
-        
+
         # Format based on filesystem type
         if filesystem.lower() in ['vfat', 'msdos', 'fat32']:
             # For FAT32, we use diskutil
@@ -304,7 +304,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-            
+
         elif filesystem.lower() in ['hfs', 'hfs+']:
             result = subprocess.run(
                 ['diskutil', 'eraseVolume', 'HFS+', label, drive],
@@ -313,7 +313,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-            
+
         elif filesystem.lower() == 'exfat':
             result = subprocess.run(
                 ['diskutil', 'eraseVolume', 'ExFAT', label, drive],
@@ -322,10 +322,10 @@ def format_drive(drive: str, filesystem: str = "vfat",
                 timeout=30
             )
             return result.returncode == 0
-        
+
         logger.error(f"Unsupported filesystem type: {filesystem}")
         return False
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to format {drive} as {filesystem}: {e}")
         return False
@@ -336,36 +336,36 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         if bootloader_type.lower() == 'syslinux':
             # For macOS, syslinux is typically used for FAT32 formatted USB
             # We need to install syslinux bootloader files
-            
+
             # First, ensure syslinux is installed
             syslinux_dir = '/usr/local/share/syslinux'
             if not os.path.exists(syslinux_dir):
                 syslinux_dir = '/usr/share/syslinux'
-            
+
             if not os.path.exists(syslinux_dir):
                 logger.error("syslinux files not found")
                 return False
-            
+
             # Copy syslinux files
             mount_point = get_mount_point(drive)
             if not mount_point:
                 logger.error(f"Cannot find mount point for {drive}")
                 return False
-            
+
             # Copy bootloader files
-            boot_files = ['ldlinux.sys', 'libcom32.c32', 'libutil.c32', 'mboot.c32', 
+            boot_files = ['ldlinux.sys', 'libcom32.c32', 'libutil.c32', 'mboot.c32',
                          'menu.c32', 'vesamenu.c32', 'hdt.c32', 'poweroff.com', 'reboot.com']
-            
+
             for file in boot_files:
                 src = os.path.join(syslinux_dir, file)
                 if os.path.exists(src):
                     dst = os.path.join(mount_point, file)
                     shutil.copy2(src, dst)
-            
+
             # Install MBR
             mbr_file = os.path.join(syslinux_dir, 'mbr.bin')
             if os.path.exists(mbr_file):
@@ -376,28 +376,28 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                     timeout=10
                 )
                 return result.returncode == 0
-            
+
         elif bootloader_type.lower() == 'grub':
             # For GRUB on macOS, we typically use bless
             mount_point = get_mount_point(drive)
             if not mount_point:
                 logger.error(f"Cannot find mount point for {drive}")
                 return False
-            
+
             # Check for EFI boot
             efi_dir = os.path.join(mount_point, 'EFI', 'BOOT')
             if os.path.exists(efi_dir):
                 bootx64_path = os.path.join(efi_dir, 'BOOTX64.EFI')
                 if os.path.exists(bootx64_path):
                     result = subprocess.run(
-                        ['bless', '--mount', mount_point, '--setBoot', 
+                        ['bless', '--mount', mount_point, '--setBoot',
                          '--folder', efi_dir, '--file', bootx64_path],
                         capture_output=True,
                         text=True,
                         timeout=10
                     )
                     return result.returncode == 0
-            
+
             # For BIOS boot
             grub_cfg_path = os.path.join(mount_point, 'grub.cfg')
             if os.path.exists(grub_cfg_path):
@@ -408,10 +408,10 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
                     timeout=10
                 )
                 return result.returncode == 0
-        
+
         logger.error(f"Unsupported bootloader type: {bootloader_type}")
         return False
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to install bootloader to {drive}: {e}")
         return False
@@ -422,14 +422,14 @@ def get_volume_label(drive: str) -> Optional[str]:
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         result = subprocess.run(
             ['diskutil', 'info', drive],
             capture_output=True,
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
             for raw_line in result.stdout.split('\n'):
                 # `diskutil info` indents every field, so strip before matching
@@ -448,7 +448,7 @@ def set_volume_label(drive: str, label: str) -> bool:
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
-        
+
         result = subprocess.run(
             ['diskutil', 'rename', drive, label],
             capture_output=True,
@@ -459,7 +459,7 @@ def set_volume_label(drive: str, label: str) -> bool:
         # NOTE: never fall back to reformatting here - renaming a volume must
         # not erase it. If rename fails, report failure.
         return result.returncode == 0
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to set volume label for {drive}: {e}")
         return False
@@ -527,14 +527,14 @@ def get_mount_point(device: str) -> Optional[str]:
     try:
         if not device.startswith('/dev/'):
             device = f'/dev/{device}'
-        
+
         result = subprocess.run(
             ['diskutil', 'info', device],
             capture_output=True,
             text=True,
             timeout=10
         )
-        
+
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
                 if line.startswith('Mount Point:') or line.startswith('Mount Points:'):
@@ -542,7 +542,7 @@ def get_mount_point(device: str) -> Optional[str]:
                     if (mount_point and mount_point != 'Not mounted'
                             and mount_point != 'None'):
                         return mount_point
-        
+
         # Try mount command
         result = subprocess.run(['mount'], capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
@@ -552,10 +552,10 @@ def get_mount_point(device: str) -> Optional[str]:
                     for part in parts:
                         if part.startswith('/Volumes/'):
                             return part
-        
+
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get mount point for {device}: {e}")
-    
+
     return None
 
 

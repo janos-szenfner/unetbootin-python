@@ -20,7 +20,7 @@ _SUBPROCESS_PARSE_ERRORS = (subprocess.SubprocessError, OSError,
 def get_drive_list() -> List[Dict[str, Any]]:
     """Get list of available drives on Windows."""
     drives = []
-    
+
     try:
         # Use wmic CSV output and parse by column NAME. Plain `wmic get`
         # prints columns in ALPHABETICAL order (not the requested order) and
@@ -85,7 +85,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
     try:
         if not drive.endswith(':\\') and len(drive) == 1 and drive.isalpha():
             drive = f"{drive}:\\"
-        
+
         return {
             'device': drive,
             'letter': drive[0] if drive.endswith(':\\') else drive,
@@ -94,7 +94,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
         }
     except (AttributeError, IndexError, TypeError) as e:
         logger.error(f"Failed to get drive info for {drive}: {e}")
-    
+
     return None
 
 
@@ -113,16 +113,16 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
 def format_drive(drive: str, filesystem: str = "FAT32",
                  label: str = "UNETBOOTIN") -> bool:
     """Format a drive on Windows using diskpart scripting.
-    
+
     Uses diskpart with a script file to non-interactively format the drive.
     This is safer than the format command as it allows better control and
     works reliably in automated scripts.
-    
+
     Args:
         drive: Drive letter (e.g., 'E:' or 'E')
         filesystem: Filesystem type (FAT32, NTFS, exFAT)
         label: Volume label to set
-        
+
     Returns:
         True if formatting succeeded, False otherwise
     """
@@ -130,19 +130,20 @@ def format_drive(drive: str, filesystem: str = "FAT32",
         # Normalize drive letter
         if drive and len(drive) == 1 and drive.isalpha():
             drive = f"{drive}:"
-        
+
         if not drive.endswith(':'):
             drive = f"{drive}:"
-        
+
         drive_letter = drive[0].upper()
-        
+
         # Create a temporary diskpart script
         import tempfile
         import os
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             # Diskpart script to format the drive
-            f.write(f"select volume {drive_letter}\\n")
+            f.write(f"select volume {drive_letter}\
+\n")
             f.write("clean\r\n")
             if filesystem.upper() == "FAT32":
                 f.write(f"create partition primary\r\n")
@@ -159,7 +160,7 @@ def format_drive(drive: str, filesystem: str = "FAT32",
             f.write("assign\r\n")
             f.write("exit\r\n")
             script_path = f.name
-        
+
         try:
             # Run diskpart with the script
             result = subprocess.run(
@@ -168,7 +169,7 @@ def format_drive(drive: str, filesystem: str = "FAT32",
                 text=True,
                 timeout=120
             )
-            
+
             # Check for success
             if result.returncode == 0:
                 logger.info(f"Successfully formatted {drive} as {filesystem}")
@@ -182,7 +183,7 @@ def format_drive(drive: str, filesystem: str = "FAT32",
                 os.unlink(script_path)
             except OSError:
                 pass
-                
+
     except (subprocess.SubprocessError, OSError, ValueError, TypeError) as e:
         logger.error(f"Failed to format drive {drive}: {e}")
         return False
@@ -208,7 +209,7 @@ def get_volume_label(drive: str) -> Optional[str]:
     try:
         if not drive.endswith(':\\') and len(drive) == 1 and drive.isalpha():
             drive = f"{drive}:\\"
-        
+
         # Try using vol command
         result = subprocess.run(
             ['vol', drive],
@@ -222,7 +223,7 @@ def get_volume_label(drive: str) -> Optional[str]:
                     return line.split()[-1]
     except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get volume label for {drive}: {e}")
-    
+
     return None
 
 
@@ -244,7 +245,7 @@ def get_device_size(drive: str) -> Optional[int]:
     try:
         if not drive.endswith(':\\') and len(drive) == 1 and drive.isalpha():
             drive = f"{drive}:\\"
-        
+
         # Use fsutil or chkdsk
         result = subprocess.run(
             ['fsutil', 'volume', 'query', drive],
@@ -260,7 +261,7 @@ def get_device_size(drive: str) -> Optional[int]:
                     return int(size_str)
     except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get size for {drive}: {e}")
-    
+
     return None
 
 
@@ -269,7 +270,7 @@ def check_drive_writable(drive: str) -> bool:
     try:
         if not drive.endswith(':\\') and len(drive) == 1 and drive.isalpha():
             drive = f"{drive}:\\"
-        
+
         # Try to create a temporary file
         test_file = os.path.join(drive, f'.unetbootin_test_{os.getpid()}.tmp')
         try:

@@ -48,12 +48,12 @@ setup(
     author_email="geza0kovacs@gmail.com",
     url="https://unetbootin.sourceforge.net",
     license="GPLv2+",
-    
+
     # Package configuration
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.10",
-    
+
     # Dependencies
     install_requires=[
         # PySimpleGUI 6.2 is GPLv3 (free copyleft, compatible with GPLv2+).
@@ -81,7 +81,7 @@ setup(
             "setuptools>=61.0.0",
         ],
     },
-    
+
     # Entry points
     entry_points={
         "console_scripts": [
@@ -92,7 +92,7 @@ setup(
             # For macOS app bundle support
         ],
     },
-    
+
     # Data files — bundled resources the app loads at runtime (bootloader
     # binaries, icons, translation catalogs). Paths match the real layout so
     # they are actually included in wheels/sdists and PyInstaller bundles.
@@ -105,7 +105,7 @@ setup(
             "resources/translations/*.ts",
         ],
     },
-    
+
     # Classifiers
     classifiers=[
         "Development Status :: 3 - Alpha",
