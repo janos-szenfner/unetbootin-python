@@ -340,50 +340,13 @@ jobs:
           path: dist/flatpak/
           retention-days: 14
 
-  publish-pypi:
-    name: Publish to PyPI
-    runs-on: ubuntu-latest
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/')
-    # Requires the PYPI_API_TOKEN secret; don't block the GitHub Release if
-    # PyPI publishing isn't configured or fails.
-    continue-on-error: true
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: 'requirements.txt'
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
-
-      - name: Build distribution packages
-        run: |
-          python -m build
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages_dir: dist/
-          skip_existing: true
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-windows, build-macos, build-linux-appimage, build-linux-deb, build-linux-rpm, build-flatpak, publish-pypi]
+    needs: [build-windows, build-macos, build-linux-appimage, build-linux-deb, build-linux-rpm, build-flatpak]
     # Run once all builds have settled (always()), but only cut the release if
-    # the five CORE artifacts succeeded. Flatpak / PyPI are optional and must
-    # not block the release; download-artifact still includes them if present.
+    # the five CORE artifacts succeeded. Flatpak is optional and must not block
+    # the release; download-artifact still includes it if present.
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/') &&
@@ -421,8 +384,7 @@ jobs:
             - Windows: EXE with UAC manifest for admin elevation
             - macOS: .app bundle (Universal 2 - Apple Silicon + Intel), distributed as ZIP and DMG
             - Linux: AppImage, DEB, RPM, and Flatpak packages
-            - Python: Available on PyPI (`pip install unetbootin`)
-            
+
             ### macOS Installation Notes
             
             The macOS app is **unsigned** (no Apple Developer certificate). 
@@ -441,7 +403,6 @@ jobs:
             - DEB: `sudo dpkg -i unetbootin.deb`
             - RPM: `sudo rpm -i unetbootin.rpm`
             - Flatpak: `flatpak install unetbootin.flatpak`
-            **Python**: `pip install unetbootin`
           files: |
             artifacts/${{ env.APP_NAME }}-windows/*
             artifacts/${{ env.APP_NAME }}-macos/*
