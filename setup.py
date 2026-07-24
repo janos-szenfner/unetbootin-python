@@ -46,7 +46,7 @@ setup(
     long_description_content_type="text/markdown",
     author="UNetbootin Team",
     author_email="geza0kovacs@gmail.com",
-    url="https://unetbootin.sourceforge.net",
+    url="https://github.com/janosszenfner/unetbootin-python",
     license="GPLv2+",
 
     # Package configuration

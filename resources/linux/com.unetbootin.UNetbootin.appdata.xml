@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.unetbootin.UNetbootin</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>UNetbootin</name>
+  <summary>Create bootable USB drives from ISO files</summary>
+  <description>
+    <p>UNetbootin is a cross-platform tool for creating bootable USB drives from ISO files.</p>
+    <p>It allows you to create bootable Live USB drives for a variety of Linux distributions,
+    as well as other operating systems and utilities.</p>
+    <p>Features:</p>
+    <ul>
+      <li>Download ISO files from various distributions automatically</li>
+      <li>Create bootable USB drives from existing ISO files</li>
+      <li>Supports Windows, macOS, and Linux</li>
+      <li>Persistent storage support for Live USB drives</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.unetbootin.UNetbootin.desktop</launchable>
+  <provides>
+    <binary>unetbootin</binary>
+  </provides>
+  <screenshots>
+  </screenshots>
+  <categories>
+    <category>System</category>
+    <category>Filesystem</category>
+    <category>Utility</category>
+  </categories>
+  <icon type="stock">com.unetbootin.UNetbootin</icon>
+  <update_contact>geza0kovacs@gmail.com</update_contact>
+  <url type="homepage">https://github.com/janosszenfner/unetbootin-python</url>
+</component>

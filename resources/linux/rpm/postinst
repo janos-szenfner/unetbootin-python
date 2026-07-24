@@ -1,0 +1,14 @@
+#!/bin/bash
+# Post-installation script for UNetbootin RPM package
+
+# Update desktop database
+if [ -x "$(command -v update-desktop-database)" ]; then
+    update-desktop-database -q || true
+fi
+
+# Update icon cache
+if [ -x "$(command -v gtk-update-icon-cache)" ]; then
+    gtk-update-icon-cache -f -q /usr/share/icons/hicolor || true
+fi
+
+exit 0
