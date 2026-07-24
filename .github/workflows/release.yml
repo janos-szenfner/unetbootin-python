@@ -156,6 +156,9 @@ jobs:
         # appimagetool can't infer the target. Pin it explicitly.
         env:
           ARCH: x86_64
+          # Pin the output filename; otherwise the plugin derives it from the
+          # desktop-file Name ("UNetbootin"), which the mv glob below misses.
+          OUTPUT: ${{ env.APP_NAME }}.AppImage
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
@@ -173,7 +176,7 @@ jobs:
             --desktop-file AppDir/usr/share/applications/unetbootin.desktop \
             --icon-filename AppDir/usr/share/icons/hicolor/256x256/apps/unetbootin.png \
             --output appimage
-          mv ${{ env.APP_NAME }}*.AppImage dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+          mv ${{ env.APP_NAME }}.AppImage dist/linux-appimage/${{ env.APP_NAME }}.AppImage
           chmod +x dist/linux-appimage/${{ env.APP_NAME }}.AppImage
 
       - name: Upload artifact

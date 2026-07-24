@@ -52,9 +52,9 @@
             "name": "resources",
             "buildsystem": "simple",
             "build-commands": [
-                "install -Dm644 resources/bootloader/* /app/share/unetbootin/resources/bootloader/",
-                "install -Dm644 resources/icons/* /app/share/unetbootin/resources/icons/",
-                "install -Dm644 resources/logos/* /app/share/unetbootin/resources/logos/"
+                "install -Dm644 -t /app/share/unetbootin/resources/bootloader resources/bootloader/*",
+                "install -Dm644 -t /app/share/unetbootin/resources/icons resources/icons/*",
+                "install -Dm644 -t /app/share/unetbootin/resources/logos resources/logos/*"
             ],
             "sources": [
                 {
