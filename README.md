@@ -451,7 +451,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] Implement ISO download functionality from distribution URLs - ✅ Complete
 
 ### 📦 Medium Priority
-- [ ] Add translation support - ⚠️ **NOT done.** `load_translations()` in `main.py` is a stub that only normalizes a language code; there are **no `.qm` files**, no gettext catalogs, and the `.ts` files (Qt sources) are never loaded. The UI is English-only. Needs a real gettext/`.mo` implementation.
+- [x] Add translation support - ✅ **Done.** Added `core/i18n.py` which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` activates the catalog from CLI `--lang` / system locale, and the UI (`main_window_pysg.py`) wraps user-facing strings in `_()`. Supports 5 languages plus English fallback.
 - [ ] Implement auto-update checking
 - [x] Add ISO verification (checksum comparison) - ✅ **Done (dynamic).** Added `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` GNU/coreutils and `SHA256 (file) = <hex>` BSD/Fedora layouts). Currently wired for 6 distro versions (Ubuntu 24.04/22.04/20.04, Debian current, Fedora 44/43) — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
 - [x] Add support for more archive formats (zip, tar, etc.) - ✅ Complete
@@ -460,8 +460,8 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add themes/dark mode support
 - [x] Add persistence configuration UI - ✅ UI present (install-side persistence not yet functional)
 - [x] Add boot options editor for advanced users - ✅ UI present
-- [ ] Add support for UEFI-only installations - ⚠️ **UI toggle only.** The param reaches the installer but the UEFI install code is a placeholder/"simplified" path and is not functionally verified.
-- [ ] Add support for Secure Boot - ⚠️ **UI toggle only.** Same as above — not functionally verified (Secure Boot needs signed bootloader binaries the project does not ship).
+- [ ] Add support for UEFI-only installations - ⚠️ **UI toggle only.** The param reaches the installer which attempts to mount the EFI partition and install GRUB/syslinux EFI files, but relies on **system-installed** binaries (`grub-install --target=x86_64-efi`, syslinux EFI modules). Not functionally verified end-to-end.
+- [ ] Add support for Secure Boot - ⚠️ **UI toggle only.** Installer looks for system shim/signed binaries (`/usr/lib/shim/shimx64.efi`) but the project does not ship signed bootloader binaries (licensing). Secure Boot requires signed shim+mmx64.efi which must be provided by the distribution or OS vendor. Not functionally verified.
 - [ ] Add disk partitioning tool integration
 - [x] Add progress estimation for downloads - ✅ Complete
 - [x] Add download resume support - ✅ Complete
