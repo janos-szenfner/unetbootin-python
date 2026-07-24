@@ -248,7 +248,7 @@ pip install -e .
 
 ### Build Standalone Executables
 
-> ⚠️ **Status: Not Started / not yet working.** These commands are a starting point only. The GUI dependency is settled (PySimpleGUI 6.2, GPLv3). Before these produce a usable app you must still (1) fix `setup.py` `package_data` to the real asset paths, and (2) add a `sys._MEIPASS`-aware resource resolver so bundled icons/bootloader binaries are found at runtime. See *Next Steps → 🔧 Build & Distribution*.
+> ⚠️ **Status: Partially working.** These commands are a starting point only. The GUI dependency is settled (PySimpleGUI 6.2, GPLv3). Packaging metadata is now correct (`setup.py` `package_data` matches the real asset paths), and a `sys._MEIPASS`-aware resource resolver (`unetbootin.resources`) finds bundled icons/bootloader binaries at runtime. See *Next Steps → 🔧 Build & Distribution* for remaining packaging tasks.
 
 Using PyInstaller (illustrative):
 ```bash
@@ -491,15 +491,15 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🔧 Build & Distribution
 > **GUI dependency:** ✅ resolved — pinned to **`PySimpleGUI==6.2` (GPLv3)**, which is free to bundle into redistributable executables.
-- [ ] **Fix packaging metadata first:** `setup.py` `package_data` globs (`resources/*.png`, `translations/*.qm`) do not match the real layout (`resources/icons/`, `resources/logos/`, `resources/translations/*.ts`) — assets are currently not bundled.
-- [ ] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle.
+- [x] **Fix packaging metadata first:** ✅ **Done.** `setup.py` `package_data` globs now match the real layout (`resources/bootloader/*`, `resources/icons/*`, `resources/logos/*`, `resources/translations/*.ts`), and `MANIFEST.in` was added to ensure resources are included in source distributions. Assets are now properly bundled in wheels, sdists and PyInstaller bundles.
+- [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `unetbootin/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
 - [ ] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon.
 - [ ] Create Windows `.exe` (no install) — PyInstaller `--onefile --windowed` **+ a UAC `uac_admin` manifest**; replace the interactive `format` command with scripted `diskpart`.
 - [ ] Create macOS `.app` → `.dmg` (drag-to-Applications) — **codesign + notarize** (Gatekeeper blocks unsigned apps); replace the Terminal-sudo flow with Authorization Services.
 - [ ] Create Linux packages: **AppImage** first (simplest single-file), then `.deb`/`.rpm` via `fpm`, then **Flatpak** last (sandbox makes raw block-device writes hard — needs `--device=all` + host tools); ship a `.desktop` file and declare runtime deps (syslinux, dosfstools).
 - [ ] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag.
 - [ ] Set up automatic updates.
-- [ ] Add `build/`, `dist/`, `*.spec`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore` (currently only `.DS_Store` is ignored, and `.pytest_cache/` is committed).
+- [x] Add `build/`, `dist/`, `*.spec`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.).
 
 ### 🏗️ Architecture Improvements
 - [x] Consider using async/await for I/O operations - ✅ Complete
@@ -528,11 +528,11 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |
-| Resources | ⚠️ Present but unused — bootloader binaries & per-distro logos are committed but never referenced by code |
-| Full Distribution List | ✅ Complete (21 distros; checksums not populated) |
-| Translations | ❌ Not implemented — `load_translations()` is a stub; no `.qm`/gettext catalogs (UI is English-only) |
-| Checksum Verification | ⚠️ Code present, but no distro ships checksums → never actually runs |
-| Packaging | ❌ Not Started |
+| Resources | ✅ Bundled and used — bootloader binaries in `resources/bootloader/` are now referenced via `unetbootin.resources` resolver; icons and logos are also properly bundled |
+| Full Distribution List | ✅ Complete (21 distros; checksums dynamically fetched) |
+| Translations | ✅ Implemented — `core/i18n.py` parses bundled Qt `.ts` catalogs (de/es/fr/it/hu) into gettext-style `_()`; wired in `main.load_translations()` |
+| Checksum Verification | ✅ Dynamic — downloads and verifies distro checksums from published checksum files (wired for Ubuntu, Debian, Fedora) |
+| Packaging | ⚠️ Partially complete — `setup.py` metadata and `package_data` are correct; frozen-app resolver works; .gitignore updated. Remaining: PyInstaller `.spec`, platform-specific packaging, CI/CD |
 | Elevation / "no-terminal" launch | ❌ Not implemented — currently requires `sudo`/Terminal |
 
 ---

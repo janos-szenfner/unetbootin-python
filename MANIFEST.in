@@ -1,0 +1,4 @@
+recursive-include src/unetbootin/resources/bootloader *
+recursive-include src/unetbootin/resources/icons *
+recursive-include src/unetbootin/resources/logos *
+recursive-include src/unetbootin/resources/translations *.ts
