@@ -270,9 +270,10 @@ jobs:
             --depends syslinux-common \
             --depends dosfstools \
             --depends mtools \
-            --after-install resources/linux/deb/postinst \
+            --after-install "$GITHUB_WORKSPACE/resources/linux/deb/postinst" \
+            -C package \
             -p dist/linux-deb/${{ env.APP_NAME }}-${VER}.deb \
-            package/
+            usr
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -342,9 +343,10 @@ jobs:
             --depends syslinux \
             --depends dosfstools \
             --depends mtools \
-            --after-install resources/linux/rpm/postinst \
+            --after-install "$GITHUB_WORKSPACE/resources/linux/rpm/postinst" \
+            -C package \
             -p dist/linux-rpm/${{ env.APP_NAME }}-${VER}.rpm \
-            package/
+            usr
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -364,6 +366,34 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Stamp version into AppStream metadata
+        # GNOME Software reads a Flatpak's version from the AppStream
+        # <releases> element. Without it the store shows no version, so inject
+        # the release version before flatpak-builder composes the app-info.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+          fi
+          VER="${VER:-1.0.1}"
+          APPDATA="resources/linux/com.unetbootin.UNetbootin.appdata.xml"
+          python3 - "$VER" "$APPDATA" <<'PY'
+          import sys, datetime
+          ver, path = sys.argv[1], sys.argv[2]
+          s = open(path).read()
+          if "<releases>" not in s:
+              block = ('  <releases>\n'
+                       f'    <release version="{ver}" date="{datetime.date.today().isoformat()}"/>\n'
+                       '  </releases>\n')
+              s = s.replace("</component>", block + "</component>")
+              open(path, "w").write(s)
+          print("AppStream release stamped:", ver)
+          PY
+          # Validate the metadata (non-fatal) so any issue that would stop
+          # appstream-compose from embedding the license/description is visible.
+          sudo apt-get update && sudo apt-get install -y appstream
+          appstreamcli validate --no-net "$APPDATA" || true
 
       - name: Set up Flatpak
         run: |
