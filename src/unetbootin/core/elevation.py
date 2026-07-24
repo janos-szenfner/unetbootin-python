@@ -55,7 +55,8 @@ def is_elevated() -> bool:
         import ctypes
         try:
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (OSError, AttributeError):
+            # OSError: ctypes failure; AttributeError: shell32 not available
             return False
     elif _IS_MACOS:
         # Check if we're running as root on macOS
@@ -126,7 +127,8 @@ def run_elevated(
             return (result.returncode, result.stdout or '', result.stderr or '')
         except subprocess.TimeoutExpired:
             return (-1, '', 'Command timed out')
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
+            # SubprocessError: Popen/communication errors; OSError: file/exec issues
             return (-1, '', str(e))
     
     # Not elevated, need to elevate
@@ -295,7 +297,8 @@ def _run_elevated_windows(
         # So we return empty strings for stdout/stderr
         return (exit_code.value, '', '')
         
-    except Exception as e:
+    except (OSError, ctypes.ArgumentError, ValueError) as e:
+        # OSError: system call failures; ArgumentError/ValueError: ctypes issues
         raise ElevationError(f"Failed to run elevated command: {e}")
     finally:
         if hProcess.value:

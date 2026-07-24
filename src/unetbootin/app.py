@@ -183,7 +183,10 @@ class UNetbootinAppPySG:
         Uses the new elevation system instead of terminal-dependent flows.
         If not elevated, will attempt to relaunch with elevation automatically.
         """
-        from unetbootin.core.elevation import is_elevated, ensure_elevated, check_elevation_availability
+        from unetbootin.core.elevation import (
+            is_elevated, ensure_elevated, check_elevation_availability,
+            ElevationError
+        )
         
         if is_elevated():
             return
@@ -196,7 +199,7 @@ class UNetbootinAppPySG:
         
         try:
             ensure_elevated()
-        except Exception as e:
+        except ElevationError as e:
             logger.warning(f"Elevation attempt failed: {e}")
             self._show_elevation_not_available()
     

@@ -79,14 +79,16 @@ def main():
     
     # Install sudo interceptor early so all subsequent subprocess.run calls
     # with sudo will use the elevation system
-    from unetbootin.core.elevation import install_sudo_interceptor, ensure_elevated
+    from unetbootin.core.elevation import (
+        install_sudo_interceptor, ensure_elevated, ElevationError
+    )
     install_sudo_interceptor()
     
     # Ensure we're running with elevated privileges
     # This will attempt to relaunch with elevation if needed
     try:
         ensure_elevated()
-    except Exception as e:
+    except ElevationError as e:
         logger.warning(f"Elevation not available or failed: {e}")
         # Continue anyway - individual commands will prompt for elevation as needed
         # or fail with clear error messages
