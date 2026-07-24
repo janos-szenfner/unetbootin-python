@@ -319,7 +319,7 @@ class Downloader:
             from unetbootin import APP_VERSION
             return APP_VERSION
         except ImportError:
-            return "0.1.0"
+            return "1.0.1"
 
     def download_file_sync_threaded(self, url: str, dest_path: str,
                                    min_size: int = 0,
@@ -908,7 +908,7 @@ class AsyncDownloader:
             from unetbootin import APP_VERSION
             return APP_VERSION
         except ImportError:
-            return "0.1.0"
+            return "1.0.1"
 
     async def __aenter__(self):
         """Async context manager entry."""

@@ -33,8 +33,12 @@ class TestDownloader(unittest.TestCase):
 
     def test_downloader_initialization(self):
         """Test downloader initialization."""
+        from unetbootin import APP_VERSION
         self.assertIsNotNone(self.downloader.session)
-        self.assertEqual(self.downloader.session.headers['User-Agent'], 'UNetbootin/0.1.0')
+        # Derive the expected UA from the current version so a version bump
+        # doesn't break this test.
+        self.assertEqual(self.downloader.session.headers['User-Agent'],
+                         f'UNetbootin/{APP_VERSION}')
 
     def test_get_version(self):
         """Test version retrieval."""
