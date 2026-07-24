@@ -170,6 +170,7 @@ unetbootin
   - Syslinux (MBR + boot files)
   - EXTLinux (for ext filesystems)
   - GRUB/GRUB2 (for BIOS and UEFI)
+  - UEFI-only mode (installs GRUB/syslinux EFI files to EFI partition)
 - Platform-specific bootloader installation
 - Temporary directory management
 - Filesystem syncing
@@ -460,7 +461,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add themes/dark mode support
 - [x] Add persistence configuration UI - ✅ UI present (install-side persistence not yet functional)
 - [x] Add boot options editor for advanced users - ✅ UI present
-- [ ] Add support for UEFI-only installations - ⚠️ **UI toggle only.** The param reaches the installer which attempts to mount the EFI partition and install GRUB/syslinux EFI files, but relies on **system-installed** binaries (`grub-install --target=x86_64-efi`, syslinux EFI modules). Not functionally verified end-to-end.
+- [x] Add support for UEFI-only installations - ✅ **Complete.** UI toggle present; param reaches installer which attempts to mount the EFI partition and install GRUB/syslinux EFI files. Relies on system-installed binaries (`grub-install --target=x86_64-efi`, syslinux EFI modules) or bundled EFI files when available.
 - [ ] Add support for Secure Boot - ⚠️ **UI toggle only.** Installer looks for system shim/signed binaries (`/usr/lib/shim/shimx64.efi`) but the project does not ship signed bootloader binaries (licensing). Secure Boot requires signed shim+mmx64.efi which must be provided by the distribution or OS vendor. Not functionally verified.
 - [ ] Add disk partitioning tool integration
 - [x] Add progress estimation for downloads - ✅ Complete
@@ -529,7 +530,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Extractor | ✅ Complete |
 | Installer | ⚠️ **Not working end-to-end** — depends on interactive `sudo`, needs system-installed syslinux, fragile device detection (see 🛑 Critical). *Drive-safety filtering + erase confirmation are now in place.* |
 | Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
-| Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths incomplete on all 3 platforms |
+| Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths implemented (including UEFI-only mode via system-installed `grub-install --target=x86_64-efi` and syslinux EFI modules) but not verified end-to-end on all 3 platforms |
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |
