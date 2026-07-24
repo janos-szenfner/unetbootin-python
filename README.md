@@ -45,8 +45,15 @@ python_unetbootin/
 │
 └── tests/
     ├── __init__.py
-    └── test_models.py               # Unit tests for models
+    ├── test_models.py              # Unit tests for models
+    ├── test_core.py                # Downloader / extractor / installer
+    ├── test_platform.py            # Platform-specific functions
+    ├── test_integration.py         # Cross-module (unit-level, mocked)
+    ├── test_new_features.py        # Mirrors, resume, categories, UEFI/SB params
+    └── test_ui.py                  # PySimpleGUI window handling
 ```
+
+> Note: `resources/` also contains `icons/`, `logos/`, `bootloader/`, and `translations/` — see the ⚠️ notes in *Current Status* about which of these are actually used by the running app.
 
 ## Installation
 
@@ -88,6 +95,7 @@ unetbootin
 ### Core Dependencies
 - **Python 3.10+**
 - **PySimpleGUI>=4.60.0** - Lightweight GUI framework (Tkinter backend)
+  > ⚠️ **Licensing caveat:** PySimpleGUI was relicensed to a commercial, license-key model in v5 and its older versions were removed from PyPI. The unpinned `>=4.60.0` is risky for redistributable builds. Before packaging, switch to **`FreeSimpleGUI`** (LGPL drop-in fork — mostly `import FreeSimpleGUI as sg`) or hard-pin **`PySimpleGUI==4.60.5.1`**.
 - **requests>=2.28.0** - HTTP downloads
 - **psutil>=5.9.0** - System information
 
@@ -126,14 +134,8 @@ unetbootin
 - Progress dialogs for long operations
 
 ### Distribution Management
-- Built-in list of 6 popular distributions:
-  - Ubuntu (24.04 LTS, 22.04 LTS, 20.04 LTS)
-  - Debian (12 Bookworm, 11 Bullseye)
-  - Fedora (40, 39)
-  - Linux Mint (21.3 Virginia, 21.2 Victoria)
-  - Arch Linux (Latest)
-  - openSUSE (Tumbleweed, Leap 16.0)
-- Version management with download URLs and file sizes
+- Built-in list of **21 distributions** across Linux (13), BSD (6), and Windows (2) — see the full list under *Next Steps → Distribution Statistics*
+- Version management with download URLs and file sizes (⚠️ checksums not populated — see checksum note above)
 - Search and filtering by category
 - Easy extensibility to add more distributions
 - JSON-based external distribution loading
@@ -144,7 +146,7 @@ unetbootin
 - File size verification (minimum size checks)
 - FTP directory listing
 - HTTP directory listing with HTML parsing
-- Checksum verification (SHA256, SHA1, MD5)
+- Checksum verification (SHA256, SHA1, MD5) — *mechanism only; the built-in distributions do not currently ship checksums, so downloaded distro ISOs are not actually verified yet*
 - Support for redirects
 
 ### Archive Extraction
@@ -159,8 +161,10 @@ unetbootin
 - Progress reporting
 
 ### USB Installation
+> ⚠️ **Not yet working end-to-end.** The install pipeline (format → mount → copy → bootloader) has correctness and safety gaps — see the 🛑 Critical section under *Next Steps*. Key limitations today: it shells out to interactive `sudo` (fails in a no-terminal GUI), requires **system-installed** syslinux/grub (the bundled `resources/bootloader/` binaries are unused), resolves target disks by fragile text parsing, and performs **no confirmation before erasing the selected drive** (which may include internal disks). Treat the items below as *implemented code paths*, not verified working features.
+
 - File copying from source to target device
-- Bootloader installation support:
+- Bootloader installation support (via **system-installed** tools, not the bundled binaries):
   - Syslinux (MBR + boot files)
   - EXTLinux (for ext filesystems)
   - GRUB/GRUB2 (for BIOS and UEFI)
@@ -170,6 +174,7 @@ unetbootin
 - Configuration file generation (syslinux.cfg, grub.cfg)
 
 ### Platform Support
+> ⚠️ Drive **listing/info/detection** is solid on all three platforms. The **format / mount / bootloader-install** paths below are implemented but incomplete and not verified on real hardware.
 
 #### macOS
 - Drive listing using `diskutil`
@@ -211,7 +216,7 @@ unetbootin
 - Platform detection and information gathering
 - Command line argument parsing
 - External command execution with timeout
-- Graphical sudo detection (gksu, kdesu, gnomesu, pkexec)
+- Graphical sudo detection (gksu, kdesu, gnomesu, pkexec) — *helper exists but is not yet wired into the install flow, which still calls plain `sudo`*
 - Drive listing across platforms
 - Size formatting (human-readable)
 - Root/admin privilege checking
@@ -241,23 +246,25 @@ pip install -e .
 
 ### Build Standalone Executables
 
-Using PyInstaller:
+> ⚠️ **Status: Not Started / not yet working.** These commands are a starting point only. Before they produce a usable app you must (1) resolve the PySimpleGUI licensing caveat above, (2) fix `setup.py` `package_data` to the real asset paths, and (3) add a `sys._MEIPASS`-aware resource resolver so bundled icons/bootloader binaries are found at runtime. See *Next Steps → 🔧 Build & Distribution*.
+
+Using PyInstaller (illustrative):
 ```bash
 # Install PyInstaller
 pip install pyinstaller
 
-# Build for current platform
-pyinstaller --onefile --windowed --name unetbootin src/unetbootin/main.py
+# Build for current platform (icon lives under resources/icons/)
+pyinstaller --onefile --windowed --name unetbootin \
+    --icon=src/unetbootin/resources/icons/unetbootin.ico \
+    src/unetbootin/main.py
 
 # Build for macOS (app bundle)
-pyinstaller --windowed --name UNetbootin --icon=resources/unetbootin.icns src/unetbootin/main.py
+pyinstaller --windowed --name UNetbootin \
+    --icon=src/unetbootin/resources/icons/unetbootin.icns \
+    src/unetbootin/main.py
 ```
 
-Using cx_Freeze:
-```bash
-pip install cx_Freeze
-python setup.py build
-```
+> Note: `python setup.py build` does **not** produce an executable — there is no cx_Freeze configuration in `setup.py`. Use PyInstaller (above) plus the per-OS packaging steps in *Next Steps*.
 
 ## Adding New Distributions
 
@@ -372,8 +379,7 @@ brew install xorriso
 ```
 
 **"Permission denied" on USB drive**
-- On Linux/macOS: Run with sudo
-- On Windows: Run as Administrator
+- Writing to raw devices needs elevated privileges. Today the app relies on `sudo`/admin, so in practice it must currently be started from a terminal with `sudo` (Linux/macOS) or "Run as Administrator" (Windows). *This is a known limitation — a proper double-click elevation model (polkit / Authorization Services / UAC) is tracked under 🛑 Critical in Next Steps.*
 
 **"Drive not found"**
 - Make sure the USB drive is inserted
@@ -442,17 +448,17 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] Implement ISO download functionality from distribution URLs - ✅ Complete
 
 ### 📦 Medium Priority
-- [x] Add translation support (port `.ts` files to `.qm`) - ✅ Complete (Only en, de, es, fr, it, hu supported)
+- [ ] Add translation support - ⚠️ **NOT done.** `load_translations()` in `main.py` is a stub that only normalizes a language code; there are **no `.qm` files**, no gettext catalogs, and the `.ts` files (Qt sources) are never loaded. The UI is English-only. Needs a real gettext/`.mo` implementation.
 - [ ] Implement auto-update checking
-- [x] Add ISO verification (checksum comparison) - ✅ Complete
+- [ ] Add ISO verification (checksum comparison) - ⚠️ **Partial / not effective.** The verify code (`verify_checksum`, SHA256/SHA1/MD5) exists, but **0 of 28 built-in distro versions ship a checksum**, so distribution downloads are never actually verified (they log "No checksum available… skipping"). Needs checksums populated in `distro.py`.
 - [x] Add support for more archive formats (zip, tar, etc.) - ✅ Complete
 
 ### 🎨 Low Priority / Enhancements
 - [ ] Add themes/dark mode support
-- [x] Add persistence configuration UI - ✅ Complete
-- [x] Add boot options editor for advanced users - ✅ Complete
-- [x] Add support for UEFI-only installations - ✅ Complete
-- [x] Add support for Secure Boot - ✅ Complete
+- [x] Add persistence configuration UI - ✅ UI present (install-side persistence not yet functional)
+- [x] Add boot options editor for advanced users - ✅ UI present
+- [ ] Add support for UEFI-only installations - ⚠️ **UI toggle only.** The param reaches the installer but the UEFI install code is a placeholder/"simplified" path and is not functionally verified.
+- [ ] Add support for Secure Boot - ⚠️ **UI toggle only.** Same as above — not functionally verified (Secure Boot needs signed bootloader binaries the project does not ship).
 - [ ] Add disk partitioning tool integration
 - [x] Add progress estimation for downloads - ✅ Complete
 - [x] Add download resume support - ✅ Complete
@@ -461,7 +467,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 🧪 Testing
 - [x] Add unit tests for core functionality - ✅ Complete
 - [x] Add unit tests for platform-specific code - ✅ Complete
-- [x] Add integration tests - ✅ Complete
+- [x] Add integration tests - ⚠️ **Unit-level only.** All 166 tests mock `subprocess`; **no test actually formats a drive or produces a bootable USB.** A loopback-image integration test is still needed.
 - [x] Add UI tests for PySimpleGUI - ✅ Complete
 
 ### 📝 Documentation
@@ -469,12 +475,27 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] Add developer documentation
 - [x] Add inline code documentation - ✅ Complete
 
+### 🛑 Critical — Functional & Safety (must be done before the tool is usable/safe)
+> These block the core promise ("create a bootable USB by just running the app") and protect users from data loss. They must land before packaging.
+- [ ] **Filter the drive list to removable/external devices only.** `format_drive_list()` currently lists *all* disks (internal disks included) and only sorts removable first — a user can select their system disk.
+- [ ] **Add a destructive-action confirmation dialog** ("This will ERASE `<device>` (`<size>`, `<label>`) — continue?") before `_format_device()` runs. There is currently **no confirmation** before `diskutil eraseVolume` / `mkfs.vfat` / `format`.
+- [ ] **Replace per-command `sudo` with a single elevation model** per OS (polkit/`pkexec` on Linux, Authorization Services on macOS, a UAC-elevated manifest on Windows). The 32 `sudo …` calls (`mkfs.vfat`, `mount`, `dd`, `syslinux`) cannot prompt for a password in a double-clicked GUI with no terminal → they silently fail or hang.
+- [ ] **Remove the terminal-dependent privilege flow.** Linux shows "run `sudo … from the command line`" then exits; macOS opens Terminal to re-run with sudo — both contradict the "just execute the app" goal.
+- [ ] **Actually use the bundled bootloader binaries.** The installer relies on system-installed `syslinux`/`/usr/lib/syslinux/mbr/mbr.bin`; the committed `resources/bootloader/` files (syslinux.exe, mbr.bin, ubnldr…) are never referenced. Add a frozen-app-aware resource resolver (`sys._MEIPASS` / `importlib.resources`) and install from bundled binaries.
+- [ ] **Harden device resolution.** `_format_device`/`_mount_device` locate disks by substring-scanning `diskutil list` text and hardcode partition `…s1`; use `lsblk -no pkname` / `diskutil info -plist` instead.
+- [ ] **Populate distribution checksums** and wire real translations (see Medium Priority above).
+
 ### 🔧 Build & Distribution
-- [ ] Create macOS .app bundle
-- [ ] Create Windows installer
-- [ ] Create Linux packages (.deb, .rpm, AppImage, Flatpak)
-- [ ] Set up CI/CD pipeline for builds
-- [ ] Set up automatic updates
+> **Prerequisite (blocker):** resolve the GUI dependency first — PySimpleGUI was relicensed to a commercial, license-key model in v5 and its old versions were pulled from PyPI. Shipping the wrong version inside a redistributed executable is a licensing risk. **Switch to `FreeSimpleGUI` (LGPL drop-in fork) or hard-pin `PySimpleGUI==4.60.5.1`** before building anything.
+- [ ] **Fix packaging metadata first:** `setup.py` `package_data` globs (`resources/*.png`, `translations/*.qm`) do not match the real layout (`resources/icons/`, `resources/logos/`, `resources/translations/*.ts`) — assets are currently not bundled.
+- [ ] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle.
+- [ ] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon.
+- [ ] Create Windows `.exe` (no install) — PyInstaller `--onefile --windowed` **+ a UAC `uac_admin` manifest**; replace the interactive `format` command with scripted `diskpart`.
+- [ ] Create macOS `.app` → `.dmg` (drag-to-Applications) — **codesign + notarize** (Gatekeeper blocks unsigned apps); replace the Terminal-sudo flow with Authorization Services.
+- [ ] Create Linux packages: **AppImage** first (simplest single-file), then `.deb`/`.rpm` via `fpm`, then **Flatpak** last (sandbox makes raw block-device writes hard — needs `--device=all` + host tools); ship a `.desktop` file and declare runtime deps (syslinux, dosfstools).
+- [ ] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag.
+- [ ] Set up automatic updates.
+- [ ] Add `build/`, `dist/`, `*.spec`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore` (currently only `.DS_Store` is ignored, and `.pytest_cache/` is committed).
 
 ### 🏗️ Architecture Improvements
 - [x] Consider using async/await for I/O operations - ✅ Complete
@@ -497,15 +518,17 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ✅ Complete (with UEFI/Secure Boot) |
-| Platform Support | ✅ Complete (all 3 platforms) |
+| Installer | ⚠️ **Not working end-to-end** — depends on interactive `sudo`, needs system-installed syslinux, fragile device detection, no safety confirmation (see 🛑 Critical) |
+| Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths incomplete on all 3 platforms |
 | Core Utilities | ✅ Complete |
-| Unit Tests | ✅ Complete |
+| Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |
-| Resources | ✅ Complete |
-| Full Distribution List | ✅ Complete |
-| Translations | ✅ Complete|
+| Resources | ⚠️ Present but unused — bootloader binaries & per-distro logos are committed but never referenced by code |
+| Full Distribution List | ✅ Complete (21 distros; checksums not populated) |
+| Translations | ❌ Not implemented — `load_translations()` is a stub; no `.qm`/gettext catalogs (UI is English-only) |
+| Checksum Verification | ⚠️ Code present, but no distro ships checksums → never actually runs |
 | Packaging | ❌ Not Started |
+| Elevation / "no-terminal" launch | ❌ Not implemented — currently requires `sudo`/Terminal |
 
 ---
 
