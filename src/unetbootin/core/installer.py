@@ -476,50 +476,25 @@ class USBInstaller:
         return None
 
     def _format_device(self, device: str) -> bool:
-        """Format the target device with FAT32 filesystem."""
+        """Format the target device with FAT32 filesystem.
+        
+        Uses the platform-specific format_drive function for consistency.
+        """
         logger.info(f"Formatting device {device}")
 
         try:
+            from unetbootin.platform import format_drive
+            
+            # Normalize device for platform function
             if self.platform == 'win32':
-                # Windows: use format command
+                # Windows: ensure drive letter format (e.g., 'E:')
                 if len(device) == 1 and device.isalpha():
                     device = f"{device}:"
-                # Use Windows format command with FAT32
-                result = subprocess.run(
-                    ['format', device, '/FS:FAT32', '/Q', '/Y'],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                return result.returncode == 0
-            elif self.platform == 'darwin':
-                # macOS: resolve the whole disk via plist (no text scanning),
-                # then eraseDisk to lay down a fresh MBR + FAT32 volume.
-                whole_disk = self._macos_whole_disk(device)
-                result = subprocess.run(
-                    ['diskutil', 'eraseDisk', 'FAT32',
-                     'UNETBOOTIN', 'MBRFormat', whole_disk],
-                    capture_output=True, text=True, timeout=120
-                )
-                if result.returncode != 0:
-                    logger.error(f"diskutil eraseDisk failed: {result.stderr}")
-                return result.returncode == 0
-            else:  # Linux
-                # Linux: use mkfs.vfat
-                if not device.startswith('/dev/'):
-                    device = f"/dev/{device}"
-                
-                # Check if this is a whole device or partition
-                # For safety, we should operate on partitions, not whole devices
-                # But for simplicity, we'll assume it's a partition or the user knows
-                # what they're doing
-                result = subprocess.run(
-                    ['sudo', 'mkfs.vfat', '-F32', '-n', 'UNETBOOTIN', device],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                return result.returncode == 0
+                elif not device.endswith(':'):
+                    device = f"{device}:"
+            
+            # Use platform-specific formatting
+            return format_drive(device, filesystem="FAT32", label="UNETBOOTIN")
                 
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to format device {device}: {e}")

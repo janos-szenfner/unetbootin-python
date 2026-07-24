@@ -112,17 +112,80 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
 
 def format_drive(drive: str, filesystem: str = "FAT32",
                  label: str = "UNETBOOTIN") -> bool:
-    """Format a drive on Windows.
-
-    Not implemented: automated formatting of arbitrary drives is too
-    destructive to run non-interactively. Reports failure so callers do
-    not assume the drive was formatted.
+    """Format a drive on Windows using diskpart scripting.
+    
+    Uses diskpart with a script file to non-interactively format the drive.
+    This is safer than the format command as it allows better control and
+    works reliably in automated scripts.
+    
+    Args:
+        drive: Drive letter (e.g., 'E:' or 'E')
+        filesystem: Filesystem type (FAT32, NTFS, exFAT)
+        label: Volume label to set
+        
+    Returns:
+        True if formatting succeeded, False otherwise
     """
-    logger.warning(
-        f"Drive formatting is not implemented on Windows; format {drive} "
-        f"as {filesystem} manually (Explorer or diskpart) and retry"
-    )
-    return False
+    try:
+        # Normalize drive letter
+        if drive and len(drive) == 1 and drive.isalpha():
+            drive = f"{drive}:"
+        
+        if not drive.endswith(':'):
+            drive = f"{drive}:"
+        
+        drive_letter = drive[0].upper()
+        
+        # Create a temporary diskpart script
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            # Diskpart script to format the drive
+            f.write(f"select volume {drive_letter}\\n")
+            f.write("clean\r\n")
+            if filesystem.upper() == "FAT32":
+                f.write(f"create partition primary\r\n")
+                f.write(f"format fs=fat32 label={label} quick\r\n")
+            elif filesystem.upper() == "NTFS":
+                f.write(f"create partition primary\r\n")
+                f.write(f"format fs=ntfs label={label} quick\r\n")
+            elif filesystem.upper() == "EXFAT":
+                f.write(f"create partition primary\r\n")
+                f.write(f"format fs=exfat label={label} quick\r\n")
+            else:
+                f.write(f"create partition primary\r\n")
+                f.write(f"format fs=fat32 label={label} quick\r\n")
+            f.write("assign\r\n")
+            f.write("exit\r\n")
+            script_path = f.name
+        
+        try:
+            # Run diskpart with the script
+            result = subprocess.run(
+                ['diskpart', '/s', script_path],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            
+            # Check for success
+            if result.returncode == 0:
+                logger.info(f"Successfully formatted {drive} as {filesystem}")
+                return True
+            else:
+                logger.error(f"diskpart failed to format {drive}: {result.stderr}")
+                return False
+        finally:
+            # Clean up the script file
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+                
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as e:
+        logger.error(f"Failed to format drive {drive}: {e}")
+        return False
 
 
 def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:

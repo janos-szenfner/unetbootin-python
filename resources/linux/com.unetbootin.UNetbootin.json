@@ -1,0 +1,97 @@
+{
+    "app-id": "com.unetbootin.UNetbootin",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "23.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.node18",
+        "org.freedesktop.Sdk.Extension.py3.10"
+    ],
+    "command": "unetbootin",
+    "finish-args": [
+        "--device=all",
+        "--share=ipc",
+        "--share=network",
+        "--socket=wayland",
+        "--socket=x11",
+        "--filesystem=host"
+    ],
+    "cleanup": [
+        "/.local/share",
+        "/.cache"
+    ],
+    "modules": [
+        {
+            "name": "unetbootin",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --prefix=/app --no-deps -r requirements.txt",
+                "install -Dm755 src/unetbootin/main.py /app/bin/unetbootin"
+            ],
+            "build-options": {
+                "env": {
+                    "PIP_NO_WARN_SCRIPT_LOCATION": "1"
+                }
+            },
+            "sources": [
+                {
+                    "type": "file",
+                    "path": "requirements.txt"
+                },
+                {
+                    "type": "dir",
+                    "path": "src"
+                },
+                {
+                    "type": "file",
+                    "path": "setup.py"
+                }
+            ]
+        },
+        {
+            "name": "resources",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -Dm644 resources/bootloader/* /app/share/unetbootin/resources/bootloader/",
+                "install -Dm644 resources/icons/* /app/share/unetbootin/resources/icons/",
+                "install -Dm644 resources/logos/* /app/share/unetbootin/resources/logos/"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "src/unetbootin/resources"
+                }
+            ]
+        },
+        {
+            "name": "desktop-integration",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -Dm644 resources/linux/unetbootin.desktop /app/share/applications/com.unetbootin.UNetbootin.desktop",
+                "install -Dm644 resources/icons/unetbootin_256.png /app/share/icons/hicolor/256x256/apps/com.unetbootin.UNetbootin.png",
+                "install -Dm644 resources/icons/unetbootin_48.png /app/share/icons/hicolor/48x48/apps/com.unetbootin.UNetbootin.png",
+                "install -Dm644 resources/icons/unetbootin_32.png /app/share/icons/hicolor/32x32/apps/com.unetbootin.UNetbootin.png",
+                "install -Dm644 resources/icons/unetbootin_16.png /app/share/icons/hicolor/16x16/apps/com.unetbootin.UNetbootin.png"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "resources/linux"
+                },
+                {
+                    "type": "dir",
+                    "path": "src/unetbootin/resources/icons"
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "name": "UNetbootin",
+        "summary": "Create bootable USB drives from ISO files",
+        "description": "UNetbootin is a lightweight tool that allows you to create bootable USB drives from ISO files. It supports a wide range of Linux distributions, Windows installations, and other bootable media.",
+        "homepage": "https://unetbootin.sourceforge.net",
+        "license": "GPL-2.0-or-later",
+        "maintainer": "UNetbootin Team <geza0kovacs@gmail.com>",
+        "categories": ["System", "Utility", "Boot"]
+    }
+}

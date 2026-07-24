@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=UNetbootin
+GenericName=Bootable USB Creator
+Comment=Create bootable USB drives from ISO files
+Exec=unetbootin %F
+Icon=unetbootin
+Terminal=false
+Type=Application
+Categories=System;Utility;Boot;
+StartupNotify=true
+StartupWMClass=unetbootin
+MimeType=application/x-iso;application/x-cd-image;
+Keywords=usb;boot;iso;install;live;

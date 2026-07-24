@@ -1,0 +1,461 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Cancel previous runs on same branch
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.10'
+  APP_NAME: 'unetbootin'
+  
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short
+
+  build-windows:
+    name: Build Windows EXE
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.0.0
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller unetbootin-windows.spec \
+            --onefile \
+            --windowed \
+            --name ${{ env.APP_NAME }} \
+            --clean \
+            --distpath dist/windows
+
+      - name: Embed UAC manifest
+        run: |
+          $mtPath = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits" -Recurse -Filter "mt.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if ($mtPath -and (Test-Path $mtPath)) {
+            & $mtPath -manifest resources\windows\unetbootin.exe.manifest -outputresource:dist\windows\${{ env.APP_NAME }}.exe;#1
+            Write-Host "Manifest embedded successfully"
+          } else {
+            Write-Warning "mt.exe not found, manifest not embedded"
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-windows
+          path: dist/windows/
+          retention-days: 14
+
+  build-macos:
+    name: Build macOS App (Apple Silicon)
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.0.0
+
+      - name: Build with PyInstaller (Universal 2 for Apple Silicon + Intel)
+        run: |
+          pyinstaller unetbootin-macos.spec \
+            --windowed \
+            --name ${{ env.APP_NAME }} \
+            --clean \
+            --distpath dist/macos
+
+      - name: Create ZIP (Primary - No Gatekeeper issues)
+        run: |
+          cd dist/macos
+          zip -r ${{ env.APP_NAME }}.zip ${{ env.APP_NAME }}.app
+
+      - name: Create DMG (Alternative - Requires Gatekeeper bypass)
+        run: |
+          mkdir -p dmg_temp
+          hdiutil create -volname "UNetbootin" \
+            -srcfolder dist/macos/${{ env.APP_NAME }}.app \
+            -ov -format UDZO \
+            -o dist/macos/${{ env.APP_NAME }}.dmg
+          rm -rf dmg_temp
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-macos
+          path: dist/macos/
+          retention-days: 14
+
+  build-linux-appimage:
+    name: Build Linux AppImage
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.0.0
+          sudo apt-get update
+          sudo apt-get install -y libfuse2-dev patchelf wget
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller unetbootin.spec \
+            --onefile \
+            --name ${{ env.APP_NAME }} \
+            --clean \
+            --distpath dist/linux-appimage
+
+      - name: Create AppImage
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          cp dist/linux-appimage/${{ env.APP_NAME }} AppDir/usr/bin/
+          cp resources/linux/unetbootin.desktop AppDir/usr/share/applications/
+          cp src/unetbootin/resources/icons/unetbootin_256.png AppDir/usr/share/icons/hicolor/256x256/apps/unetbootin.png
+          mkdir -p AppDir/usr/share/unetbootin/resources
+          cp -r src/unetbootin/resources/* AppDir/usr/share/unetbootin/resources/
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/${{ env.APP_NAME }} \
+            --desktop-file AppDir/usr/share/applications/unetbootin.desktop \
+            --icon-filename AppDir/usr/share/icons/hicolor/256x256/apps/unetbootin.png \
+            --output appimage
+          mv ${{ env.APP_NAME }}*.AppImage dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+          chmod +x dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-linux-appimage
+          path: dist/linux-appimage/
+          retention-days: 14
+
+  build-linux-deb:
+    name: Build Linux DEB
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.0.0
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+          sudo gem install fpm -v 1.14.2
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller unetbootin.spec \
+            --onefile \
+            --name ${{ env.APP_NAME }} \
+            --clean \
+            --distpath dist/linux-deb
+
+      - name: Create DEB package
+        run: |
+          mkdir -p package/usr/bin
+          mkdir -p package/usr/share/${{ env.APP_NAME }}
+          mkdir -p package/usr/share/applications
+          mkdir -p package/usr/share/icons/hicolor/256x256/apps
+          cp dist/linux-deb/${{ env.APP_NAME }} package/usr/bin/
+          cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
+          cp resources/linux/unetbootin.desktop package/usr/share/applications/${{ env.APP_NAME }}.desktop
+          cp src/unetbootin/resources/icons/unetbootin_256.png package/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
+          fpm -s dir -t deb \
+            -n ${{ env.APP_NAME }} \
+            -v ${{ github.ref_name }} \
+            --architecture amd64 \
+            --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
+            --description "Create bootable USB drives from ISO files" \
+            --license GPLv2+ \
+            --url https://unetbootin.sourceforge.net \
+            --depends syslinux \
+            --depends syslinux-common \
+            --depends dosfstools \
+            --depends mtools \
+            -p dist/linux-deb/${{ env.APP_NAME }}.deb \
+            package/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-linux-deb
+          path: dist/linux-deb/
+          retention-days: 14
+
+  build-linux-rpm:
+    name: Build Linux RPM
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.0.0
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+          sudo gem install fpm -v 1.14.2
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller unetbootin.spec \
+            --onefile \
+            --name ${{ env.APP_NAME }} \
+            --clean \
+            --distpath dist/linux-rpm
+
+      - name: Create RPM package
+        run: |
+          mkdir -p package/usr/bin
+          mkdir -p package/usr/share/${{ env.APP_NAME }}
+          mkdir -p package/usr/share/applications
+          mkdir -p package/usr/share/icons/hicolor/256x256/apps
+          cp dist/linux-rpm/${{ env.APP_NAME }} package/usr/bin/
+          cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
+          cp resources/linux/unetbootin.desktop package/usr/share/applications/${{ env.APP_NAME }}.desktop
+          cp src/unetbootin/resources/icons/unetbootin_256.png package/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
+          fpm -s dir -t rpm \
+            -n ${{ env.APP_NAME }} \
+            -v ${{ github.ref_name }} \
+            --architecture x86_64 \
+            --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
+            --description "Create bootable USB drives from ISO files" \
+            --license GPLv2+ \
+            --url https://unetbootin.sourceforge.net \
+            --depends syslinux \
+            --depends dosfstools \
+            --depends mtools \
+            -p dist/linux-rpm/${{ env.APP_NAME }}.rpm \
+            package/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-linux-rpm
+          path: dist/linux-rpm/
+          retention-days: 14
+
+  build-flatpak:
+    name: Build Flatpak
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flatpak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install flathub org.freedesktop.Platform//23.08
+          flatpak install flathub org.freedesktop.Sdk//23.08
+
+      - name: Build Flatpak
+        run: |
+          mkdir -p build-flatpak
+          flatpak-builder --user --install-deps-from=flathub \
+            --force-clean \
+            build-flatpak/repo \
+            resources/linux/com.unetbootin.UNetbootin.json
+          flatpak build-bundle \
+            build-flatpak/repo \
+            dist/flatpak/${{ env.APP_NAME }}.flatpak \
+            com.unetbootin.UNetbootin
+          flatpak info dist/flatpak/${{ env.APP_NAME }}.flatpak
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-flatpak
+          path: dist/flatpak/
+          retention-days: 14
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build distribution packages
+        run: |
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages_dir: dist/
+          skip_existing: true
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos, build-linux-appimage, build-linux-deb, build-linux-rpm, build-flatpak, publish-pypi]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Add macOS README
+        run: |
+          mkdir -p artifacts/${{ env.APP_NAME }}-macos/
+          cp resources/macos/README-macOS.md artifacts/${{ env.APP_NAME }}-macos/
+
+      - name: Display artifact structure
+        run: find artifacts/ -type f
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref }}
+          body: |
+            ### Changes
+            
+            - Windows: EXE with UAC manifest for admin elevation
+            - macOS: .app bundle (Universal 2 - Apple Silicon + Intel), distributed as ZIP and DMG
+            - Linux: AppImage, DEB, RPM, and Flatpak packages
+            - Python: Available on PyPI (`pip install unetbootin`)
+            
+            ### macOS Installation Notes
+            
+            The macOS app is **unsigned** (no Apple Developer certificate). 
+            **First launch**: Right-click on UNetbootin in Applications → Open → Click Open in the security dialog.
+            
+            See `README-macOS.md` in the macOS artifact for detailed instructions.
+            
+            ### Installation
+            
+            **Windows**: Run `unetbootin.exe` (UAC elevation required)
+            **macOS**: 
+            - ZIP: Extract and drag to Applications, then right-click → Open
+            - DMG: Mount, drag to Applications, then right-click → Open
+            **Linux**: 
+            - AppImage: `chmod +x unetbootin.AppImage && ./unetbootin.AppImage`
+            - DEB: `sudo dpkg -i unetbootin.deb`
+            - RPM: `sudo rpm -i unetbootin.rpm`
+            - Flatpak: `flatpak install unetbootin.flatpak`
+            **Python**: `pip install unetbootin`
+          files: |
+            artifacts/${{ env.APP_NAME }}-windows/*
+            artifacts/${{ env.APP_NAME }}-macos/*
+            artifacts/${{ env.APP_NAME }}-linux-appimage/*
+            artifacts/${{ env.APP_NAME }}-linux-deb/*
+            artifacts/${{ env.APP_NAME }}-linux-rpm/*
+            artifacts/${{ env.APP_NAME }}-flatpak/*
+          generate_release_notes: true
+          make_latest: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
