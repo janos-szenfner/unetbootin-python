@@ -106,20 +106,42 @@ jobs:
           cd dist/macos
           zip -r ${{ env.APP_NAME }}.zip ${{ env.APP_NAME }}.app
 
-      - name: Create DMG (Alternative - Requires Gatekeeper bypass)
+      - name: Create DMG (with volume icon)
         run: |
-          mkdir -p dmg_temp
-          hdiutil create -volname "UNetbootin" \
-            -srcfolder dist/macos/${{ env.APP_NAME }}.app \
-            -ov -format UDZO \
-            -o dist/macos/${{ env.APP_NAME }}.dmg
-          rm -rf dmg_temp
+          APP="dist/macos/${{ env.APP_NAME }}.app"
+          ICNS="src/unetbootin/resources/icons/unetbootin.icns"
+          DMG="dist/macos/${{ env.APP_NAME }}.dmg"
+          # Build a styled DMG whose mounted volume carries the app icon and a
+          # drag-to-Applications shortcut. Falls back to a plain compressed DMG
+          # if the icon/volume tooling misbehaves, so a release is never blocked.
+          build_styled_dmg() {
+            rm -rf dmg_stage dist/macos/rw.dmg
+            mkdir -p dmg_stage
+            cp -R "$APP" dmg_stage/
+            ln -s /Applications dmg_stage/Applications
+            cp "$ICNS" dmg_stage/.VolumeIcon.icns
+            hdiutil create -volname "UNetbootin" -srcfolder dmg_stage \
+              -fs HFS+ -format UDRW -ov -o dist/macos/rw.dmg
+            MOUNT="$(hdiutil attach -readwrite -noverify -noautoopen dist/macos/rw.dmg | grep -Eo '/Volumes/[^ ]+' | head -1)"
+            SetFile -a C "$MOUNT"
+            hdiutil detach "$MOUNT"
+            hdiutil convert dist/macos/rw.dmg -format UDZO -imagekey zlib-level=9 -ov -o "$DMG"
+            rm -f dist/macos/rw.dmg
+            rm -rf dmg_stage
+          }
+          build_styled_dmg || hdiutil create -volname "UNetbootin" -srcfolder "$APP" -format UDZO -ov -o "$DMG"
+          ls -lh "$DMG"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
+          # Ship only the ZIP and the DMG (not the raw .app directory). The
+          # release attaches each of these as a standalone asset — the DMG is a
+          # plain .dmg, not wrapped in a zip.
           name: ${{ env.APP_NAME }}-macos
-          path: dist/macos/
+          path: |
+            dist/macos/${{ env.APP_NAME }}.zip
+            dist/macos/${{ env.APP_NAME }}.dmg
           retention-days: 14
 
   build-linux-appimage:

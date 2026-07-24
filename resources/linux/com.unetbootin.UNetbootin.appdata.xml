@@ -23,8 +23,8 @@
     <binary>unetbootin</binary>
   </provides>
   <categories>
+    <category>Utility</category>
     <category>System</category>
-    <category>Filesystem</category>
   </categories>
   <icon type="stock">com.unetbootin.UNetbootin</icon>
   <content_rating type="oars-1.1"/>
