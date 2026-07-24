@@ -21,8 +21,7 @@
             "name": "unetbootin",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --prefix=/app --no-deps -r requirements.txt",
-                "install -Dm755 src/unetbootin/main.py /app/bin/unetbootin"
+                "pip3 install --prefix=/app . py7zr"
             ],
             "build-options": {
                 "build-args": [

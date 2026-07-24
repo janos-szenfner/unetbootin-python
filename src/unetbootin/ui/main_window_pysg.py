@@ -355,7 +355,7 @@ class MainWindowPySG:
         self.elements['distro_select'].update(values=distro_names)
 
         if current_value and current_value in distro_names:
-            self.elements['distro_select'].set_value(current_value)
+            self.elements['distro_select'].update(value=current_value)
 
     def set_drive_list(self, drives: List[tuple]):
         """Set the list of available drives."""
@@ -377,10 +377,10 @@ class MainWindowPySG:
         if current_device:
             for display, device in drives:
                 if device == current_device:
-                    self.elements['drive_select'].set_value(display)
+                    self.elements['drive_select'].update(value=display)
                     break
         elif display_list:
-            self.elements['drive_select'].set_value(display_list[0])
+            self.elements['drive_select'].update(value=display_list[0])
 
         return len(drives) > 0
 
@@ -399,7 +399,7 @@ class MainWindowPySG:
     values=version_names, disabled=len(versions) == 0)
 
         if versions:
-            self.elements['version_select'].set_value(version_names[0])
+            self.elements['version_select'].update(value=version_names[0])
 
         if distro_name and distro_name in self.distributions:
             distro = self.distributions[distro_name]
