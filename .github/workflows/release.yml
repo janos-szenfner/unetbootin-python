@@ -218,21 +218,31 @@ jobs:
           mkdir -p package/usr/bin
           mkdir -p package/usr/share/${{ env.APP_NAME }}
           mkdir -p package/usr/share/applications
-          mkdir -p package/usr/share/icons/hicolor/256x256/apps
+          mkdir -p package/usr/share/metainfo
+          for s in 16 32 48 128 256; do mkdir -p package/usr/share/icons/hicolor/${s}x${s}/apps; done
           cp dist/linux-deb/${{ env.APP_NAME }} package/usr/bin/
           chmod +x package/usr/bin/${{ env.APP_NAME }}
           cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
-          cp resources/linux/unetbootin.desktop package/usr/share/applications/${{ env.APP_NAME }}.desktop
-          cp src/unetbootin/resources/icons/unetbootin_256.png package/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
-          # Extract version from tag, preserving semantic version format (e.g., v1.0.5 -> 1.0.5)
-          VER="${GITHUB_REF_NAME#v}"; if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then VER="0.0.0"; fi
+          # Ship the reverse-DNS desktop entry, matching AppStream metainfo and
+          # themed icons so GNOME Software shows the name, icon, license and
+          # description instead of "Unknown License" with a generic icon.
+          cp resources/linux/com.unetbootin.UNetbootin.desktop package/usr/share/applications/com.unetbootin.UNetbootin.desktop
+          cp resources/linux/com.unetbootin.UNetbootin.appdata.xml package/usr/share/metainfo/com.unetbootin.UNetbootin.appdata.xml
+          for s in 16 32 48 128 256; do cp src/unetbootin/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.unetbootin.UNetbootin.png; done
+          # Version from tag (v1.0.6 -> 1.0.6); on non-tag (manual) builds fall
+          # back to the packaged __version__ rather than 0.0.0.
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+          fi
+          VER="${VER:-1.0.1}"
           fpm -s dir -t deb \
             -n ${{ env.APP_NAME }} \
             -v "$VER" \
             --architecture amd64 \
             --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
             --description "Create bootable USB drives from ISO files" \
-            --license GPLv2+ \
+            --license "GPL-2.0-or-later" \
             --url https://github.com/${{ github.repository }} \
             --depends syslinux \
             --depends syslinux-common \
@@ -281,21 +291,31 @@ jobs:
           mkdir -p package/usr/bin
           mkdir -p package/usr/share/${{ env.APP_NAME }}
           mkdir -p package/usr/share/applications
-          mkdir -p package/usr/share/icons/hicolor/256x256/apps
+          mkdir -p package/usr/share/metainfo
+          for s in 16 32 48 128 256; do mkdir -p package/usr/share/icons/hicolor/${s}x${s}/apps; done
           cp dist/linux-rpm/${{ env.APP_NAME }} package/usr/bin/
           chmod +x package/usr/bin/${{ env.APP_NAME }}
           cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
-          cp resources/linux/unetbootin.desktop package/usr/share/applications/${{ env.APP_NAME }}.desktop
-          cp src/unetbootin/resources/icons/unetbootin_256.png package/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
-          # Extract version from tag, preserving semantic version format (e.g., v1.0.5 -> 1.0.5)
-          VER="${GITHUB_REF_NAME#v}"; if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then VER="0.0.0"; fi
+          # Ship the reverse-DNS desktop entry, matching AppStream metainfo and
+          # themed icons so GNOME Software shows the name, icon, license and
+          # description instead of "Unknown License" with a generic icon.
+          cp resources/linux/com.unetbootin.UNetbootin.desktop package/usr/share/applications/com.unetbootin.UNetbootin.desktop
+          cp resources/linux/com.unetbootin.UNetbootin.appdata.xml package/usr/share/metainfo/com.unetbootin.UNetbootin.appdata.xml
+          for s in 16 32 48 128 256; do cp src/unetbootin/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.unetbootin.UNetbootin.png; done
+          # Version from tag (v1.0.6 -> 1.0.6); on non-tag (manual) builds fall
+          # back to the packaged __version__ rather than 0.0.0.
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+          fi
+          VER="${VER:-1.0.1}"
           fpm -s dir -t rpm \
             -n ${{ env.APP_NAME }} \
             -v "$VER" \
             --architecture x86_64 \
             --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
             --description "Create bootable USB drives from ISO files" \
-            --license GPLv2+ \
+            --license "GPL-2.0-or-later" \
             --url https://github.com/${{ github.repository }} \
             --depends syslinux \
             --depends dosfstools \
