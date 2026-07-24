@@ -18,6 +18,39 @@ _SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
 _SUBPROCESS_PARSE_ERRORS = (subprocess.SubprocessError, OSError,
                             ValueError, KeyError, TypeError)
 
+# Byte multipliers for lsblk human-readable sizes (K=1024-based, as lsblk uses).
+_SIZE_UNITS = {'B': 1, 'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3,
+               'T': 1024 ** 4, 'P': 1024 ** 5}
+
+
+def _parse_size(value: Any) -> int:
+    """Parse an lsblk SIZE field to a byte count.
+
+    Handles plain byte counts (``lsblk -b`` or JSON integers) *and* the
+    human-readable form lsblk emits by default (e.g. ``100G``, ``14.5G``,
+    ``512M``). Returns 0 for anything unparseable rather than raising —
+    ``int("100G")`` used to crash drive enumeration.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        return int(text)  # already bytes
+    except ValueError:
+        pass
+    match = re.match(r'^([\d.]+)\s*([BKMGTP])i?B?$', text, re.IGNORECASE)
+    if match:
+        try:
+            number = float(match.group(1))
+        except ValueError:
+            return 0
+        return int(number * _SIZE_UNITS.get(match.group(2).upper(), 1))
+    return 0
+
 
 def get_drive_list() -> List[Dict[str, Any]]:
     """Get list of available drives on Linux."""
@@ -40,7 +73,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                     drive_info = {
                         'device': f"/dev/{device.get('name', '')}",
                         'name': device.get('name', ''),
-                        'size': int(device.get('size', 0)),
+                        'size': _parse_size(device.get('size', 0)),
                         'type': device.get('type', ''),
                         'removable': device.get('rm', False),
                         'model': device.get('model', ''),
@@ -69,7 +102,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                     for partition in device2['children']:
                                         drive_info['partitions'].append({
                                             'name': partition.get('name', ''),
-                                            'size': int(partition.get('size', 0)),
+                                            'size': _parse_size(partition.get('size', 0)),
                                             'type': partition.get('type', ''),
                                             'mountpoint': partition.get('mountpoint', ''),
                                         })
@@ -118,7 +151,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                 data = json.loads(result.stdout)
                                 for device in data.get('blockdevices', []):
                                     if device.get('name') == target:
-                                        device_info['size'] = int(device.get('size', 0))
+                                        device_info['size'] = _parse_size(device.get('size', 0))
                                         device_info['type'] = device.get('type', '')
                                         device_info['removable'] = device.get(
                                             'rm', False)
@@ -211,7 +244,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                     info = {
                         'device': drive,
                         'name': device.get('name', ''),
-                        'size': int(device.get('size', 0)),
+                        'size': _parse_size(device.get('size', 0)),
                         'type': device.get('type', ''),
                         'removable': device.get('rm', False),
                         'model': device.get('model', ''),

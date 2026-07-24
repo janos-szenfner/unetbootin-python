@@ -506,30 +506,22 @@ class TestUSBInstallerNewFeatures(unittest.TestCase):
 class TestMainWindowNewFeatures(unittest.TestCase):
     """Test main window new features with PySimpleGUI."""
 
-    @classmethod
-    def setUpClass(cls):
-        """Set up for all tests."""
-        # Check if we have a display available
-        import os as _os
-        if not _os.environ.get('DISPLAY') and not _os.path.exists('/tmp/.X11-unix'):
-            cls.skip_all_tests = True
-        else:
-            cls.skip_all_tests = False
-
     def setUp(self):
-        """Set up test fixtures."""
-        if self.skip_all_tests:
-            self.skipTest("No display available - skipping GUI tests")
-        
-        # Mock PySimpleGUI to avoid creating actual windows
-        from unittest.mock import MagicMock
-        # Must mock before any import of PySimpleGUI
-        sys.modules['PySimpleGUI'] = MagicMock()
-        sys.modules['PySimpleGUI.PySimpleGUI'] = MagicMock()
+        """Set up test fixtures.
 
-        # Create main window without showing it
-        from unetbootin.ui.main_window_pysg import MainWindowPySG
-        self.window = MainWindowPySG()
+        Patch the UI module's already-bound ``sg`` (PySimpleGUI) reference with
+        a MagicMock so constructing the window creates NO real tkinter window.
+        Replacing ``sys.modules['PySimpleGUI']`` here is too late — the module
+        imported ``sg`` at load time — and would make a real window that fails
+        on a headless CI runner (no ``$DISPLAY``).
+        """
+        import unetbootin.ui.main_window_pysg as mw
+
+        self._sg_patcher = patch.object(mw, 'sg', MagicMock())
+        self._sg_patcher.start()
+        self.addCleanup(self._sg_patcher.stop)
+
+        self.window = mw.MainWindowPySG()
 
         # Set up some test distributions with categories
         test_distros = [

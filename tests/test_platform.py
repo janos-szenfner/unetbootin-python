@@ -107,12 +107,19 @@ class TestLinuxPlatform(unittest.TestCase):
             
             mock_run.side_effect = [mock_result1, mock_result2, mock_result2]
 
-            drives = linux.get_drive_list()
+            # get_drive_serial() shells out to udevadm/sg_vpd/hdparm per disk;
+            # stub it so this test only exercises the lsblk parsing (and the
+            # mocked subprocess calls aren't exhausted).
+            with patch.object(linux, 'get_drive_serial', return_value=''):
+                drives = linux.get_drive_list()
             self.assertIsInstance(drives, list)
             # Should find at least sda and sdb
             drive_names = [d.get('device', '') for d in drives]
             self.assertIn('/dev/sda', drive_names)
             self.assertIn('/dev/sdb', drive_names)
+            # Human-readable lsblk sizes must be parsed to bytes, not crash.
+            by_name = {d['name']: d for d in drives}
+            self.assertEqual(by_name['sda']['size'], 100 * 1024 ** 3)  # 100G
 
     def test_get_drive_info(self):
         """Test getting drive info on Linux."""
@@ -134,9 +141,14 @@ class TestLinuxPlatform(unittest.TestCase):
 
             mock_run.side_effect = [mock_lsblk, mock_lsblk2, mock_blockdev]
 
-            info = linux.get_drive_info('/dev/sda')
+            # Stub the serial lookup (udevadm/sg_vpd/hdparm) so the mocked
+            # subprocess sequence isn't exhausted and the test is deterministic.
+            with patch.object(linux, 'get_drive_serial', return_value=''):
+                info = linux.get_drive_info('/dev/sda')
             self.assertIsNotNone(info)
             self.assertIn('device', info)
+            # '100G' must parse to bytes rather than raising ValueError.
+            self.assertEqual(info['size'], 100 * 1024 ** 3)
 
     def test_get_parent_disk(self):
         """Test getting parent disk for a partition."""
