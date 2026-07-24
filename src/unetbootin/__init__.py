@@ -6,7 +6,7 @@ Original C++ version by Geza Kovacs <geza0kovacs@gmail.com>
 Python rewrite started in 2026
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.1"
 __author__ = "UNetbootin Team"
 __license__ = "GPLv2+"
 

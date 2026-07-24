@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+  # Allow running the build jobs manually from the Actions tab (for validating
+  # a build without cutting a release). NOTE: the GitHub Release itself is only
+  # created on a tag push — see the `create-release` job's `if:` guard.
+  workflow_dispatch:
 
 # Cancel previous runs on same branch
 concurrency:
@@ -236,9 +240,10 @@ jobs:
           cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
           cp resources/linux/unetbootin.desktop package/usr/share/applications/${{ env.APP_NAME }}.desktop
           cp src/unetbootin/resources/icons/unetbootin_256.png package/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
+          VER="${GITHUB_REF_NAME#v}"; case "$VER" in [0-9]*) ;; *) VER="0.0.0" ;; esac
           fpm -s dir -t deb \
             -n ${{ env.APP_NAME }} \
-            -v ${{ github.ref_name }} \
+            -v "$VER" \
             --architecture amd64 \
             --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
             --description "Create bootable USB drives from ISO files" \
@@ -300,9 +305,10 @@ jobs:
           cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
           cp resources/linux/unetbootin.desktop package/usr/share/applications/${{ env.APP_NAME }}.desktop
           cp src/unetbootin/resources/icons/unetbootin_256.png package/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
+          VER="${GITHUB_REF_NAME#v}"; case "$VER" in [0-9]*) ;; *) VER="0.0.0" ;; esac
           fpm -s dir -t rpm \
             -n ${{ env.APP_NAME }} \
-            -v ${{ github.ref_name }} \
+            -v "$VER" \
             --architecture x86_64 \
             --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
             --description "Create bootable USB drives from ISO files" \
