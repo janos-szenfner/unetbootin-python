@@ -404,6 +404,11 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build-windows, build-macos, build-linux-appimage, build-linux-deb, build-linux-rpm, build-flatpak]
+    # contents:write lets GITHUB_TOKEN create the release and generate notes;
+    # actions:read lets download-artifact fetch this run's build artifacts.
+    permissions:
+      contents: write
+      actions: read
     # Run once all builds have settled (always()), but only cut the release if
     # the five CORE artifacts succeeded. Flatpak is optional and must not block
     # the release; download-artifact still includes it if present.
