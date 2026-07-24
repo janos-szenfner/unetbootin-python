@@ -8,7 +8,6 @@ datas = [
     ('src/unetbootin/resources/logos/*', 'unetbootin/resources/logos/'),
     ('src/unetbootin/resources/bootloader/*', 'unetbootin/resources/bootloader/'),
     ('src/unetbootin/resources/translations/*', 'unetbootin/resources/translations/'),
-    ('resources/windows/unetbootin.exe.manifest', '.'),
 ]
 
 a = Analysis(
@@ -46,4 +45,8 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='src/unetbootin/resources/icons/unetbootin.ico',
+    # Embed a UAC "requireAdministrator" manifest directly, so the app
+    # elevates on launch. This replaces the fragile post-build mt.exe step
+    # (which grabbed the wrong-arch mt.exe on the runner).
+    uac_admin=True,
 )
