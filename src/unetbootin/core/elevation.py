@@ -70,8 +70,10 @@ def is_elevated() -> bool:
 def check_elevation_availability() -> bool:
     """Check if privilege elevation is available on the current platform."""
     if _IS_LINUX:
-        # Check if pkexec is available
-        return _command_exists('pkexec')
+        # Any OS-standard helper suffices: pkexec (PolicyKit, GUI prompt) is
+        # preferred, with sudo as the universal fallback. No third-party
+        # toolkit is required or bundled.
+        return _command_exists('pkexec') or _command_exists('sudo')
     elif _IS_MACOS:
         # Authorization Services should always be available on macOS
         return True
@@ -144,44 +146,122 @@ def run_elevated(
         )
 
 
+# Graphical askpass helpers shipped by desktops/distros. Only used to let
+# `sudo` prompt for a password from its own GUI process (thread-safe) when
+# pkexec is not installed. Nothing here is bundled — these are OS-provided.
+_ASKPASS_CANDIDATES = (
+    "/usr/libexec/openssh/gnome-ssh-askpass",
+    "/usr/lib/openssh/gnome-ssh-askpass",
+    "/usr/lib/ssh/x11-ssh-askpass",
+    "/usr/bin/ssh-askpass",
+    "/usr/bin/x11-ssh-askpass",
+    "/usr/bin/ksshaskpass",
+    "/usr/bin/lxqt-openssh-askpass",
+    "/usr/bin/ssh-askpass-fullscreen",
+)
+
+
+def _find_graphical_askpass() -> Optional[str]:
+    """Return an OS-provided graphical askpass for `sudo -A`, or None."""
+    import shutil
+    env = os.environ.get("SUDO_ASKPASS")
+    if env and os.path.exists(env):
+        return env
+    for path in _ASKPASS_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    for name in ("ssh-askpass", "ksshaskpass", "lxqt-openssh-askpass"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
 def _run_elevated_linux(
     command: List[str],
     timeout: Optional[float],
     capture_output: bool,
     text: bool
 ) -> Tuple[int, str, str]:
-    """Run a command with elevated privileges on Linux using pkexec."""
-    if not _command_exists('pkexec'):
-        raise ElevationNotAvailableError(
-            "PolicyKit/pkexec not available. "
-            "Install polkit or run from a terminal with sudo."
-        )
+    """Elevate on Linux with OS-standard helpers: pkexec first, then sudo.
 
-    # pkexec runs the command directly, so we pass the full command
-    # Note: pkexec doesn't capture output by itself, so we need to
-    # handle that differently
-    try:
-        result = subprocess.run(
-            ['pkexec'] + command,
-            capture_output=capture_output,
-            text=text,
-            timeout=timeout
-        )
+    No extra toolkit is bundled or required beyond what the OS already provides
+    — pkexec (PolicyKit) on desktops, or sudo, which is present on virtually
+    every Linux system.
+    """
+    # 1) pkexec (PolicyKit): native GUI password prompt in its own process.
+    if _command_exists('pkexec'):
+        try:
+            result = subprocess.run(
+                ['pkexec'] + command,
+                capture_output=capture_output,
+                text=text,
+                timeout=timeout
+            )
+            if result.returncode == 126:
+                # pkexec: not authorized (user cancelled or wrong password)
+                raise ElevationCancelledError(
+                    "User cancelled elevation or authentication failed"
+                )
+            if result.returncode == 127:
+                # pkexec: the specified command was not found
+                raise ElevationError(f"Command not found: {' '.join(command)}")
+            return (result.returncode, result.stdout or '', result.stderr or '')
+        except subprocess.TimeoutExpired:
+            return (-1, '', 'Elevated command timed out')
+        except FileNotFoundError:
+            pass  # pkexec vanished between check and exec; fall back to sudo.
 
-        # Check for specific pkexec error codes
-        if result.returncode == 126:
-            # pkexec: Not authorized (user cancelled or wrong password)
-            raise ElevationCancelledError("User cancelled elevation or authentication failed")
-        elif result.returncode == 127:
-            # pkexec: The specified command was not found
-            raise ElevationError(f"Command not found: {' '.join(command)}")
+    # 2) sudo: the universal fallback when pkexec is not installed.
+    if _command_exists('sudo'):
+        return _run_with_sudo(command, timeout, capture_output, text)
 
+    raise ElevationNotAvailableError(
+        "No privilege-elevation helper found. Install polkit (pkexec) or sudo, "
+        "or start the application from a terminal with sudo."
+    )
+
+
+def _run_with_sudo(
+    command: List[str],
+    timeout: Optional[float],
+    capture_output: bool,
+    text: bool
+) -> Tuple[int, str, str]:
+    """Run a command via sudo, prompting graphically only when needed."""
+    # Cached credentials or NOPASSWD: run non-interactively, no prompt at all.
+    probe = subprocess.run(['sudo', '-n', 'true'], capture_output=True, text=True)
+    if probe.returncode == 0:
+        try:
+            result = subprocess.run(
+                ['sudo', '-n'] + command,
+                capture_output=capture_output, text=text, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            return (-1, '', 'Elevated command timed out')
         return (result.returncode, result.stdout or '', result.stderr or '')
 
-    except subprocess.TimeoutExpired:
-        return (-1, '', 'Elevated command timed out')
-    except FileNotFoundError:
-        raise ElevationNotAvailableError("pkexec not found")
+    # A password is required. Use a graphical askpass so the GUI can prompt
+    # without a controlling terminal (sudo -A). After the first success sudo
+    # caches the credential, so later commands reuse it without re-prompting.
+    askpass = _find_graphical_askpass()
+    if askpass:
+        env = dict(os.environ, SUDO_ASKPASS=askpass)
+        try:
+            result = subprocess.run(
+                ['sudo', '-A'] + command,
+                capture_output=capture_output, text=text, timeout=timeout,
+                env=env
+            )
+        except subprocess.TimeoutExpired:
+            return (-1, '', 'Elevated command timed out')
+        return (result.returncode, result.stdout or '', result.stderr or '')
+
+    raise ElevationNotAvailableError(
+        "Administrative rights are required but no graphical password prompt "
+        "is available. Install polkit (pkexec), or start the application from "
+        "a terminal so sudo can ask for your password."
+    )
 
 
 def _run_elevated_macos(

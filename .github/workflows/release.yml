@@ -270,6 +270,7 @@ jobs:
             --depends syslinux-common \
             --depends dosfstools \
             --depends mtools \
+            --depends sudo \
             --after-install "$GITHUB_WORKSPACE/resources/linux/deb/postinst" \
             -C package \
             -p dist/linux-deb/${{ env.APP_NAME }}-${VER}.deb \
@@ -343,6 +344,7 @@ jobs:
             --depends syslinux \
             --depends dosfstools \
             --depends mtools \
+            --depends sudo \
             --after-install "$GITHUB_WORKSPACE/resources/linux/rpm/postinst" \
             -C package \
             -p dist/linux-rpm/${{ env.APP_NAME }}-${VER}.rpm \
