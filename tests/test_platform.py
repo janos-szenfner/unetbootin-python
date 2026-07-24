@@ -5,6 +5,7 @@ Unit tests for platform-specific code: Linux, Windows, macOS.
 import unittest
 import os
 import sys
+import json
 import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
@@ -232,6 +233,45 @@ sda      8:0    0   100G  0 disk
             mount_point = linux.get_mount_point('/dev/sdb1')
             self.assertEqual(mount_point, '/media/usb')
 
+    def _lsblk(self, **dev):
+        """Build a minimal lsblk -J payload for a single device."""
+        return json.dumps({'blockdevices': [dev]})
+
+    def test_is_safe_target_usb_disk(self):
+        """A USB whole disk with no system mountpoints is a safe target."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = self._lsblk(
+                name='sdb', type='disk', rm=True, tran='usb',
+                vendor='SanDisk', model='Ultra',
+                children=[{'name': 'sdb1', 'mountpoint': '/media/usb'}])
+            mock_run.return_value = mock_result
+            self.assertTrue(linux.is_safe_target('/dev/sdb'))
+
+    def test_is_safe_target_rejects_system_disk(self):
+        """A disk hosting '/' must be rejected even if it were USB."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = self._lsblk(
+                name='sda', type='disk', rm=False, tran='sata',
+                vendor='ATA', model='SSD',
+                children=[{'name': 'sda1', 'mountpoint': '/'}])
+            mock_run.return_value = mock_result
+            self.assertFalse(linux.is_safe_target('/dev/sda'))
+
+    def test_is_safe_target_rejects_virtual_disk(self):
+        """A virtual (VirtualBox/virtio) disk must be rejected."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = self._lsblk(
+                name='sdc', type='disk', rm=False, tran='',
+                vendor='VBOX', model='HARDDISK', children=[])
+            mock_run.return_value = mock_result
+            self.assertFalse(linux.is_safe_target('/dev/sdc'))
+
 
 @unittest.skipIf(sys.platform != 'win32', "Windows-only tests")
 class TestWindowsPlatform(unittest.TestCase):
@@ -325,6 +365,16 @@ DriveType : 3
             
             label = windows.get_volume_label('D:\\')
             self.assertEqual(label, 'MYUSB')
+
+    def test_is_safe_target_removable_only(self):
+        """Only DRIVE_REMOVABLE (type 2) drives are safe targets on Windows."""
+        removable = {'letter': 'E', 'device': 'E:\\', 'removable': True}
+        fixed = {'letter': 'C', 'device': 'C:\\', 'removable': False}
+        with patch.object(windows, 'get_drive_list',
+                          return_value=[removable, fixed]):
+            self.assertTrue(windows.is_safe_target('E:\\'))    # USB stick
+            self.assertFalse(windows.is_safe_target('C:\\'))   # internal disk
+            self.assertFalse(windows.is_safe_target('Z:\\'))   # not present
 
 
 @unittest.skipIf(sys.platform != 'darwin', "macOS-only tests")
@@ -477,6 +527,53 @@ class TestMacOSPlatform(unittest.TestCase):
             
             parent = macos.get_parent_disk('/dev/disk2s1')
             self.assertEqual(parent, '/dev/disk2')
+
+    def _diskutil_info_plist(self, **fields):
+        """Build a minimal `diskutil info -plist` XML payload."""
+        import plistlib
+        return plistlib.dumps(fields).decode()
+
+    def test_is_safe_target_external_usb(self):
+        """External, ejectable, physical USB media is a safe target."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = self._diskutil_info_plist(
+                Internal=False, Ejectable=True, RemovableMedia=True,
+                BusProtocol='USB', VirtualOrPhysical='Physical')
+            mock_run.return_value = mock_result
+            self.assertTrue(macos.is_safe_target('/dev/disk4'))
+
+    def test_is_safe_target_rejects_internal_disk(self):
+        """The built-in internal disk must never be a safe target."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = self._diskutil_info_plist(
+                Internal=True, Ejectable=False, RemovableMedia=False,
+                BusProtocol='PCI-Express', VirtualOrPhysical='Physical')
+            mock_run.return_value = mock_result
+            self.assertFalse(macos.is_safe_target('/dev/disk0'))
+
+    def test_is_safe_target_rejects_disk_image(self):
+        """A mounted .dmg (virtual / Disk Image bus) must be rejected."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = self._diskutil_info_plist(
+                Internal=False, Ejectable=True, RemovableMedia=True,
+                BusProtocol='Disk Image', VirtualOrPhysical='Virtual')
+            mock_run.return_value = mock_result
+            self.assertFalse(macos.is_safe_target('/dev/disk9'))
+
+    def test_is_safe_target_fails_closed_on_error(self):
+        """If diskutil fails, fail closed (return False)."""
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 1
+            mock_result.stdout = ""
+            mock_run.return_value = mock_result
+            self.assertFalse(macos.is_safe_target('/dev/disk4'))
 
 
 class TestPlatformDetection(unittest.TestCase):

@@ -335,27 +335,67 @@ class TestDriveRefresh(unittest.TestCase):
 class TestUIComponents(unittest.TestCase):
     """Test UI components that don't require window display."""
     
-    def test_format_drive_list_function(self):
-        """Test the format_drive_list function from app.py."""
+    def test_format_drive_list_filters_unsafe_drives(self):
+        """format_drive_list must exclude non-removable/internal/virtual drives.
+
+        Only drives that `is_safe_target()` approves may appear in the UI list.
+        """
+        from unittest.mock import patch
         from unetbootin.app import UNetbootinAppPySG
-        
-        # Create a mock app instance to access the method
+
         app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
-        
-        # Mock drives data
+
         drives = [
             {'device': '/dev/sda', 'size': 100000000000, 'label': 'System', 'removable': False},
             {'device': '/dev/sdb', 'size': 16000000000, 'label': 'USB', 'removable': True},
         ]
-        
-        # Call the method
-        formatted = app.format_drive_list(drives)
-        
-        # Should return a list of tuples
-        self.assertIsInstance(formatted, list)
+
+        # Only the USB drive is a safe target; the system disk must be dropped.
+        def fake_safe(device):
+            return device == '/dev/sdb'
+
+        with patch('unetbootin.app.is_safe_target', side_effect=fake_safe):
+            formatted = app.format_drive_list(drives)
+
+        devices = [dev for _display, dev in formatted]
+        self.assertIn('/dev/sdb', devices)
+        self.assertNotIn('/dev/sda', devices)          # internal disk excluded
+        self.assertEqual(len(formatted), 1)
         for item in formatted:
             self.assertIsInstance(item, tuple)
             self.assertEqual(len(item), 2)
+
+    def test_format_drive_list_excludes_all_when_none_safe(self):
+        """If no drive is a safe target, the list is empty (nothing selectable)."""
+        from unittest.mock import patch
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        drives = [
+            {'device': '/dev/sda', 'size': 100000000000, 'removable': False},
+            {'device': 'disk0', 'size': 500000000000, 'removable': False},
+        ]
+        with patch('unetbootin.app.is_safe_target', return_value=False):
+            formatted = app.format_drive_list(drives)
+        self.assertEqual(formatted, [])
+
+    def test_confirm_destructive_write_refuses_unsafe_device(self):
+        """The pre-format confirmation must refuse a non-safe device outright."""
+        from unittest.mock import patch, MagicMock
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app.show_error = MagicMock()
+
+        with patch('unetbootin.app.is_safe_target', return_value=False):
+            # Even if the user would click "Yes", an unsafe device is rejected
+            # before any prompt.
+            with patch('unetbootin.app.sg') as mock_sg:
+                mock_sg.popup_yes_no.return_value = 'Yes'
+                result = app._confirm_destructive_write('/dev/sda')
+
+        self.assertFalse(result)
+        app.show_error.assert_called_once()
     
     def test_format_size_in_app(self):
         """Test format_size function used in app.py."""

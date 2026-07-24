@@ -247,6 +247,27 @@ def is_external_drive(drive: str) -> bool:
         return False
 
 
+def is_safe_target(device: str) -> bool:
+    """Whether `device` is a safe (removable) USB target on Windows.
+
+    Uses the Win32 DriveType: only ``2`` (DRIVE_REMOVABLE) qualifies. This
+    excludes fixed/internal disks (3), network drives (4), CD-ROM (5) and RAM
+    disks (6) — and mounted VHDs, which report as fixed. Fails closed if the
+    drive can't be found in the current enumeration.
+    """
+    try:
+        letter = device.rstrip('\\').rstrip(':').upper()
+        if not letter:
+            return False
+        for drv in get_drive_list():
+            if str(drv.get('letter', '')).upper() == letter:
+                # get_drive_list sets removable = (DriveType == 2)
+                return bool(drv.get('removable', False))
+        return False
+    except (AttributeError, TypeError, OSError):
+        return False
+
+
 def check_admin_privileges() -> bool:
     """Check if running with administrator privileges on Windows."""
     try:

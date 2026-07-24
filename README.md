@@ -90,12 +90,14 @@ python -m unetbootin.main
 unetbootin
 ```
 
+> ⚠️ **Current limitation:** creating a USB writes to raw block devices, which needs elevated privileges. Until the double-click elevation model is implemented (see 🛑 Critical in *Next Steps*), the app must be launched with `sudo` (Linux/macOS) or as Administrator (Windows) — it does **not** yet meet the "just double-click the executable" goal.
+
 ## Requirements
 
 ### Core Dependencies
 - **Python 3.10+**
-- **PySimpleGUI>=4.60.0** - Lightweight GUI framework (Tkinter backend)
-  > ⚠️ **Licensing caveat:** PySimpleGUI was relicensed to a commercial, license-key model in v5 and its older versions were removed from PyPI. The unpinned `>=4.60.0` is risky for redistributable builds. Before packaging, switch to **`FreeSimpleGUI`** (LGPL drop-in fork — mostly `import FreeSimpleGUI as sg`) or hard-pin **`PySimpleGUI==4.60.5.1`**.
+- **PySimpleGUI==6.2** - Lightweight GUI framework (Tkinter backend)
+  > ✅ **Licensing:** pinned to **PySimpleGUI 6.2, which is released under the GPLv3** — a free copyleft license, compatible with this project's GPLv2-or-later and fine to bundle into redistributable executables. (The pin also avoids the withdrawn commercial-license-key 5.x line.)
 - **requests>=2.28.0** - HTTP downloads
 - **psutil>=5.9.0** - System information
 
@@ -161,7 +163,7 @@ unetbootin
 - Progress reporting
 
 ### USB Installation
-> ⚠️ **Not yet working end-to-end.** The install pipeline (format → mount → copy → bootloader) has correctness and safety gaps — see the 🛑 Critical section under *Next Steps*. Key limitations today: it shells out to interactive `sudo` (fails in a no-terminal GUI), requires **system-installed** syslinux/grub (the bundled `resources/bootloader/` binaries are unused), resolves target disks by fragile text parsing, and performs **no confirmation before erasing the selected drive** (which may include internal disks). Treat the items below as *implemented code paths*, not verified working features.
+> ⚠️ **Not yet working end-to-end.** The install pipeline (format → mount → copy → bootloader) still has correctness gaps — see the 🛑 Critical section under *Next Steps*. Key limitations today: it shells out to interactive `sudo` (fails in a no-terminal GUI), requires **system-installed** syslinux/grub (the bundled `resources/bootloader/` binaries are unused), and resolves target disks by fragile text parsing. **Drive safety is handled**, though: only removable USB drives are selectable, and an explicit erase confirmation + installer-level hard guard prevent writing to internal/system/virtual disks. Treat the items below as *implemented code paths*, not verified working features.
 
 - File copying from source to target device
 - Bootloader installation support (via **system-installed** tools, not the bundled binaries):
@@ -246,7 +248,7 @@ pip install -e .
 
 ### Build Standalone Executables
 
-> ⚠️ **Status: Not Started / not yet working.** These commands are a starting point only. Before they produce a usable app you must (1) resolve the PySimpleGUI licensing caveat above, (2) fix `setup.py` `package_data` to the real asset paths, and (3) add a `sys._MEIPASS`-aware resource resolver so bundled icons/bootloader binaries are found at runtime. See *Next Steps → 🔧 Build & Distribution*.
+> ⚠️ **Status: Not Started / not yet working.** These commands are a starting point only. The GUI dependency is settled (PySimpleGUI 6.2, GPLv3). Before these produce a usable app you must still (1) fix `setup.py` `package_data` to the real asset paths, and (2) add a `sys._MEIPASS`-aware resource resolver so bundled icons/bootloader binaries are found at runtime. See *Next Steps → 🔧 Build & Distribution*.
 
 Using PyInstaller (illustrative):
 ```bash
@@ -366,7 +368,8 @@ See `src/unetbootin/core/utils.py:parse_command_line_args()` for full list.
 
 **"No module named 'PySimpleGUI'"**
 ```bash
-pip install PySimpleGUI
+# PySimpleGUI 6.2 is GPLv3 (free, no license key):
+pip install "PySimpleGUI==6.2"
 ```
 
 **"Command not found: xorriso"**
@@ -477,8 +480,8 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🛑 Critical — Functional & Safety (must be done before the tool is usable/safe)
 > These block the core promise ("create a bootable USB by just running the app") and protect users from data loss. They must land before packaging.
-- [ ] **Filter the drive list to removable/external devices only.** `format_drive_list()` currently lists *all* disks (internal disks included) and only sorts removable first — a user can select their system disk.
-- [ ] **Add a destructive-action confirmation dialog** ("This will ERASE `<device>` (`<size>`, `<label>`) — continue?") before `_format_device()` runs. There is currently **no confirmation** before `diskutil eraseVolume` / `mkfs.vfat` / `format`.
+- [x] **Filter the drive list to removable/external devices only** - ✅ **Done.** A new authoritative `is_safe_target()` (per-platform: macOS `diskutil info -plist` Internal/Ejectable/BusProtocol; Linux `lsblk` TYPE/RM/TRAN + virtual & system-disk exclusion; Windows `DriveType == 2`) gates `format_drive_list()`. **Internal disks, the system disk, and virtual drives / disk images are never listed — not even as an exception** (fails closed on any uncertainty).
+- [x] **Add a destructive-action confirmation dialog** - ✅ **Done.** `on_ok_clicked()` now shows an explicit "This will PERMANENTLY ERASE ALL DATA on `<device>` (`<size>`, `<label>`)" `popup_yes_no` **and** re-verifies `is_safe_target()` before proceeding. A matching **hard guard in the installer** (`_prepare_installation`) refuses to format any non-removable device at the point of destruction, so the UI cannot be bypassed.
 - [ ] **Replace per-command `sudo` with a single elevation model** per OS (polkit/`pkexec` on Linux, Authorization Services on macOS, a UAC-elevated manifest on Windows). The 32 `sudo …` calls (`mkfs.vfat`, `mount`, `dd`, `syslinux`) cannot prompt for a password in a double-clicked GUI with no terminal → they silently fail or hang.
 - [ ] **Remove the terminal-dependent privilege flow.** Linux shows "run `sudo … from the command line`" then exits; macOS opens Terminal to re-run with sudo — both contradict the "just execute the app" goal.
 - [ ] **Actually use the bundled bootloader binaries.** The installer relies on system-installed `syslinux`/`/usr/lib/syslinux/mbr/mbr.bin`; the committed `resources/bootloader/` files (syslinux.exe, mbr.bin, ubnldr…) are never referenced. Add a frozen-app-aware resource resolver (`sys._MEIPASS` / `importlib.resources`) and install from bundled binaries.
@@ -486,7 +489,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [ ] **Populate distribution checksums** and wire real translations (see Medium Priority above).
 
 ### 🔧 Build & Distribution
-> **Prerequisite (blocker):** resolve the GUI dependency first — PySimpleGUI was relicensed to a commercial, license-key model in v5 and its old versions were pulled from PyPI. Shipping the wrong version inside a redistributed executable is a licensing risk. **Switch to `FreeSimpleGUI` (LGPL drop-in fork) or hard-pin `PySimpleGUI==4.60.5.1`** before building anything.
+> **GUI dependency:** ✅ resolved — pinned to **`PySimpleGUI==6.2` (GPLv3)**, which is free to bundle into redistributable executables.
 - [ ] **Fix packaging metadata first:** `setup.py` `package_data` globs (`resources/*.png`, `translations/*.qm`) do not match the real layout (`resources/icons/`, `resources/logos/`, `resources/translations/*.ts`) — assets are currently not bundled.
 - [ ] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle.
 - [ ] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon.
@@ -518,7 +521,8 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ⚠️ **Not working end-to-end** — depends on interactive `sudo`, needs system-installed syslinux, fragile device detection, no safety confirmation (see 🛑 Critical) |
+| Installer | ⚠️ **Not working end-to-end** — depends on interactive `sudo`, needs system-installed syslinux, fragile device detection (see 🛑 Critical). *Drive-safety filtering + erase confirmation are now in place.* |
+| Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
 | Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths incomplete on all 3 platforms |
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |

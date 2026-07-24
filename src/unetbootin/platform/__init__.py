@@ -40,6 +40,7 @@ _PUBLIC_API = (
     'sync_filesystem',
     'get_mount_point',
     'is_external_drive',
+    'is_safe_target',
 )
 
 for _name in _PUBLIC_API:

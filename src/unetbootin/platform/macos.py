@@ -565,11 +565,57 @@ def is_external_drive(drive: str) -> bool:
         info = get_drive_info(drive)
         if info:
             return info.get('removable', False)
-        
+
         # Alternative: check if it's a disk that's not the system disk
         if 'disk0' not in drive and 'disk1' in drive:
             return True
-        
+
         return False
     except (AttributeError, TypeError, KeyError):
+        return False
+
+
+def is_safe_target(device: str) -> bool:
+    """Whether `device` is a safe external/removable target on macOS.
+
+    Reads ``diskutil info -plist`` and requires ALL of:
+      * ``Internal`` is False (external bus), so the built-in disk is excluded;
+      * the device is physical, not a disk image
+        (``VirtualOrPhysical`` != 'Virtual', ``BusProtocol`` != 'Disk Image');
+      * it is ``Ejectable`` or ``RemovableMedia`` (real removable media).
+
+    Fails closed (returns False) on any uncertainty, so an internal disk or a
+    mounted .dmg can never be selected — not even as an exception.
+    """
+    try:
+        if not device.startswith('/dev/'):
+            device = f'/dev/{device}'
+
+        result = subprocess.run(
+            ['diskutil', 'info', '-plist', device],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            return False
+
+        import plistlib
+        data = plistlib.loads(result.stdout.encode())
+
+        internal = bool(data.get('Internal', True))       # default True → unsafe
+        ejectable = bool(data.get('Ejectable', False))
+        removable = bool(data.get('RemovableMedia', False))
+        bus = (data.get('BusProtocol') or '').strip()
+        virt = (data.get('VirtualOrPhysical') or '').strip()
+
+        if internal:
+            return False
+        if virt == 'Virtual' or bus == 'Disk Image':
+            return False
+        if not (ejectable or removable):
+            return False
+        return True
+
+    except _SUBPROCESS_ERRORS:
+        return False
+    except _PLIST_PARSE_ERRORS:
         return False

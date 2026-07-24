@@ -134,10 +134,22 @@ class USBInstaller:
         logger.info("Preparing installation")
         
         try:
+            # HARD SAFETY GATE (last line of defense): refuse to touch anything
+            # that is not a proven removable/external USB drive. This runs at
+            # the point of destruction, so even if the UI filter or the
+            # confirmation dialog were bypassed, an internal/system/virtual disk
+            # can never be formatted. Fails closed.
+            from unetbootin.platform import is_safe_target
+            if not is_safe_target(target_device):
+                logger.error(
+                    f"Refusing to format {target_device}: not a removable "
+                    f"external USB drive (safety guard)")
+                return False
+
             # Check if device exists and is writable
             if not self._validate_target_device(target_device):
                 return False
-            
+
             # Check if device is mounted and unmount if necessary
             if self._is_device_mounted(target_device):
                 if not self._unmount_device(target_device):

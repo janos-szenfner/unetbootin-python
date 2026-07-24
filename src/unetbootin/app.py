@@ -32,7 +32,7 @@ from unetbootin.core.utils import (
     check_root, check_admin, get_platform_info,
     format_size, normalize_language_code
 )
-from unetbootin.platform import get_drive_list
+from unetbootin.platform import get_drive_list, is_safe_target
 
 logger = logging.getLogger(__name__)
 
@@ -128,14 +128,26 @@ class UNetbootinAppPySG:
             return False
     
     def format_drive_list(self, drives: List[Dict[str, Any]]) -> List[tuple]:
-        """Format drive list for display in UI."""
+        """Format drive list for display in UI.
+
+        SAFETY: only genuinely removable/external USB drives are shown. Internal
+        disks, the system disk and virtual drives / disk images are filtered out
+        via the platform `is_safe_target()` check and can never be selected —
+        not even as an exception. If nothing qualifies, the list is empty.
+        """
         display_list = []
-        
+
         for drive in drives:
             device = drive.get('device', '')
             if not device:
                 continue
-            
+
+            # Hard safety gate: skip anything that is not a proven-safe
+            # removable target. Fails closed on any uncertainty.
+            if not is_safe_target(device):
+                logger.debug(f"Excluding non-removable/unsafe drive: {device}")
+                continue
+
             parts = [device]
             
             size = drive.get('size')
@@ -674,6 +686,59 @@ class UNetbootinAppPySG:
         
         self.cleanup()
     
+    def _confirm_destructive_write(self, device: str) -> bool:
+        """Re-verify the target is a safe USB drive and confirm the erase.
+
+        Returns True only if the device is a proven removable target AND the
+        user explicitly confirms. This is defense-in-depth: even though the UI
+        only lists safe targets, we re-check here so a stale/hand-edited device
+        can never be formatted.
+        """
+        if not device:
+            self.show_error("Please select a target drive.")
+            return False
+
+        # Hard re-check against the live device table (fails closed).
+        if not is_safe_target(device):
+            logger.error(f"Refusing destructive write to unsafe device: {device}")
+            self.show_error(
+                f"Refusing to write to {device}.\n\n"
+                "Only removable USB drives can be used as a target. Internal "
+                "disks, the system disk and virtual drives are never allowed."
+            )
+            return False
+
+        # Look up size/label for a clear warning message.
+        size_str, label = "", ""
+        try:
+            for drv in get_drive_list():
+                if drv.get('device') == device:
+                    if drv.get('size'):
+                        size_str = format_size(drv['size'])
+                    label = drv.get('label', '') or ''
+                    break
+        except (OSError, ValueError, KeyError):
+            pass
+
+        detail = device
+        if size_str:
+            detail += f"  ({size_str})"
+        if label:
+            detail += f"  '{label}'"
+
+        response = sg.popup_yes_no(
+            "WARNING: This will PERMANENTLY ERASE ALL DATA on the drive "
+            "below and cannot be undone:\n\n"
+            f"    {detail}\n\n"
+            "Make sure you have selected the correct USB drive.\n\n"
+            "Continue?",
+            title="Confirm - all data on this drive will be erased",
+        )
+        if response != 'Yes':
+            logger.info("User cancelled destructive write at confirmation")
+            return False
+        return True
+
     def on_ok_clicked(self):
         """Handle OK button click - start the installation process."""
         logger.info("OK button clicked - starting installation")
@@ -683,6 +748,12 @@ class UNetbootinAppPySG:
             logger.info(f"Installation parameters: {params}")
 
             if not self.validate_parameters(params):
+                return
+
+            # Final safety gate before anything destructive happens: re-verify
+            # the target is a removable USB drive and get explicit confirmation
+            # that its data will be erased.
+            if not self._confirm_destructive_write(params.get('target_drive')):
                 return
 
             self.create_temp_directory()

@@ -784,6 +784,76 @@ def is_external_drive(drive: str) -> bool:
         return False
 
 
+# Vendor/model substrings that indicate a virtual disk (VM / hypervisor).
+_VIRTUAL_MARKERS = ('VBOX', 'VMWARE', 'QEMU', 'VIRTUAL', 'VIRTIO', 'PARALLELS')
+# Mountpoints that mark a disk as holding the running system.
+_SYSTEM_MOUNTPOINTS = ('/', '/boot', '/boot/efi', '/usr', '/var', '/home',
+                       '[SWAP]')
+
+
+def is_safe_target(device: str) -> bool:
+    """Whether `device` is a safe (removable/USB, non-system, non-virtual) target.
+
+    A device qualifies only if ALL of the following hold:
+      * it is a whole disk (``TYPE == disk``), not a partition/loop/rom;
+      * it is USB-attached (``TRAN == usb``) or flagged removable (``RM``);
+      * it is not a virtual disk (vendor/model/transport not VM-like);
+      * none of its partitions host the running system (``/``, ``/boot``…).
+
+    Fails closed (returns False) on any uncertainty, so an internal or virtual
+    disk can never be selected — not even as an exception.
+    """
+    try:
+        if not device.startswith('/dev/'):
+            device = f"/dev/{device}"
+        name = device.split('/')[-1]
+
+        result = subprocess.run(
+            ['lsblk', '-J', '-o',
+             'NAME,TYPE,RM,TRAN,VENDOR,MODEL,MOUNTPOINT', device],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            return False
+
+        import json
+        data = json.loads(result.stdout)
+        blk = data.get('blockdevices', [])
+        dev = next((b for b in blk if b.get('name') == name), None)
+        if dev is None:
+            return False
+
+        # Must be a whole disk
+        if dev.get('type') != 'disk':
+            return False
+
+        tran = (dev.get('tran') or '').lower()
+        is_removable = bool(dev.get('rm'))
+        is_usb = tran == 'usb'
+        if not (is_usb or is_removable):
+            return False
+
+        # Reject virtual disks
+        ident = f"{dev.get('vendor') or ''} {dev.get('model') or ''}".upper()
+        if tran in ('virtio',) or any(m in ident for m in _VIRTUAL_MARKERS):
+            return False
+
+        # Reject if the disk (or any of its partitions) hosts the system
+        def _hosts_system(node) -> bool:
+            mp = (node.get('mountpoint') or '').strip()
+            if mp in _SYSTEM_MOUNTPOINTS:
+                return True
+            return any(_hosts_system(c) for c in node.get('children', []))
+
+        if _hosts_system(dev):
+            return False
+
+        return True
+
+    except _SUBPROCESS_PARSE_ERRORS:
+        return False
+
+
 def check_root_privileges() -> bool:
     """Check if running with root privileges."""
     try:

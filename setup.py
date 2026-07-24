@@ -56,7 +56,9 @@ setup(
     
     # Dependencies
     install_requires=[
-        "PySimpleGUI>=4.60.0",
+        # PySimpleGUI 6.2 is GPLv3 (free copyleft, compatible with GPLv2+).
+        # Pinned to avoid the withdrawn commercial 5.x line.
+        "PySimpleGUI==6.2",
         "requests>=2.28.0",
         "psutil>=5.9.0",
     ],

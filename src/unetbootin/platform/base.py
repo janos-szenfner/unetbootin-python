@@ -91,6 +91,18 @@ def is_external_drive(drive: str) -> bool:
     return False
 
 
+def is_safe_target(device: str) -> bool:
+    """Whether `device` is a safe target to erase and write a bootable USB to.
+
+    A safe target is an EXTERNAL / REMOVABLE PHYSICAL whole disk that is not
+    the system disk and not a virtual device / disk image. On unsupported
+    platforms we cannot prove any of that, so we fail closed and return
+    False — refusing is always safer than risking an internal disk.
+    """
+    _unsupported("Safe-target detection")
+    return False
+
+
 def sync_filesystem() -> bool:
     """Sync the filesystem."""
     try:
