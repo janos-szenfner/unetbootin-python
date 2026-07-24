@@ -3,10 +3,6 @@
     "runtime": "org.freedesktop.Platform",
     "runtime-version": "23.08",
     "sdk": "org.freedesktop.Sdk",
-    "sdk-extensions": [
-        "org.freedesktop.Sdk.Extension.node18",
-        "org.freedesktop.Sdk.Extension.py3.10"
-    ],
     "command": "unetbootin",
     "finish-args": [
         "--device=all",
