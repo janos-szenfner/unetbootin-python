@@ -137,7 +137,7 @@ unetbootin
 
 ### Distribution Management
 - Built-in list of **21 distributions** across Linux (13), BSD (6), and Windows (2) — see the full list under *Next Steps → Distribution Statistics*
-- Version management with download URLs and file sizes (⚠️ checksums not populated — see checksum note above)
+- Version management with download URLs, file sizes, and optional dynamic checksums (⚠️ partial — 6 of 28 versions have `sha256_url` wired; see checksum note above)
 - Search and filtering by category
 - Easy extensibility to add more distributions
 - JSON-based external distribution loading
@@ -148,7 +148,7 @@ unetbootin
 - File size verification (minimum size checks)
 - FTP directory listing
 - HTTP directory listing with HTML parsing
-- Checksum verification (SHA256, SHA1, MD5) — *mechanism only; the built-in distributions do not currently ship checksums, so downloaded distro ISOs are not actually verified yet*
+- Checksum verification (SHA256, SHA1, MD5) — mechanism present and active for 6 distros (Ubuntu 24.04/22.04/20.04, Debian current, Fedora 44/43) via dynamic `sha256_url` fetching; other distros skip verification (log "No checksum available… skipping")
 - Support for redirects
 
 ### Archive Extraction
@@ -453,7 +453,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 📦 Medium Priority
 - [ ] Add translation support - ⚠️ **NOT done.** `load_translations()` in `main.py` is a stub that only normalizes a language code; there are **no `.qm` files**, no gettext catalogs, and the `.ts` files (Qt sources) are never loaded. The UI is English-only. Needs a real gettext/`.mo` implementation.
 - [ ] Implement auto-update checking
-- [ ] Add ISO verification (checksum comparison) - ⚠️ **Partial / not effective.** The verify code (`verify_checksum`, SHA256/SHA1/MD5) exists, but **0 of 28 built-in distro versions ship a checksum**, so distribution downloads are never actually verified (they log "No checksum available… skipping"). Needs checksums populated in `distro.py`.
+- [x] Add ISO verification (checksum comparison) - ✅ **Done (dynamic).** Added `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` GNU/coreutils and `SHA256 (file) = <hex>` BSD/Fedora layouts). Currently wired for 6 distro versions (Ubuntu 24.04/22.04/20.04, Debian current, Fedora 44/43) — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
 - [x] Add support for more archive formats (zip, tar, etc.) - ✅ Complete
 
 ### 🎨 Low Priority / Enhancements
