@@ -341,7 +341,9 @@ jobs:
             build-flatpak/repo \
             dist/flatpak/${{ env.APP_NAME }}.flatpak \
             com.unetbootin.UNetbootin
-          flatpak info dist/flatpak/${{ env.APP_NAME }}.flatpak
+          # `flatpak info` takes an installed app id, not a bundle path; just
+          # confirm the bundle was written.
+          ls -lh dist/flatpak/${{ env.APP_NAME }}.flatpak
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
