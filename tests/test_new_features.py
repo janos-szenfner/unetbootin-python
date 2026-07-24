@@ -509,19 +509,23 @@ class TestMainWindowNewFeatures(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up for all tests."""
-        # No QApplication needed for PySimpleGUI
-        pass
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up."""
-        pass
+        # Check if we have a display available
+        import os as _os
+        if not _os.environ.get('DISPLAY') and not _os.path.exists('/tmp/.X11-unix'):
+            cls.skip_all_tests = True
+        else:
+            cls.skip_all_tests = False
 
     def setUp(self):
         """Set up test fixtures."""
+        if self.skip_all_tests:
+            self.skipTest("No display available - skipping GUI tests")
+        
         # Mock PySimpleGUI to avoid creating actual windows
         from unittest.mock import MagicMock
+        # Must mock before any import of PySimpleGUI
         sys.modules['PySimpleGUI'] = MagicMock()
+        sys.modules['PySimpleGUI.PySimpleGUI'] = MagicMock()
 
         # Create main window without showing it
         from unetbootin.ui.main_window_pysg import MainWindowPySG

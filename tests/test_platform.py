@@ -93,19 +93,19 @@ class TestLinuxPlatform(unittest.TestCase):
 
     def test_get_drive_list(self):
         """Test getting drive list on Linux."""
-        # Mock lsblk command
+        # Mock lsblk command with JSON output (-J flag)
         with patch('subprocess.run') as mock_run:
-            mock_result = MagicMock()
-            mock_result.stdout = """
-NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
-sda      8:0    0   100G  0 disk
-├─sda1   8:1    0   512M  0 part /boot/efi
-└─sda2   8:2    0  99.5G  0 part /
-sdb      8:16   1  14.5G  0 disk
-└─sdb1   8:17   1  14.5G  0 part /media/usb
-"""
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
+            # First call: lsblk -J for basic drive info
+            mock_result1 = MagicMock()
+            mock_result1.stdout = '{"blockdevices": [{"name": "sda", "size": "100G", "type": "disk", "rm": false, "model": "", "vendor": "", "hctl": "", "tran": ""}, {"name": "sdb", "size": "14.5G", "type": "disk", "rm": true, "model": "", "vendor": "", "hctl": "", "tran": ""}]}'
+            mock_result1.returncode = 0
+            
+            # Second call: lsblk -J for mount points
+            mock_result2 = MagicMock()
+            mock_result2.stdout = '{"blockdevices": [{"name": "sda", "type": "disk", "mountpoint": null, "children": [{"name": "sda1", "type": "part", "mountpoint": "/boot/efi"}, {"name": "sda2", "type": "part", "mountpoint": "/"}]}, {"name": "sdb", "type": "disk", "mountpoint": null, "children": [{"name": "sdb1", "type": "part", "mountpoint": "/media/usb"}]}]}'
+            mock_result2.returncode = 0
+            
+            mock_run.side_effect = [mock_result1, mock_result2, mock_result2]
 
             drives = linux.get_drive_list()
             self.assertIsInstance(drives, list)
@@ -117,21 +117,22 @@ sdb      8:16   1  14.5G  0 disk
     def test_get_drive_info(self):
         """Test getting drive info on Linux."""
         with patch('subprocess.run') as mock_run:
-            # Mock lsblk for parent disk
+            # Mock lsblk -J for drive info
             mock_lsblk = MagicMock()
-            mock_lsblk.stdout = """
-NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
-sda      8:0    0   100G  0 disk
-└─sda1   8:1    0   512M  0 part /boot/efi
-"""
+            mock_lsblk.stdout = '{"blockdevices": [{"name": "sda", "size": "100G", "type": "disk", "rm": false, "model": "", "vendor": "", "hctl": "", "tran": ""}]}'
             mock_lsblk.returncode = 0
 
-            # Mock blockdev for size
+            # Mock lsblk -J for partitions
+            mock_lsblk2 = MagicMock()
+            mock_lsblk2.stdout = '{"blockdevices": [{"name": "sda", "type": "disk", "mountpoint": null, "children": [{"name": "sda1", "type": "part", "mountpoint": "/boot/efi", "size": "512M"}]}]}'
+            mock_lsblk2.returncode = 0
+
+            # Mock blockdev for size (fallback path)
             mock_blockdev = MagicMock()
             mock_blockdev.stdout = "100000000"
             mock_blockdev.returncode = 0
 
-            mock_run.side_effect = [mock_lsblk, mock_blockdev]
+            mock_run.side_effect = [mock_lsblk, mock_lsblk2, mock_blockdev]
 
             info = linux.get_drive_info('/dev/sda')
             self.assertIsNotNone(info)
@@ -164,16 +165,28 @@ sda      8:0    0   100G  0 disk
 
     def test_check_drive_writable(self):
         """Test checking if drive is writable."""
-        with patch('os.access', return_value=True):
+        with patch('subprocess.run') as mock_run:
+            # check_drive_writable calls: test -w <drive>
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_run.return_value = mock_result
+            
             result = linux.check_drive_writable('/dev/sdb')
             self.assertTrue(result)
 
     def test_unmount_drive(self):
         """Test unmounting drive on Linux."""
         with patch('subprocess.run') as mock_run:
-            mock_result = MagicMock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
+            # First call: findmnt -J to find mount points
+            mock_findmnt = MagicMock()
+            mock_findmnt.stdout = '{"filesystems": [{"target": "/media/usb"}]}'
+            mock_findmnt.returncode = 0
+            
+            # Second call: sudo umount /media/usb
+            mock_umount = MagicMock()
+            mock_umount.returncode = 0
+            
+            mock_run.side_effect = [mock_findmnt, mock_umount]
 
             result = linux.unmount_drive('/dev/sdb1')
             self.assertTrue(result)
@@ -181,22 +194,27 @@ sda      8:0    0   100G  0 disk
     def test_mount_drive(self):
         """Test mounting drive on Linux."""
         with patch('subprocess.run') as mock_run:
-            mock_result = MagicMock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
+            with patch('os.makedirs'):
+                mock_result = MagicMock()
+                mock_result.returncode = 0
+                mock_run.return_value = mock_result
 
-            result = linux.mount_drive('/dev/sdb1', '/mnt/usb')
-            self.assertTrue(result)
+                result = linux.mount_drive('/dev/sdb1', '/mnt/usb')
+                self.assertTrue(result)
 
     def test_format_drive_vfat(self):
         """Test formatting drive as FAT32 on Linux."""
         with patch('subprocess.run') as mock_run:
-            # First call is unmount, second is mkfs.vfat
-            mock_unmount = MagicMock()
-            mock_unmount.returncode = 0
+            # format_drive calls unmount_drive first, which calls findmnt -J
+            # Then it calls mkfs.vfat
+            mock_findmnt = MagicMock()
+            mock_findmnt.stdout = '{"filesystems": []}'
+            mock_findmnt.returncode = 0
+            
             mock_mkfs = MagicMock()
             mock_mkfs.returncode = 0
-            mock_run.side_effect = [mock_unmount, mock_mkfs]
+            
+            mock_run.side_effect = [mock_findmnt, mock_mkfs]
 
             result = linux.format_drive('/dev/sdb1', 'vfat', 'UNETBOOTIN')
             self.assertTrue(result)
@@ -204,9 +222,16 @@ sda      8:0    0   100G  0 disk
     def test_set_volume_label(self):
         """Test setting volume label on Linux."""
         with patch('subprocess.run') as mock_run:
-            mock_result = MagicMock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
+            # First call: blkid to get filesystem type
+            mock_blkid = MagicMock()
+            mock_blkid.stdout = '/dev/sdb1: TYPE="vfat"'
+            mock_blkid.returncode = 0
+            
+            # Second call: sudo fatlabel to set label
+            mock_fatlabel = MagicMock()
+            mock_fatlabel.returncode = 0
+            
+            mock_run.side_effect = [mock_blkid, mock_fatlabel]
 
             result = linux.set_volume_label('/dev/sdb1', 'MYUSB')
             self.assertTrue(result)
@@ -225,8 +250,9 @@ sda      8:0    0   100G  0 disk
     def test_get_mount_point(self):
         """Test getting mount point on Linux."""
         with patch('subprocess.run') as mock_run:
+            # findmnt returns just the mount point
             mock_result = MagicMock()
-            mock_result.stdout = "/dev/sdb1 on /media/usb type vfat (rw,nosuid)"
+            mock_result.stdout = "/media/usb"
             mock_result.returncode = 0
             mock_run.return_value = mock_result
 
