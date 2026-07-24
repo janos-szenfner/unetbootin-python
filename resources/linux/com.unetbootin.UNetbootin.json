@@ -21,8 +21,8 @@
             "name": "unetbootin",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --prefix=/app --no-deps -r requirements.txt",
-                "install -Dm755 src/unetbootin/main.py /app/bin/unetbootin"
+                "pip3 install --prefix=/app --no-deps -r ../../requirements.txt",
+                "install -Dm755 ../../src/unetbootin/main.py /app/bin/unetbootin"
             ],
             "build-options": {
                 "build-args": [
@@ -52,9 +52,9 @@
             "name": "resources",
             "buildsystem": "simple",
             "build-commands": [
-                "install -Dm644 -t /app/share/unetbootin/resources/bootloader resources/bootloader/*",
-                "install -Dm644 -t /app/share/unetbootin/resources/icons resources/icons/*",
-                "install -Dm644 -t /app/share/unetbootin/resources/logos resources/logos/*"
+                "install -Dm644 -t /app/share/unetbootin/resources/bootloader ../../src/unetbootin/resources/bootloader/*",
+                "install -Dm644 -t /app/share/unetbootin/resources/icons ../../src/unetbootin/resources/icons/*",
+                "install -Dm644 -t /app/share/unetbootin/resources/logos ../../src/unetbootin/resources/logos/*"
             ],
             "sources": [
                 {
@@ -68,8 +68,8 @@
             "name": "desktop-integration",
             "buildsystem": "simple",
             "build-commands": [
-                "install -Dm644 resources/linux/com.unetbootin.UNetbootin.desktop /app/share/applications/com.unetbootin.UNetbootin.desktop",
-                "install -Dm644 resources/linux/com.unetbootin.UNetbootin.appdata.xml /app/share/metainfo/com.unetbootin.UNetbootin.appdata.xml",
+                "install -Dm644 com.unetbootin.UNetbootin.desktop /app/share/applications/com.unetbootin.UNetbootin.desktop",
+                "install -Dm644 com.unetbootin.UNetbootin.appdata.xml /app/share/metainfo/com.unetbootin.UNetbootin.appdata.xml",
                 "install -Dm644 resources/icons/unetbootin_256.png /app/share/icons/hicolor/256x256/apps/com.unetbootin.UNetbootin.png",
                 "install -Dm644 resources/icons/unetbootin_48.png /app/share/icons/hicolor/48x48/apps/com.unetbootin.UNetbootin.png",
                 "install -Dm644 resources/icons/unetbootin_32.png /app/share/icons/hicolor/32x32/apps/com.unetbootin.UNetbootin.png",
@@ -78,11 +78,11 @@
             "sources": [
                 {
                     "type": "file",
-                    "path": "../../resources/linux/com.unetbootin.UNetbootin.desktop"
+                    "path": "com.unetbootin.UNetbootin.desktop"
                 },
                 {
                     "type": "file",
-                    "path": "../../resources/linux/com.unetbootin.UNetbootin.appdata.xml"
+                    "path": "com.unetbootin.UNetbootin.appdata.xml"
                 },
                 {
                     "type": "dir",

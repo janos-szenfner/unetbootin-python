@@ -166,7 +166,7 @@ jobs:
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           cp dist/linux-appimage/${{ env.APP_NAME }} AppDir/usr/bin/
-          cp resources/linux/unetbootin.desktop AppDir/usr/share/applications/
+          cp resources/linux/unetbootin-appimage.desktop AppDir/usr/share/applications/unetbootin.desktop
           cp src/unetbootin/resources/icons/unetbootin_256.png AppDir/usr/share/icons/hicolor/256x256/apps/unetbootin.png
           mkdir -p AppDir/usr/share/unetbootin/resources
           cp -r src/unetbootin/resources/* AppDir/usr/share/unetbootin/resources/
