@@ -1344,7 +1344,7 @@ class AsyncUSBInstaller:
         """
         logger.info(f"Async installing from {source_dir} to {target_device}")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         installer = USBInstaller()
 
         # Run sync installation in executor
@@ -1360,7 +1360,7 @@ class AsyncUSBInstaller:
 
     async def format_device_async(self, device: str) -> bool:
         """Format device asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         installer = USBInstaller()
         return await loop.run_in_executor(
             None,
@@ -1370,7 +1370,7 @@ class AsyncUSBInstaller:
 
     async def mount_device_async(self, device: str, mount_point: str) -> bool:
         """Mount device asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         installer = USBInstaller()
         return await loop.run_in_executor(
             None,
@@ -1386,7 +1386,7 @@ class AsyncUSBInstaller:
         progress_callback: Optional[Callable[[int], None]] = None
     ) -> bool:
         """Copy files to device asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         installer = USBInstaller()
         return await loop.run_in_executor(
             None,
@@ -1401,7 +1401,7 @@ class AsyncUSBInstaller:
         progress_callback: Optional[Callable[[int], None]] = None
     ) -> bool:
         """Install bootloader asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         installer = USBInstaller()
         return await loop.run_in_executor(
             None,
@@ -1416,7 +1416,7 @@ class AsyncUSBInstaller:
         params: Dict[str, Any]
     ) -> None:
         """Clean up installation asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         installer = USBInstaller()
         await loop.run_in_executor(
             None,

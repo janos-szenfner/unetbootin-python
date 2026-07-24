@@ -1041,7 +1041,7 @@ class AsyncISOExtractor:
         """
         logger.info(f"Async extracting {archive_path} to {dest_dir}")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         extractor = ISOExtractor()
 
         # Run sync extraction in executor
@@ -1063,7 +1063,7 @@ class AsyncISOExtractor:
         progress_callback: Optional[Callable[[int], None]] = None
     ) -> tuple:
         """Extract using a specific tool asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         extractor = ISOExtractor()
 
         def sync_extract():

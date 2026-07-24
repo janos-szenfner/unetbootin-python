@@ -954,7 +954,7 @@ class AsyncDownloader:
                 )
             else:
                 # Fallback: run sync download in executor
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 downloader = Downloader()
                 return await loop.run_in_executor(
                     None,
@@ -1043,7 +1043,7 @@ class AsyncDownloader:
                                 return int(content_length)
             else:
                 # Fallback to sync
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 downloader = Downloader()
                 return await loop.run_in_executor(
                     None,
@@ -1062,7 +1062,7 @@ class AsyncDownloader:
         checksum_type: str = "sha256"
     ) -> bool:
         """Verify file checksum asynchronously."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         downloader = Downloader()
         return await loop.run_in_executor(
             None,
