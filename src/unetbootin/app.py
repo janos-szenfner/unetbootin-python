@@ -94,12 +94,10 @@ class UNetbootinAppPySG:
         # Load drive list
         self.load_drive_list()
 
-        # Check for root/admin privileges on Unix systems
-        rootcheck = str(
-            self.cli_args.get('rootcheck', True)
-        ).lower() not in ('no', 'false', '0')
-        if rootcheck and self.platform in ['linux', 'darwin']:
-            self.check_privileges()
+        # No startup privilege check: the GUI runs as a normal user and each
+        # privileged device operation elevates on demand (pkexec/PolicyKit).
+        # Forcing elevation here produced a spurious "Elevation required" dialog
+        # on launch even though the actual install path elevates per-command.
 
     def load_distributions(self) -> None:
         """Load the list of supported distributions."""
