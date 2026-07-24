@@ -257,7 +257,10 @@ Using PyInstaller (illustrative):
 # Install PyInstaller
 pip install pyinstaller
 
-# Build for current platform (icon lives under resources/icons/)
+# Build using the spec file (recommended - includes all resources)
+pyinstaller unetbootin.spec
+
+# Or build directly with command line (icon lives under resources/icons/)
 pyinstaller --onefile --windowed --name unetbootin \
     --icon=src/unetbootin/resources/icons/unetbootin.ico \
     src/unetbootin/main.py
@@ -268,7 +271,7 @@ pyinstaller --windowed --name UNetbootin \
     src/unetbootin/main.py
 ```
 
-> Note: `python setup.py build` does **not** produce an executable — there is no cx_Freeze configuration in `setup.py`. Use PyInstaller (above) plus the per-OS packaging steps in *Next Steps*.
+> Note: `python setup.py build` does **not** produce an executable — there is no cx_Freeze configuration in `setup.py`. Use PyInstaller (above) plus the per-OS packaging steps in *Next Steps*. The `unetbootin.spec` file bundles all required resources (icons, logos, bootloader, translations) automatically.
 
 ## Adding New Distributions
 
@@ -500,13 +503,13 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 > **GUI dependency:** ✅ resolved — pinned to **`PySimpleGUI==6.2` (GPLv3)**, which is free to bundle into redistributable executables.
 - [x] **Fix packaging metadata first:** ✅ **Done.** `setup.py` `package_data` globs now match the real layout (`resources/bootloader/*`, `resources/icons/*`, `resources/logos/*`, `resources/translations/*.ts`), and `MANIFEST.in` was added to ensure resources are included in source distributions. Assets are now properly bundled in wheels, sdists and PyInstaller bundles.
 - [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `unetbootin/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
-- [ ] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon.
+- [x] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon. ✅ **Done.** Created `unetbootin.spec` with cross-platform support: uses `unetbootin.ico` for Windows, `unetbootin.icns` for macOS, and `unetbootin.xpm` for Linux. Includes all resources (icons, logos, bootloader, translations) in the bundle.
 - [ ] Create Windows `.exe` (no install) — PyInstaller `--onefile --windowed` **+ a UAC `uac_admin` manifest**; replace the interactive `format` command with scripted `diskpart`.
 - [ ] Create macOS `.app` → `.dmg` (drag-to-Applications) — **codesign + notarize** (Gatekeeper blocks unsigned apps); replace the Terminal-sudo flow with Authorization Services.
 - [ ] Create Linux packages: **AppImage** first (simplest single-file), then `.deb`/`.rpm` via `fpm`, then **Flatpak** last (sandbox makes raw block-device writes hard — needs `--device=all` + host tools); ship a `.desktop` file and declare runtime deps (syslinux, dosfstools).
 - [ ] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag.
 - [ ] Set up automatic updates.
-- [x] Add `build/`, `dist/`, `*.spec`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.).
+- [x] Add `build/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.). Note: `unetbootin.spec` is tracked in the repo.
 
 ### 🏗️ Architecture Improvements
 - [x] Consider using async/await for I/O operations - ✅ Complete
@@ -539,7 +542,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Full Distribution List | ✅ Complete (21 distros; checksums dynamically fetched) |
 | Translations | ✅ Implemented — `core/i18n.py` parses bundled Qt `.ts` catalogs (de/es/fr/it/hu) into gettext-style `_()`; wired in `main.load_translations()` |
 | Checksum Verification | ✅ Dynamic — downloads and verifies distro checksums from published checksum files (wired for Ubuntu, Debian, Fedora) |
-| Packaging | ⚠️ Partially complete — `setup.py` metadata and `package_data` are correct; frozen-app resolver works; .gitignore updated. Remaining: PyInstaller `.spec`, platform-specific packaging, CI/CD |
+| Packaging | ⚠️ Partially complete — `setup.py` metadata and `package_data` are correct; frozen-app resolver works; PyInstaller `.spec` added (cross-platform, uses platform-appropriate icons). Remaining: platform-specific packaging, CI/CD |
 | Elevation / "no-terminal" launch | ✅ Implemented — `core/elevation.py` provides single elevation model with sudo interceptor; `main()` installs interceptor and attempts elevation at startup; `app.py` no longer uses terminal-dependent flows. Uses pkexec on Linux, osascript on macOS, and ShellExecute on Windows. Automatic relaunch with UAC requires a manifest for packaged Windows builds |
 
 ---
