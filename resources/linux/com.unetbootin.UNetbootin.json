@@ -25,6 +25,9 @@
                 "install -Dm755 src/unetbootin/main.py /app/bin/unetbootin"
             ],
             "build-options": {
+                "build-args": [
+                    "--share=network"
+                ],
                 "env": {
                     "PIP_NO_WARN_SCRIPT_LOCATION": "1"
                 }

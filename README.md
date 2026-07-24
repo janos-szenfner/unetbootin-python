@@ -5,6 +5,14 @@ A Python rewrite of UNetbootin, the cross-platform tool for creating bootable US
 Original C++ version by Geza Kovacs <geza0kovacs@gmail.com>
 Python rewrite started in 2026
 
+## Disclaimer
+
+This project is a creative endeavour, built for learning and experimentation.
+Use it at your own responsibility. It writes directly to storage devices and
+can overwrite data, so double-check your target drive before proceeding. The
+software is provided "as is", without warranty of any kind, and the authors
+accept no liability for any data loss or damage arising from its use.
+
 ## Project Structure
 
 ```
