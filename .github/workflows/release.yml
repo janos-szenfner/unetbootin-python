@@ -330,9 +330,12 @@ jobs:
       - name: Build Flatpak
         run: |
           mkdir -p build-flatpak dist/flatpak
+          # The positional arg is the build directory; export to an ostree
+          # repo with --repo so build-bundle has a repository to read.
           flatpak-builder --user --install-deps-from=flathub \
             --force-clean \
-            build-flatpak/repo \
+            --repo=build-flatpak/repo \
+            build-flatpak/build \
             resources/linux/com.unetbootin.UNetbootin.json
           flatpak build-bundle \
             build-flatpak/repo \
