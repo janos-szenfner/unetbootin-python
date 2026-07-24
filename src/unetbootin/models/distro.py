@@ -26,6 +26,10 @@ class DistributionVersion:
         sha256: SHA256 checksum for verification
         sha1: SHA1 checksum for verification
         md5: MD5 checksum for verification
+        sha256_url: URL of a published SHA256SUMS-style file. When no static
+            `sha256` is set, the checksum is fetched from here at download time
+            and matched against the ISO filename — this keeps verification
+            working across point releases without hardcoding hashes that rot.
         mirrors: List of mirror URLs for this version
     """
     name: str
@@ -36,8 +40,9 @@ class DistributionVersion:
     sha256: Optional[str] = None
     sha1: Optional[str] = None
     md5: Optional[str] = None
+    sha256_url: Optional[str] = None
     mirrors: List[str] = field(default_factory=list)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert distribution version to dictionary."""
         result = {
@@ -53,6 +58,8 @@ class DistributionVersion:
             result['sha1'] = self.sha1
         if self.md5:
             result['md5'] = self.md5
+        if self.sha256_url:
+            result['sha256_url'] = self.sha256_url
         if self.mirrors:
             result['mirrors'] = self.mirrors
         return result
@@ -162,14 +169,17 @@ class DistributionManager:
                 'homepage': 'https://ubuntu.com',
                 'versions': [
                     {'name': '24.04 LTS',
-    'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso',
-     'size': 4500000000},
+                     'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso',
+                     'sha256_url': 'https://releases.ubuntu.com/24.04/SHA256SUMS',
+                     'size': 4500000000},
                     {'name': '22.04 LTS',
-    'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso',
-     'size': 3800000000},
+                     'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso',
+                     'sha256_url': 'https://releases.ubuntu.com/22.04/SHA256SUMS',
+                     'size': 3800000000},
                     {'name': '20.04 LTS',
-    'url': 'https://releases.ubuntu.com/20.04/ubuntu-20.04.6-desktop-amd64.iso',
-     'size': 3200000000},
+                     'url': 'https://releases.ubuntu.com/20.04/ubuntu-20.04.6-desktop-amd64.iso',
+                     'sha256_url': 'https://releases.ubuntu.com/20.04/SHA256SUMS',
+                     'size': 3200000000},
                 ],
                 'icon': 'ubuntu',
             },
@@ -181,9 +191,10 @@ class DistributionManager:
                 'homepage': 'https://debian.org',
                 'versions': [
                     {
-    'name': '13 (Trixie)',
-    'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.6.0-amd64-DVD-1.iso',
-     'size': 4200000000},
+                     'name': '13 (Trixie)',
+                     'url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.6.0-amd64-DVD-1.iso',
+                     'sha256_url': 'https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/SHA256SUMS',
+                     'size': 4200000000},
                 ],
                 'icon': 'debian',
             },
@@ -195,13 +206,15 @@ class DistributionManager:
                 'homepage': 'https://fedoraproject.org',
                 'versions': [
                     {
-    'name': '44',
-    'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-44-1.7.iso',
-     'size': 1200000000},
+                     'name': '44',
+                     'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-44-1.7.iso',
+                     'sha256_url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/iso/Fedora-Everything-44-1.7-x86_64-CHECKSUM',
+                     'size': 1200000000},
                     {
-    'name': '43',
-    'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-43-1.6.iso',
-     'size': 1100000000},
+                     'name': '43',
+                     'url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/iso/Fedora-Everything-netinst-x86_64-43-1.6.iso',
+                     'sha256_url': 'https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/iso/Fedora-Everything-43-1.6-x86_64-CHECKSUM',
+                     'size': 1100000000},
                 ],
                 'icon': 'fedora',
             },

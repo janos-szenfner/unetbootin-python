@@ -93,13 +93,16 @@ setup(
         ],
     },
     
-    # Data files
+    # Data files — bundled resources the app loads at runtime (bootloader
+    # binaries, icons, translation catalogs). Paths match the real layout so
+    # they are actually included in wheels/sdists and PyInstaller bundles.
+    include_package_data=True,
     package_data={
         "unetbootin": [
-            "resources/*.png",
-            "resources/*.xpm",
-            "translations/*.qm",
-            "translations/*/*.qm",
+            "resources/bootloader/*",
+            "resources/icons/*",
+            "resources/logos/*",
+            "resources/translations/*.ts",
         ],
     },
     

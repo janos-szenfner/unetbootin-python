@@ -16,8 +16,13 @@ try:
 except ImportError:
     HAS_PYSIMPLEGUI = False
 
+import locale as _locale
+
 from unetbootin.core.utils import parse_command_line_args, normalize_language_code
+from unetbootin.core import i18n
 from unetbootin import APP_NAME, APP_VERSION
+
+logger = logging.getLogger(__name__)
 
 
 def setup_logging():
@@ -35,24 +40,28 @@ def setup_logging():
 
 
 def load_translations(lang: Optional[str] = None):
-    """Load translations based on system locale or specified language.
-    
-    For now, this just sets the app language. Full translation support
-    would need to be implemented with gettext or similar.
-    
+    """Activate the UI translation catalog for the requested/detected language.
+
+    Loads the matching ``.ts`` catalog (de/es/fr/it/hu) via ``core.i18n`` so
+    UI strings wrapped in ``_()`` are translated. Falls back to English.
+
     Args:
-        lang: Optional language code to use (from command line args)
+        lang: Optional language code from the command line (e.g. ``de_DE``).
+
+    Returns:
+        The short language code actually activated (e.g. ``de`` or ``en``).
     """
-    # Determine which language to use
-    if lang:
-        locale_to_try = lang
-    else:
-        # Use system locale or default to English
-        locale_to_try = 'en'
-    
-    # Normalize the language code
-    normalized_lang = normalize_language_code(locale_to_try)
-    return normalized_lang
+    locale_to_try = lang
+    if not locale_to_try:
+        # Detect the system locale (e.g. 'de_DE') if the user didn't ask.
+        try:
+            locale_to_try = _locale.getdefaultlocale()[0]
+        except (ValueError, OSError):
+            locale_to_try = None
+
+    active = i18n.set_language(locale_to_try)
+    logger.info(f"UI language: {active}")
+    return active
 
 
 def main():

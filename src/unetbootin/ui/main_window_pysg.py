@@ -14,6 +14,8 @@ except ImportError:
     HAS_PYSIMPLEGUI = False
     sg = None
 
+from unetbootin.core.i18n import _
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,7 +155,7 @@ class MainWindowPySG:
             
             # Drive selection
             [
-                sg.Text("Target Drive:", size=(12, 1)),
+                sg.Text(_("Target Drive:"), size=(12, 1)),
                 sg.Combo(
     [],
     key='-DRIVE_SELECT-',
@@ -163,14 +165,16 @@ class MainWindowPySG:
         enable_events=True,
          tooltip="Select the target drive"),
                 sg.Button(
-    "Refresh",
+    _("Refresh"),
     key='-REFRESH_DRIVES-',
      tooltip="Refresh the list of available drives"),
             ],
-            
-            # Install type (USB Drive / Hard Disk)
+
+            # Install type (USB Drive / Hard Disk). NOTE: the combo *values*
+            # ("USB Drive"/"Hard Disk") are semantic keys compared in the
+            # installer, so they must NOT be translated — only the label is.
             [
-                sg.Text("Type:", size=(12, 1)),
+                sg.Text(_("Type:"), size=(12, 1)),
                 sg.Combo(["USB Drive",
     "Hard Disk"],
     key='-TYPE_SELECT-',
@@ -189,7 +193,7 @@ class MainWindowPySG:
             # Advanced options checkbox
             [
                 sg.Checkbox(
-    "Advanced Options",
+    _("Advanced Options"),
     key='-ADVANCED_TOGGLE-',
     enable_events=True,
      default=False),
@@ -199,12 +203,12 @@ class MainWindowPySG:
             [
                 sg.Column([
                     [sg.TabGroup([
-                        [sg.Tab("Persistence", [
-                            [sg.Checkbox("Enable persistence",
+                        [sg.Tab(_("Persistence"), [
+                            [sg.Checkbox(_("Enable persistence"),
     key='-PERSISTENCE_CHECK-',
     enable_events=True,
      tooltip="Enable persistence for live USB")],
-                            [sg.Text("Persistence (MB):",
+                            [sg.Text(_("Persistence (MB):"),
     key='-PERSISTENCE_LABEL-'),
     sg.Spin([i for i in range(0,
     10001)],
@@ -215,21 +219,21 @@ class MainWindowPySG:
     disabled=True,
      tooltip="Size of persistence partition in MB")],
                         ])],
-                        [sg.Tab("Boot Options", [
-                            [sg.Text("Boot Options:", key='-BOOT_LABEL-')],
+                        [sg.Tab(_("Boot Options"), [
+                            [sg.Text(_("Boot Options:"), key='-BOOT_LABEL-')],
                             [sg.Multiline(size=(50, 4), key='-BOOT_OPTIONS-',
                                           tooltip="Custom boot options for "
                                                   "the live USB")],
                             [sg.Text("Example: quiet splash persistent noapic",
                                      text_color='gray')],
                         ])],
-                        [sg.Tab("Firmware", [
-                            [sg.Checkbox("UEFI-only installation", key='-UEFI_ONLY-',
+                        [sg.Tab(_("Firmware"), [
+                            [sg.Checkbox(_("UEFI-only installation"), key='-UEFI_ONLY-',
                                          tooltip="Install for UEFI systems only "
                                                  "(no BIOS/CSM support)")],
                             [
     sg.Checkbox(
-        "Enable Secure Boot",
+        _("Enable Secure Boot"),
         key='-SECURE_BOOT-',
          tooltip="Enable Secure Boot support (requires signed bootloader)")],
                         ])],
@@ -240,9 +244,9 @@ class MainWindowPySG:
             # Buttons
             [
                 sg.Push(),
-                sg.Button("OK", key='-OK-', tooltip="Start the installation"),
-                sg.Button("Cancel", key='-CANCEL-', tooltip="Cancel and exit"),
-                sg.Button("Exit", key='-EXIT-', tooltip="Exit the application"),
+                sg.Button(_("OK"), key='-OK-', tooltip="Start the installation"),
+                sg.Button(_("Cancel"), key='-CANCEL-', tooltip="Cancel and exit"),
+                sg.Button(_("Exit"), key='-EXIT-', tooltip="Exit the application"),
             ],
         ]
         

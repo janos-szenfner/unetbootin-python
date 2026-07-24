@@ -338,17 +338,31 @@ class UNetbootinAppPySG:
             self.stop()
     
     def get_distribution_checksum(self, distro_name: str,
-                                  version_name: str) -> Optional[str]:
-        """Get the checksum for a specific distribution and version."""
+                                  version_name: str,
+                                  iso_filename: Optional[str] = None) -> Optional[str]:
+        """Get the SHA256 checksum for a distribution version.
+
+        Prefers a static `sha256`; if none is set but the version provides a
+        `sha256_url` (a published SHA256SUMS file) and `iso_filename` is known,
+        the hash is fetched live and matched by filename. This makes checksum
+        verification work across point releases without hardcoding hashes.
+        """
         distro = self.distro_manager.get_distribution(distro_name)
         if not distro:
             logger.error(f"Distribution not found: {distro_name}")
             return None
-        
+
         for version in distro.versions:
             if version.name == version_name:
-                return version.get_checksum("sha256")
-        
+                static = version.get_checksum("sha256")
+                if static:
+                    return static
+                url = getattr(version, 'sha256_url', None)
+                if url and iso_filename:
+                    return self.downloader.fetch_checksum_from_url(
+                        url, iso_filename)
+                return None
+
         return None
     
     def get_distribution_iso_url(self, distro_name: str,
@@ -534,7 +548,8 @@ class UNetbootinAppPySG:
             progress_window['-PROGRESS-TEXT-'].update("Verifying ISO checksum...")
             
             checksum = self.get_distribution_checksum(
-                params.get('distro'), params.get('version'))
+                params.get('distro'), params.get('version'),
+                iso_filename=iso_filename)
             if checksum:
                 if not self.downloader.verify_checksum(iso_path, checksum, "sha256"):
                     try:

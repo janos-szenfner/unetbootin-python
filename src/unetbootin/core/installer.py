@@ -14,12 +14,21 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List, Tuple
 
+from unetbootin.resources import (
+    bootloader_path, ensure_executable,
+    find_bundled_syslinux, find_bundled_extlinux,
+)
+
 logger = logging.getLogger(__name__)
 
 # Installation drives external bootloader tools via subprocess and copies
 # files via shutil; failures surface as these.
 _SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
 _FILE_COPY_ERRORS = (OSError, shutil.Error)
+
+# Syslinux menu modules copied onto the target filesystem so the boot menu
+# renders. Shipped in resources/bootloader/.
+_SYSLINUX_MODULES = ('menu.c32', 'vesamenu.c32')
 
 
 class USBInstaller:
@@ -413,10 +422,63 @@ class USBInstaller:
         
         return False
     
+    def _macos_whole_disk(self, device: str) -> str:
+        """Resolve the whole-disk node (e.g. /dev/disk4) via ``diskutil info -plist``.
+
+        Uses the ``ParentWholeDisk`` field so a partition (disk4s1) resolves to
+        its parent and a whole disk resolves to itself. No text scanning.
+        """
+        ident = device.replace('/dev/', '')
+        try:
+            result = subprocess.run(
+                ['diskutil', 'info', '-plist', device],
+                capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                import plistlib
+                data = plistlib.loads(result.stdout.encode())
+                whole = (data.get('ParentWholeDisk')
+                         or data.get('DeviceIdentifier') or ident)
+                return f"/dev/{whole}"
+        except _SUBPROCESS_ERRORS as e:
+            logger.debug(f"diskutil info failed for {device}: {e}")
+        return f"/dev/{ident}"
+
+    def _macos_data_partition(self, whole_disk: str) -> Optional[str]:
+        """Return the first data partition identifier (e.g. disk4s1) of a disk.
+
+        Parses ``diskutil list -plist`` instead of hardcoding ``s1`` — the FAT
+        data slice can be s1 or (behind an EFI slice) s2 depending on layout.
+        """
+        ident = whole_disk.replace('/dev/', '')
+        try:
+            result = subprocess.run(
+                ['diskutil', 'list', '-plist', ident],
+                capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                return None
+            import plistlib
+            data = plistlib.loads(result.stdout.encode())
+            for disk in data.get('AllDisksAndPartitions', []):
+                if disk.get('DeviceIdentifier') != ident:
+                    continue
+                parts = disk.get('Partitions', [])
+                # Prefer a non-EFI (data) partition; fall back to the first.
+                for p in parts:
+                    content = (p.get('Content') or '').upper()
+                    if 'EFI' not in content and p.get('DeviceIdentifier'):
+                        return p['DeviceIdentifier']
+                if parts and parts[0].get('DeviceIdentifier'):
+                    return parts[0]['DeviceIdentifier']
+        except _SUBPROCESS_ERRORS as e:
+            logger.debug(f"diskutil list failed for {ident}: {e}")
+        except (ValueError, KeyError, TypeError):
+            pass
+        return None
+
     def _format_device(self, device: str) -> bool:
         """Format the target device with FAT32 filesystem."""
         logger.info(f"Formatting device {device}")
-        
+
         try:
             if self.platform == 'win32':
                 # Windows: use format command
@@ -431,42 +493,16 @@ class USBInstaller:
                 )
                 return result.returncode == 0
             elif self.platform == 'darwin':
-                # macOS: use diskutil eraseVolume
-                # Find the disk identifier
+                # macOS: resolve the whole disk via plist (no text scanning),
+                # then eraseDisk to lay down a fresh MBR + FAT32 volume.
+                whole_disk = self._macos_whole_disk(device)
                 result = subprocess.run(
-                    ['diskutil', 'list'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    ['diskutil', 'eraseDisk', 'FAT32',
+                     'UNETBOOTIN', 'MBRFormat', whole_disk],
+                    capture_output=True, text=True, timeout=120
                 )
                 if result.returncode != 0:
-                    return False
-                
-                # Parse to find the correct disk identifier
-                disk_identifier = None
-                for line in result.stdout.split('\n'):
-                    if device in line and 'disk' in line:
-                        # Extract disk identifier like disk2
-                        parts = line.strip().split()
-                        for part in parts:
-                            if part.startswith('disk') and part != 'disk':
-                                disk_identifier = part
-                                break
-                        if disk_identifier:
-                            break
-                
-                if not disk_identifier:
-                    logger.error(f"Could not find disk identifier for {device}")
-                    return False
-                
-                # Format as FAT32
-                result = subprocess.run(
-                    ['diskutil', 'eraseVolume', 'FAT32',
-                        'UNETBOOTIN', 'MBRFormat', disk_identifier],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
+                    logger.error(f"diskutil eraseDisk failed: {result.stderr}")
                 return result.returncode == 0
             else:  # Linux
                 # Linux: use mkfs.vfat
@@ -504,52 +540,31 @@ class USBInstaller:
                     return True
                 return False
             elif self.platform == 'darwin':
-                # macOS: use diskutil mount
+                # macOS: resolve the real FAT data partition via plist (not a
+                # hardcoded "s1"), then mount it at our chosen point.
                 if not os.path.exists(mount_point):
                     os.makedirs(mount_point, exist_ok=True)
-                
-                # Find the disk identifier
+
+                whole_disk = self._macos_whole_disk(device)
+                data_part = self._macos_data_partition(whole_disk)
+                if not data_part:
+                    logger.error(
+                        f"Could not find a data partition on {whole_disk}")
+                    return False
+
+                # diskutil auto-mounts a freshly-erased volume; unmount it so we
+                # can mount at our own point (ignore failure if not mounted).
+                subprocess.run(
+                    ['diskutil', 'unmount', data_part],
+                    capture_output=True, text=True, timeout=10
+                )
+
                 result = subprocess.run(
-                    ['diskutil', 'list'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    ['mount', '-t', 'msdos', f'/dev/{data_part}', mount_point],
+                    capture_output=True, text=True, timeout=10
                 )
                 if result.returncode != 0:
-                    return False
-                
-                # Parse to find the correct disk identifier
-                disk_identifier = None
-                for line in result.stdout.split('\n'):
-                    if device in line and 'disk' in line:
-                        parts = line.strip().split()
-                        for part in parts:
-                            if part.startswith('disk') and part != 'disk':
-                                disk_identifier = part
-                                break
-                        if disk_identifier:
-                            break
-                
-                if not disk_identifier:
-                    logger.error(f"Could not find disk identifier for {device}")
-                    return False
-                
-                result = subprocess.run(
-                    ['diskutil', 'mount', disk_identifier],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode != 0:
-                    return False
-                
-                # Now mount to our specific mount point
-                result = subprocess.run(
-                    ['mount', '-t', 'msdos', f'/dev/{disk_identifier}s1', mount_point],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
+                    logger.error(f"mount failed for {data_part}: {result.stderr}")
                 return result.returncode == 0
             else:  # Linux
                 if not device.startswith('/dev/'):
@@ -655,38 +670,32 @@ class USBInstaller:
                     )
                     return result.returncode == 0
             
-            # Default BIOS/UEFI dual boot installation
-            # Check for syslinux
-            syslinux_path = self._find_executable('syslinux')
+            # Default BIOS/UEFI dual boot installation.
+            # Prefer the BUNDLED syslinux.exe; fall back to a system one.
+            bundled = bootloader_path('syslinux.exe')
+            syslinux_path = str(bundled) if bundled.exists() else self._find_executable('syslinux')
             if syslinux_path:
                 if len(device) == 1 and device.isalpha():
                     device = f"{device}:"
 
-                # For UEFI support, also copy EFI files
-                if not enable_uefi_only:
-                    result = subprocess.run(
-                        [syslinux_path, '-ma', device],
-                        capture_output=True, text=True, timeout=60
-                    )
-                    if result.returncode != 0:
-                        logger.error(f"syslinux failed: {result.stderr}")
-                        return False
-                else:
-                    # UEFI-only installation
-                    result = subprocess.run(
-                        [syslinux_path, '--uefi', device],
-                        capture_output=True, text=True, timeout=60
-                    )
-                    if result.returncode != 0:
-                        logger.error(f"syslinux UEFI-only failed: {result.stderr}")
-                        return False
-                
+                # Copy bundled menu modules onto the drive so the menu renders.
+                self._copy_syslinux_modules(params.get('mount_point') or device)
+
+                flag = '--uefi' if enable_uefi_only else '-ma'
+                result = subprocess.run(
+                    [syslinux_path, flag, device],
+                    capture_output=True, text=True, timeout=60
+                )
+                if result.returncode != 0:
+                    logger.error(f"syslinux failed: {result.stderr}")
+                    return False
                 return True
 
-            # No known bootloader tool available - report failure honestly
+            # No bundled or system syslinux available - report failure honestly
             # instead of producing a non-bootable stick marked as success.
             logger.error(
-                "Windows bootloader installation requires syslinux.exe on PATH")
+                "Windows bootloader installation requires syslinux.exe "
+                "(bundled binary missing and none found on PATH)")
             return False
             
         except _SUBPROCESS_ERRORS as e:
@@ -703,52 +712,57 @@ class USBInstaller:
             f"Secure Boot: {enable_secure_boot})")
         
         try:
-            # macOS: use diskutil and possibly bless
-            
-            # For macOS, we would typically:
-            # 1. Copy bootloader files
-            # 2. Use bless to make it bootable
-            
-            # Find the disk identifier
-            result = subprocess.run(
-                ['diskutil', 'list'],
-                capture_output=True, text=True, timeout=10
-            )
-            
-            if result.returncode == 0:
-                # Parse to find the correct disk
-                # This is simplified
-                disk_identifier = device
-                
-                if enable_uefi_only:
-                    # For UEFI-only, ensure we're using the correct EFI partition
-                    logger.info("Configuring UEFI-only bootloader on macOS")
-                    
-                    # Create EFI directory structure if it doesn't exist
-                    efi_dir = f'{device}/EFI/BOOT'
-                    os.makedirs(efi_dir, exist_ok=True)
-                    
-                    if enable_secure_boot:
-                        # For Secure Boot, we need to copy signed bootloader
-                        logger.info("Configuring Secure Boot on macOS")
-                        if not self._copy_secure_boot_files(efi_dir):
-                            logger.error("Failed to copy Secure Boot files")
-                            return False
-                
-                # Use bless to make it bootable, e.g.:
-                #   bless --mount /Volumes/USB --setBoot \
-                #         --folder /Volumes/USB/EFI \
-                #         --file /Volumes/USB/EFI/BOOT/BOOTX64.EFI
+            mount_point = params.get('mount_point')
+
+            if enable_uefi_only:
+                # UEFI path: build the EFI/BOOT tree on the mounted volume and
+                # bless it. (macOS cannot run the bundled Linux/Windows syslinux
+                # binaries, so BIOS booting is best-effort below.)
+                base = mount_point or device
+                efi_dir = os.path.join(base, 'EFI', 'BOOT')
+                os.makedirs(efi_dir, exist_ok=True)
+
+                if enable_secure_boot:
+                    logger.info("Configuring Secure Boot on macOS")
+                    if not self._copy_secure_boot_files(efi_dir):
+                        logger.error("Failed to copy Secure Boot files")
+                        return False
+
                 result = subprocess.run(
-                    ['bless', '--mount', device, '--setBoot', '--folder', f'{device}/EFI', 
-                     '--file', f'{device}/EFI/BOOT/BOOTX64.EFI'],
-                    capture_output=True, text=True, timeout=10
+                    ['bless', '--mount', base, '--setBoot',
+                     '--folder', os.path.join(base, 'EFI'),
+                     '--file', os.path.join(efi_dir, 'BOOTX64.EFI')],
+                    capture_output=True, text=True, timeout=30
                 )
-                
                 return result.returncode == 0
-            
-            return False
-            
+
+            # BIOS path: write the bundled syslinux MBR to the whole disk and
+            # copy the bundled menu modules onto the volume. Note: finalizing
+            # syslinux on the partition needs a native macOS syslinux binary
+            # (e.g. `brew install syslinux`); the bundled binaries are for
+            # Linux/Windows and cannot run on Darwin.
+            whole_disk = self._macos_whole_disk(device)
+            wrote_mbr = self._write_syslinux_mbr(whole_disk, use_sudo=True)
+            self._copy_syslinux_modules(mount_point)
+
+            syslinux_path = self._find_executable('syslinux')
+            if syslinux_path and mount_point:
+                result = subprocess.run(
+                    ['syslinux', '-i', whole_disk],
+                    capture_output=True, text=True, timeout=60
+                )
+                if result.returncode == 0:
+                    return True
+                logger.warning(f"native syslinux failed: {result.stderr}")
+
+            if wrote_mbr:
+                logger.warning(
+                    "macOS: wrote MBR and copied boot modules, but could not "
+                    "finalize syslinux (no native macOS syslinux found). The "
+                    "USB may not boot on BIOS systems; install `syslinux` via "
+                    "Homebrew, or create the USB on Linux/Windows.")
+            return wrote_mbr
+
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"macOS bootloader installation failed: {e}")
             return False
@@ -827,53 +841,55 @@ class USBInstaller:
             
             # For USB drives with BIOS/UEFI dual support
             if drive_type == 'USB Drive':
-                # Try syslinux first (for BIOS boot)
-                syslinux_path = self._find_executable('syslinux')
-                if syslinux_path:
-                    if not device.startswith('/dev/'):
-                        device = f"/dev/{device}"
-                    
-                    # Install MBR
+                if not device.startswith('/dev/'):
+                    device = f"/dev/{device}"
+
+                # Resolve the whole disk (for the MBR) without string surgery.
+                whole_disk = self._linux_parent_disk(device)
+
+                # 1) Write the syslinux MBR from the BUNDLED mbr.bin.
+                self._write_syslinux_mbr(whole_disk)
+
+                # 2) Copy bundled menu modules onto the target filesystem.
+                self._copy_syslinux_modules(params.get('mount_point'))
+
+                # 3) Install syslinux to the partition — prefer the BUNDLED
+                #    binary, fall back to a system syslinux only if missing.
+                bundled = find_bundled_syslinux()
+                syslinux_bin = str(bundled) if bundled else self._find_executable('syslinux')
+                if syslinux_bin:
                     result = subprocess.run(
-                        ['sudo', 'dd', 'if=/usr/lib/syslinux/mbr/mbr.bin',
-                            f'of={device}', 'bs=440', 'count=1'],
-                        capture_output=True, text=True, timeout=10
+                        ['sudo', syslinux_bin, '-i', device],
+                        capture_output=True, text=True, timeout=60
                     )
-                    if result.returncode != 0:
-                        logger.warning(f"Failed to install MBR: {result.stderr}")
-                    
-                    # Install bootloader
+                    if result.returncode == 0:
+                        return True
+                    logger.warning(f"syslinux install failed: {result.stderr}")
+
+                # extlinux fallback (bundled first, then system). extlinux
+                # installs into a mounted directory, not the raw partition.
+                bundled_ext = find_bundled_extlinux()
+                extlinux_bin = str(bundled_ext) if bundled_ext else self._find_executable('extlinux')
+                mount_point = params.get('mount_point')
+                if extlinux_bin and mount_point:
                     result = subprocess.run(
-                        ['sudo', syslinux_path, device],
-                        capture_output=True, text=True, timeout=10
+                        ['sudo', extlinux_bin, '--install', mount_point],
+                        capture_output=True, text=True, timeout=60
                     )
-                    return result.return_code == 0
-                
-                # Try extlinux
-                extlinux_path = self._find_executable('extlinux')
-                if extlinux_path:
-                    if not device.startswith('/dev/'):
-                        device = f"/dev/{device}"
-                    
-                    # Install bootloader
-                    result = subprocess.run(
-                        ['sudo', extlinux_path, '--install', device],
-                        capture_output=True, text=True, timeout=10
-                    )
-                    return result.return_code == 0
-                
-                # Try grub for BIOS
+                    if result.returncode == 0:
+                        return True
+                    logger.warning(f"extlinux install failed: {result.stderr}")
+
+                # grub fallback for BIOS.
                 grub_install_path = self._find_executable('grub-install')
                 if grub_install_path:
-                    if not device.startswith('/dev/'):
-                        device = f"/dev/{device}"
-                    
                     result = subprocess.run(
                         ['sudo', grub_install_path, '--target=i386-pc',
-                            '--boot-directory=' + device, device],
-                        capture_output=True, text=True, timeout=10
+                            f'--boot-directory={mount_point or whole_disk}',
+                            whole_disk],
+                        capture_output=True, text=True, timeout=60
                     )
-                    return result.return_code == 0
+                    return result.returncode == 0
             
             # For Hard Disk installation
             elif drive_type == 'Hard Disk':
@@ -887,9 +903,9 @@ class USBInstaller:
                     result = subprocess.run(
                         ['sudo', grub_install_path, '--target=i386-pc',
                             '--boot-directory=/boot', device],
-                        capture_output=True, text=True, timeout=10
+                        capture_output=True, text=True, timeout=60
                     )
-                    return result.return_code == 0
+                    return result.returncode == 0
             
             logger.error("No suitable bootloader installation method found "
                          "(install syslinux, extlinux or grub)")
@@ -928,9 +944,71 @@ class USBInstaller:
             full_path = os.path.join(location, name)
             if os.path.exists(full_path) and os.access(full_path, os.X_OK):
                 return full_path
-        
+
         return None
-    
+
+    # ---- Bundled bootloader helpers -------------------------------------
+    # These use the binaries shipped in resources/bootloader/ so the tool
+    # does not depend on a system-installed syslinux. They fall back to
+    # system tools only if a bundled binary is missing.
+
+    def _linux_parent_disk(self, device: str) -> str:
+        """Resolve the whole disk that owns `device` via ``lsblk -no pkname``.
+
+        For a partition like ``/dev/sdb1`` this returns ``/dev/sdb``; for a
+        whole disk it returns the device unchanged. No fragile string surgery.
+        """
+        if not device.startswith('/dev/'):
+            device = f"/dev/{device}"
+        try:
+            result = subprocess.run(
+                ['lsblk', '-no', 'pkname', device],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                out = result.stdout.strip().splitlines()
+                pkname = out[0].strip() if out else ''
+                if pkname:
+                    return f"/dev/{pkname}"
+        except _SUBPROCESS_ERRORS as e:
+            logger.debug(f"lsblk pkname lookup failed for {device}: {e}")
+        return device  # already a whole disk (or unknown -> use as-is)
+
+    def _write_syslinux_mbr(self, whole_disk: str, use_sudo: bool = True) -> bool:
+        """Write the bundled syslinux ``mbr.bin`` to a disk's MBR (440 bytes)."""
+        mbr = bootloader_path('mbr.bin')
+        if not mbr.exists():
+            logger.warning(f"Bundled mbr.bin not found at {mbr}")
+            return False
+        cmd = (['sudo'] if use_sudo else []) + [
+            'dd', f'if={mbr}', f'of={whole_disk}',
+            'bs=440', 'count=1', 'conv=notrunc',
+        ]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                logger.warning(f"Writing MBR failed: {result.stderr}")
+                return False
+            logger.info(f"Wrote bundled syslinux MBR to {whole_disk}")
+            return True
+        except _SUBPROCESS_ERRORS as e:
+            logger.warning(f"Writing MBR failed: {e}")
+            return False
+
+    def _copy_syslinux_modules(self, mount_point: Optional[str]) -> None:
+        """Copy bundled syslinux menu modules (menu.c32, vesamenu.c32) to target."""
+        if not mount_point or not os.path.isdir(mount_point):
+            return
+        for name in _SYSLINUX_MODULES:
+            src = bootloader_path(name)
+            if src.exists():
+                try:
+                    shutil.copy2(src, os.path.join(mount_point, name))
+                    logger.info(f"Copied bundled {name} to {mount_point}")
+                except _FILE_COPY_ERRORS as e:
+                    logger.warning(f"Failed to copy {name}: {e}")
+
     def create_syslinux_cfg(self, target_device: str, params: Dict[str, Any]) -> bool:
         """Create syslinux configuration file."""
         try:

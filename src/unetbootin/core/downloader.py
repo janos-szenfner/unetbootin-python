@@ -828,7 +828,61 @@ class Downloader:
         except OSError as e:
             logger.error(f"Failed to verify checksum for {file_path}: {e}")
             return False
-    
+
+    def fetch_checksum_from_url(self, checksum_url: str,
+                                iso_filename: str) -> Optional[str]:
+        """Fetch a SHA256SUMS-style file and return the hash for `iso_filename`.
+
+        Handles both common layouts:
+          * GNU coreutils: ``<hex>  <filename>`` / ``<hex> *<filename>``
+            (Ubuntu, Debian, Linux Mint, …)
+          * BSD / Fedora: ``SHA256 (<filename>) = <hex>``
+
+        Matching is by exact basename so it survives point-release filename
+        changes without any hardcoded hash. Returns None if the file or a
+        matching line isn't found.
+        """
+        try:
+            text = self.download_page_contents(checksum_url, timeout=METADATA_TIMEOUT)
+            if not text:
+                return None
+            target = os.path.basename(iso_filename).strip()
+
+            # BSD / Fedora style: SHA256 (name) = hex
+            bsd = re.compile(r'^SHA256\s*\(([^)]+)\)\s*=\s*([0-9a-fA-F]{64})\s*$')
+
+            for line in text.splitlines():
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+
+                m = bsd.match(line)
+                if m:
+                    name, digest = os.path.basename(m.group(1)), m.group(2)
+                    if name == target:
+                        logger.info(f"Found published SHA256 for {target}")
+                        return digest.lower()
+                    continue
+
+                # coreutils style: <hex>  <name>  (name may have a '*' marker)
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                digest = parts[0].strip()
+                if not re.fullmatch(r'[0-9a-fA-F]{64}', digest):
+                    continue
+                name = os.path.basename(
+                    line[len(parts[0]):].strip().lstrip('*').strip())
+                if name == target:
+                    logger.info(f"Found published SHA256 for {target}")
+                    return digest.lower()
+
+            logger.warning(f"No SHA256 entry for {target} in {checksum_url}")
+            return None
+        except (OSError, ValueError) as e:
+            logger.error(f"Failed to fetch checksum from {checksum_url}: {e}")
+            return None
+
     def cleanup(self):
         """Clean up resources."""
         if self.session:
