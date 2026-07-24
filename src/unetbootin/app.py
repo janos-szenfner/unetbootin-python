@@ -178,78 +178,54 @@ class UNetbootinAppPySG:
         return display_list
     
     def check_privileges(self):
-        """Check if running with sufficient privileges."""
-        if self.platform == 'linux':
-            if not check_root():
-                logger.warning("Not running as root on Linux")
-                self.show_root_warning()
-        elif self.platform == 'darwin':
-            if not check_admin():
-                logger.warning("Not running as admin on macOS")
-                self.show_admin_warning()
-    
-    def show_root_warning(self):
-        """Show warning that root privileges are required."""
-        sg.popup_error(
-            f"{APP_NAME} must be run as root.\n\n"
-            f"Run it from the command line using:\n"
-            f"sudo {sys.argv[0]}",
-            title="Must run as root"
-        )
-        sys.exit(1)
-    
-    def show_admin_warning(self):
-        """Show warning that admin privileges are required on macOS."""
-        result = sg.popup_yes_no(
-            f"{APP_NAME} requires administrator privileges to install bootloaders. "
-            "Please run using sudo or with administrator rights.\n\n"
-            "Would you like to try running with sudo?",
-            title="Administrator privileges required"
-        )
-        if result == 'Yes':
-            self.relaunch_with_sudo()
-        else:
-            sys.exit(1)
-    
-    def relaunch_with_sudo(self):
-        """Re-launch the application with sudo on macOS.
-
-        Uses osascript to open a Terminal running `sudo <app>`. This only
-        works in a graphical session with Terminal.app available; when it
-        fails (headless system, Terminal missing, osascript unavailable)
-        the user gets the exact command to run manually instead of a
-        generic error.
+        """Check if running with sufficient privileges.
+        
+        Uses the new elevation system instead of terminal-dependent flows.
+        If not elevated, will attempt to relaunch with elevation automatically.
         """
-        logger.info("Attempting to re-launch with sudo")
-        import shlex
-        quoted = shlex.quote(sys.argv[0])
-        manual_cmd = f"sudo {quoted}"
-
+        from unetbootin.core.elevation import is_elevated, ensure_elevated, check_elevation_availability
+        
+        if is_elevated():
+            return
+        
+        # Not elevated - try to elevate
+        if not check_elevation_availability():
+            # Fallback: show platform-specific message
+            self._show_elevation_not_available()
+            return
+        
         try:
-            script = f'tell application "Terminal" to do script "{manual_cmd}"'
-            subprocess.run(
-                ['osascript', '-e', script],
-                check=True, capture_output=True, text=True, timeout=30
+            ensure_elevated()
+        except Exception as e:
+            logger.warning(f"Elevation attempt failed: {e}")
+            self._show_elevation_not_available()
+    
+    def _show_elevation_not_available(self):
+        """Show message when elevation is not available."""
+        if self.platform == 'linux':
+            sg.popup_error(
+                f"{APP_NAME} requires elevated privileges.\n\n"
+                "Please ensure polkit/pkexec is installed, or run from a terminal with sudo.",
+                title="Elevation Required"
             )
-            sys.exit(0)
-        except FileNotFoundError:
-            # osascript itself is missing (non-standard/stripped-down system)
-            logger.error("osascript not available; cannot open Terminal")
-        except subprocess.TimeoutExpired:
-            logger.error("Timed out asking Terminal to relaunch with sudo")
-        except (subprocess.CalledProcessError, OSError) as e:
-            # Terminal unavailable (e.g. headless session) or automation
-            # permission denied
-            detail = getattr(e, 'stderr', '') or str(e)
-            logger.error(f"Failed to re-launch with sudo: {detail}")
-
-        # Fallback: give the user the exact command to run themselves
-        self.show_error(
-            "Could not automatically relaunch with administrator "
-            "privileges.\n\n"
-            "Please open a terminal and run:\n\n"
-            f"    {manual_cmd}"
-        )
+        elif self.platform == 'darwin':
+            sg.popup_error(
+                f"{APP_NAME} requires administrator privileges.\n\n"
+                "Please run with elevated privileges (pkexec, sudo, or as admin).",
+                title="Elevation Required"
+            )
+        elif self.platform == 'win32':
+            sg.popup_error(
+                f"{APP_NAME} requires Administrator privileges.\n\n"
+                "Please right-click and select 'Run as administrator'.",
+                title="Elevation Required"
+            )
+        else:
+            sg.popup_error(
+                f"{APP_NAME} requires elevated privileges on {self.platform}.\n\n"
+                "Please run with appropriate elevated permissions.",
+                title="Elevation Required"
+            )
     
     def get_installation_parameters(self) -> Dict[str, Any]:
         """Get installation parameters from UI.
