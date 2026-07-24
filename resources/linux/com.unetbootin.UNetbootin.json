@@ -21,8 +21,8 @@
             "name": "unetbootin",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --prefix=/app --no-deps -r ../../requirements.txt",
-                "install -Dm755 ../../src/unetbootin/main.py /app/bin/unetbootin"
+                "pip3 install --prefix=/app --no-deps -r requirements.txt",
+                "install -Dm755 src/unetbootin/main.py /app/bin/unetbootin"
             ],
             "build-options": {
                 "build-args": [
@@ -52,9 +52,9 @@
             "name": "resources",
             "buildsystem": "simple",
             "build-commands": [
-                "install -Dm644 -t /app/share/unetbootin/resources/bootloader ../../src/unetbootin/resources/bootloader/*",
-                "install -Dm644 -t /app/share/unetbootin/resources/icons ../../src/unetbootin/resources/icons/*",
-                "install -Dm644 -t /app/share/unetbootin/resources/logos ../../src/unetbootin/resources/logos/*"
+                "install -Dm644 -t /app/share/unetbootin/resources/bootloader resources/bootloader/*",
+                "install -Dm644 -t /app/share/unetbootin/resources/icons resources/icons/*",
+                "install -Dm644 -t /app/share/unetbootin/resources/logos resources/logos/*"
             ],
             "sources": [
                 {
