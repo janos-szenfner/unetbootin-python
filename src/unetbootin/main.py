@@ -86,7 +86,7 @@ def main():
         unetbootin = UNetbootinAppPySG(cli_args=cli_args)
         unetbootin.run()
         logger.info("Application exited successfully")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - top-level last-resort handler: show a dialog and exit cleanly instead of dumping a traceback
         logger.error(f"Application failed: {e}")
         sg.popup_error(
             f"Application failed: {str(e)}",

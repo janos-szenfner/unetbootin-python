@@ -117,11 +117,11 @@ class ConfigManager:
             import winreg
             try:
                 key = winreg.OpenKey(
-    winreg.HKEY_CURRENT_USER,
-     r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders')
+                    winreg.HKEY_CURRENT_USER,
+                    r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders')
                 appdata = winreg.QueryValueEx(key, 'AppData')[0]
                 return os.path.join(appdata, self.DEFAULT_CONFIG_DIR)
-            except Exception:
+            except OSError:
                 return os.path.join(os.path.expanduser('~'), self.DEFAULT_CONFIG_DIR)
         elif sys.platform == 'darwin':  # macOS
             return os.path.join(os.path.expanduser('~'), 'Library',
@@ -151,7 +151,7 @@ class ConfigManager:
                     data = json.load(f)
                 self.config = AppConfig.from_dict(data)
                 logger.info(f"Configuration loaded from {self.config_file}")
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, TypeError) as e:
                 logger.error(f"Failed to load configuration: {e}")
                 # Keep default config
         
@@ -166,7 +166,7 @@ class ConfigManager:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config.to_dict(), f, indent=2)
             logger.info(f"Configuration saved to {self.config_file}")
-        except Exception as e:
+        except (OSError, TypeError) as e:
             logger.error(f"Failed to save configuration: {e}")
     
     def get(self, key: str, default: Any = None) -> Any:
@@ -195,5 +195,5 @@ class ConfigManager:
         try:
             if os.path.exists(self.config_file):
                 os.remove(self.config_file)
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to reset configuration: {e}")

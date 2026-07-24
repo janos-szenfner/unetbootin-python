@@ -55,9 +55,12 @@ class TestDownloader(unittest.TestCase):
     
     def test_get_remote_file_size_failure(self):
         """Test getting remote file size for an invalid URL."""
+        import requests
         with patch('requests.Session.head') as mock_head:
-            mock_head.side_effect = Exception("Connection failed")
-            
+            # requests raises RequestException subclasses on failure
+            mock_head.side_effect = requests.exceptions.ConnectionError(
+                "Connection failed")
+
             size = self.downloader.get_remote_file_size('https://example.com/invalid.iso')
             self.assertIsNone(size)
     

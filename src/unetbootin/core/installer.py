@@ -16,6 +16,11 @@ from typing import Optional, Callable, Dict, Any, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+# Installation drives external bootloader tools via subprocess and copies
+# files via shutil; failures surface as these.
+_SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
+_FILE_COPY_ERRORS = (OSError, shutil.Error)
+
 
 class USBInstaller:
     """Handles USB installation process."""
@@ -44,7 +49,7 @@ class USBInstaller:
                 result[0], result[1] = self.install_sync(
                     source_dir, target_device, install_params, progress_callback
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - transparently re-raised on caller thread
                 exception[0] = e
         
         thread = threading.Thread(target=install_wrapper, daemon=True)
@@ -119,7 +124,7 @@ class USBInstaller:
             
             return True, "Installation completed successfully"
             
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.error(f"Installation failed: {e}")
             return False, str(e)
     
@@ -163,7 +168,7 @@ class USBInstaller:
             
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Preparation failed: {e}")
             return False
     
@@ -202,7 +207,7 @@ class USBInstaller:
                         progress = int((copied_files / total_files) * 100)
                         progress_callback(progress)
 
-                except Exception as e:
+                except _FILE_COPY_ERRORS as e:
                     logger.error(f"Failed to copy {src_path} to {dest_path}: {e}")
                     failed_files.append(file_path)
 
@@ -217,7 +222,7 @@ class USBInstaller:
 
             return True
 
-        except Exception as e:
+        except _FILE_COPY_ERRORS as e:
             logger.error(f"File copying failed: {e}")
             return False
     
@@ -252,7 +257,7 @@ class USBInstaller:
                 return self._install_bootloader_linux(
                     target_device, params, enable_uefi_only, enable_secure_boot)
             
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.error(f"Bootloader installation failed: {e}")
             return False
     
@@ -307,7 +312,7 @@ class USBInstaller:
             if self.platform != 'win32':
                 subprocess.run(['sync'], timeout=10)
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Cleanup failed: {e}")
     
     def _validate_target_device(self, device: str) -> bool:
@@ -323,7 +328,7 @@ class USBInstaller:
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
                 return os.path.exists(device)
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Device validation failed: {e}")
             return False
     
@@ -347,7 +352,7 @@ class USBInstaller:
                 )
                 if result.returncode == 0:
                     return device in result.stdout
-        except Exception:
+        except _SUBPROCESS_ERRORS:
             pass
         
         return False
@@ -391,7 +396,7 @@ class USBInstaller:
                                 capture_output=True, text=True, timeout=10
                             )
                             return result.returncode == 0
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to unmount {device}: {e}")
         
         return False
@@ -468,7 +473,7 @@ class USBInstaller:
                 )
                 return result.returncode == 0
                 
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to format device {device}: {e}")
             return False
     
@@ -549,7 +554,7 @@ class USBInstaller:
                 )
                 return result.returncode == 0
                 
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to mount device {device} to {mount_point}: {e}")
             return False
     
@@ -672,7 +677,7 @@ class USBInstaller:
                 "Windows bootloader installation requires syslinux.exe on PATH")
             return False
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Windows bootloader installation failed: {e}")
             return False
     
@@ -732,7 +737,7 @@ class USBInstaller:
             
             return False
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"macOS bootloader installation failed: {e}")
             return False
     
@@ -878,7 +883,7 @@ class USBInstaller:
                          "(install syslinux, extlinux or grub)")
             return False
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Linux bootloader installation failed: {e}")
             return False
     
@@ -893,7 +898,7 @@ class USBInstaller:
                 path = result.stdout.strip()
                 if os.path.exists(path):
                     return path
-        except Exception:
+        except _SUBPROCESS_ERRORS:
             pass
         
         # Try common locations
@@ -957,7 +962,7 @@ LABEL poweroff
             
             return True
             
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to create syslinux.cfg: {e}")
             return False
     
@@ -1008,7 +1013,7 @@ set check_signatures=enforce
             
             return True
             
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to create grub.cfg: {e}")
             return False
     
@@ -1063,7 +1068,7 @@ set check_signatures=enforce
             
             return True  # Assume it's okay for now
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to check EFI partition: {e}")
             return True  # Don't fail the installation, just proceed
     
@@ -1097,7 +1102,7 @@ set check_signatures=enforce
                     try:
                         shutil.copy2(src_file, dest_file)
                         logger.info(f"Copied {src_file} to {dest_file}")
-                    except Exception as e:
+                    except _FILE_COPY_ERRORS as e:
                         logger.warning(f"Failed to copy {src_file}: {e}")
             
             # Also copy shim for Secure Boot if available
@@ -1112,10 +1117,10 @@ set check_signatures=enforce
                     try:
                         shutil.copy2(src_file, dest_file)
                         logger.info(f"Copied {src_file} to {dest_file}")
-                    except Exception as e:
+                    except _FILE_COPY_ERRORS as e:
                         logger.warning(f"Failed to copy {src_file}: {e}")
                         
-        except Exception as e:
+        except _FILE_COPY_ERRORS as e:
             logger.error(f"Failed to copy EFI files: {e}")
     
     def _install_secure_boot_files_linux(self, efi_dir: str) -> bool:
@@ -1149,14 +1154,14 @@ set check_signatures=enforce
                             shutil.copy2(mm_path, os.path.join(efi_dir, 'mmx64.efi'))
                         
                         return True
-                    except Exception as e:
+                    except _FILE_COPY_ERRORS as e:
                         logger.warning(f"Failed to copy shim: {e}")
             
             # If no shim found, try other signed bootloaders
             logger.info("No shim found, Secure Boot may not work")
             return True  # Don't fail, just warn
             
-        except Exception as e:
+        except _FILE_COPY_ERRORS as e:
             logger.error(f"Failed to install Secure Boot files: {e}")
             return False
 

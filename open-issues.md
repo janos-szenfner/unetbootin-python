@@ -1,7 +1,7 @@
 # Open Issues - UNetbootin Python Rewrite
 
 > **Last Updated**: 2026-07-23
-> **Status**: Code Audit Complete | H-001, H-002, M-001, M-003, M-004, M-005, M-006, M-007, M-008, M-009, M-010, M-011, M-012 + L-001..L-007 Fixed | M-002 In Progress
+> **Status**: Code Audit Complete | ALL issues resolved — H-001..H-002, M-001..M-012, L-001..L-007 Fixed
 > **Auditor**: Mistral Vibe CLI Agent
 
 This document tracks all identified issues, warnings, security concerns, and code quality problems in the UNetbootin Python rewrite codebase. Issues are categorized by priority and type.
@@ -14,13 +14,13 @@ This document tracks all identified issues, warnings, security concerns, and cod
 |----------|-------|--------|
 | Critical Issues | 0 | ✅ None |
 | High Priority | 0 | ✅ All Fixed |
-| Medium Priority | 12 | ✅ 11 Fixed, 1 In Progress |
+| Medium Priority | 12 | ✅ All Fixed |
 | Low Priority | 7 | ✅ All Fixed |
 | Test Suite | 166 tests | ✅ All passing (was 8 failing) |
 
-**Fixed in this update**: M-003, L-001, L-002, L-003, L-004, L-005, L-006, L-007, plus all pre-existing test failures
-**Previously fixed**: H-001, H-002, M-001, M-004, M-005, M-006, M-007, M-008, M-009, M-010, M-011, M-012
-**In Progress**: M-002 (large mechanical exception-narrowing pass)
+**Fixed in this update**: M-002 (broad exception handling — 128 sites: 119 narrowed, 9 documented)
+**Previously fixed**: H-001, H-002, M-001, M-003, M-004, M-005, M-006, M-007, M-008, M-009, M-010, M-011, M-012, L-001..L-007, plus all pre-existing test failures
+**In Progress**: none — all tracked issues resolved
 
 ---
 
@@ -73,13 +73,22 @@ This document tracks all identified issues, warnings, security concerns, and cod
 
 ### M-002: Excessive Broad Exception Handling
 **Type**: Code Quality  
-**Files**: Throughout `src/unetbootin/` (141 instances)  
-**Status**: 🔄 In Progress  
-**Started On**: 2026-07-23  
+**Files**: Throughout `src/unetbootin/`  
+**Status**: ✅ Fixed  
+**Fixed On**: 2026-07-23  
 **Description**: Overuse of `except Exception as e` catches too broadly, hiding bugs and making debugging difficult.  
 **Impact**: Masked exceptions, harder debugging  
 **Recommendation**: Catch specific exceptions where possible (e.g., `requests.exceptions.RequestException`, `OSError`, `IOError`, `ValueError`).
-**Progress**: Fixed in app.py (6 instances), main.py (1 instance). Additional narrowing done in the modules touched during this pass — `platform/base.py` (`sync_filesystem` now catches `subprocess.SubprocessError`/`OSError`). Remaining: ~130 instances across codebase (large mechanical pass, still in progress).
+**Resolution**: Audited all **128** `except Exception` sites (no bare `except:` existed). **119 were narrowed** to the exceptions each block can actually raise; the remaining **9 are deliberately broad and documented inline** with `# noqa: BLE001` plus a reason. Narrowing map by subsystem:
+- **File/JSON I/O** (`models/config.py`, `models/distro.py`, resume-manager in `downloader.py`) → `OSError`, `json.JSONDecodeError`, `TypeError`, `KeyError`.
+- **External-tool drivers** (`platform/*.py`, extraction/install/`_command_exists`) → `(subprocess.SubprocessError, OSError)`, grouped into reusable `_SUBPROCESS_ERRORS` / `_SUBPROCESS_PARSE_ERRORS` module constants.
+- **Output parsing** — plist (`ValueError`/`KeyError`/`TypeError`/`AttributeError`/`xml.parsers.expat.ExpatError`), JSON (`ValueError`, a `json.JSONDecodeError` superclass), wmic CSV (`csv.Error`), int/label parsing (`ValueError`/`IndexError`).
+- **Network** (`downloader.py`) → `requests.exceptions.RequestException`; FTP → `ftplib.all_errors`; async → a `HAS_AIOHTTP`-guarded `_AIOHTTP_ERRORS` tuple + `asyncio.TimeoutError`/`OSError`.
+- **File copy** (`installer.py`) → `(OSError, shutil.Error)` grouped as `_FILE_COPY_ERRORS`.
+
+The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/install) that capture *any* exception to transparently re-raise on the calling thread; **1 top-level last-resort handler** in `main.py` (shows a dialog and exits cleanly rather than dumping a traceback); **5 optional third-party ISO/7z library boundaries** (`pycdlib`, `iso9660`, `py7zr`) whose C-backed wrappers raise library-specific exception types with no shared narrow base.
+
+**Real bug surfaced & fixed while narrowing**: `macos.get_drive_list()` parsed a plist whose top-level type isn't the expected dict by calling `.get()` on it — the old broad catch hid the resulting `AttributeError`; the narrowed handler now includes `AttributeError` so the documented text-parse fallback still runs. Two unrealistic test mocks were also corrected (a bare `Exception` `side_effect` on `requests.Session.head` → `requests.exceptions.ConnectionError`). Verified: `compileall` clean, all 166 tests pass, and every module imports (confirming the exception-tuple references resolve at runtime).
 
 ---
 
@@ -304,7 +313,7 @@ This document tracks all identified issues, warnings, security concerns, and cod
 | H-001 | ✅ Fixed | - | Consolidate setup files - Removed setup_pysg.py |
 | H-002 | ✅ Fixed | - | Remove duplicate requirements - Removed requirements_pysg.txt |
 | M-001 | ✅ Fixed | - | Explicit platform imports; fixed base-stub shadowing bug |
-| M-002 | 🔄 In Progress | - | Narrow exception handling - app.py, main.py, base.py |
+| M-002 | ✅ Fixed | - | 128 broad catches: 119 narrowed, 9 documented (thread wrappers / top-level / 3rd-party libs) |
 | M-003 | ✅ Fixed | - | Line length: 197 → 48 (rest are URLs / type hints / docstrings) |
 | M-004 | ✅ Fixed | - | Consistent logging - Removed all print() from src/ |
 | M-005 | ✅ Fixed | - | Removed duplicate drive listing (~204 lines) from utils.py |
@@ -353,7 +362,7 @@ resolved; **166 tests pass** (19 skipped as platform-specific on this host).
 - [x] M-001: Fix wildcard imports in platform/__init__.py - **COMPLETED**
 
 ### Phase 2: Medium Priority - Code Quality (3-5 days)
-1. M-002: Narrow exception handling in core modules - **IN PROGRESS**
+1. [x] M-002: Narrow exception handling in core modules - **COMPLETED** (128 sites: 119 narrowed, 9 documented)
 2. [x] M-003: Fix line length violations - **COMPLETED** (197 → 48; rest are unavoidable URLs/type-hints/docstrings)
 3. [x] M-004: Use consistent logging (remove print statements) - **COMPLETED**
 4. [x] M-005: Consolidate drive listing logic - **COMPLETED**
@@ -384,11 +393,12 @@ resolved; **166 tests pass** (19 skipped as platform-specific on this host).
 - **Test Files**: 6 (166 tests, all passing; 19 platform-skipped on this host)
 - **Critical Issues**: 0
 - **High Priority**: 0 (2 fixed)
-- **Medium Priority**: 12 (11 fixed, 1 in progress)
-- **Low Priority**: 7 (7 fixed)
+- **Medium Priority**: 12 (all fixed)
+- **Low Priority**: 7 (all fixed)
 - **Line-length violations**: 197 → 48 (remainder are data URLs, long type hints, docstring prose)
-- **Total Fixed**: 20 (+ full test suite green)
-- **Total In Progress**: 1 (M-002)
+- **Broad `except Exception`**: 128 → 9 (119 narrowed; 9 documented as intentional)
+- **Total Fixed**: 21 (+ full test suite green)
+- **Total In Progress**: 0 — all tracked issues resolved
 
 ---
 
@@ -397,6 +407,7 @@ resolved; **166 tests pass** (19 skipped as platform-specific on this host).
 - [x] All Python files are syntactically valid
 - [x] No syntax errors found (`compileall` clean)
 - [x] Full test suite passes (166 tests, 19 platform-skipped)
+- [x] All modules import cleanly (exception-tuple references resolve at runtime)
 - [x] No hardcoded credentials or secrets
 - [x] No `eval()` or `exec()` with user input
 - [x] No `shell=True` in subprocess calls
@@ -404,5 +415,6 @@ resolved; **166 tests pass** (19 skipped as platform-specific on this host).
 - [x] Proper use of `tempfile.mkdtemp()` (not insecure `mktemp`)
 - [x] HTTPS used for all distribution URLs
 - [x] No `import *` anywhere (platform/__init__.py now uses explicit imports)
+- [x] No bare `except:`; every broad `except Exception` is either narrowed or documented with `# noqa: BLE001`
 
 

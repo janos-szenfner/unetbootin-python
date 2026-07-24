@@ -5,6 +5,8 @@ Download functionality for UNetbootin.
 import os
 import re
 import time
+import json
+import ftplib
 import logging
 import asyncio
 import requests
@@ -33,6 +35,11 @@ try:
 except ImportError:
     HAS_AIOHTTP = False
     logger.debug("aiohttp not available, async downloads will use threading")
+
+# aiohttp is optional; when it is missing `aiohttp` is undefined, so guard
+# exception handlers with this tuple (empty when aiohttp is unavailable, which
+# is a valid "catch nothing" except target).
+_AIOHTTP_ERRORS = (aiohttp.ClientError,) if HAS_AIOHTTP else ()
 
 
 @dataclass
@@ -106,7 +113,7 @@ class DownloadResumeManager:
                 with open(self.resume_info_path, 'r') as f:
                     import json
                     return json.load(f)
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             pass
         return {}
     
@@ -120,9 +127,8 @@ class DownloadResumeManager:
         try:
             os.makedirs(os.path.dirname(self.resume_info_path) or '.', exist_ok=True)
             with open(self.resume_info_path, 'w') as f:
-                import json
                 json.dump(info, f)
-        except Exception as e:
+        except (OSError, TypeError) as e:
             logger.error(f"Failed to save resume info: {e}")
     
     def get_partial_file_size(self) -> int:
@@ -147,7 +153,7 @@ class DownloadResumeManager:
             try:
                 with open(self.checksum_path, 'r') as f:
                     return f.read().strip()
-            except Exception:
+            except OSError:
                 pass
         return None
     
@@ -162,7 +168,7 @@ class DownloadResumeManager:
         try:
             with open(self.checksum_path, 'w') as f:
                 f.write(f"{checksum_type}:{checksum}")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to save partial checksum: {e}")
     
     def cleanup(self):
@@ -175,7 +181,7 @@ class DownloadResumeManager:
             try:
                 if os.path.exists(path):
                     os.remove(path)
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Failed to clean up {path}: {e}")
     
     def rename_partial_to_final(self) -> bool:
@@ -194,7 +200,7 @@ class DownloadResumeManager:
                 os.rename(self.temp_path, self.dest_path)
                 self.cleanup()
                 return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to rename partial to final: {e}")
         return False
 
@@ -360,7 +366,7 @@ class Downloader:
                     resume_info=resume_info,
                     resume_manager=resume_manager
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - transparently re-raised on caller thread
                 exception[0] = e
         
         thread = threading.Thread(target=download_wrapper, daemon=True)
@@ -527,7 +533,7 @@ class Downloader:
                 # Don't cleanup on failure - keep partial download for resume
                 pass
             return False, f"Download failed: {str(e)}"
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error(f"Download failed: {e}")
             return False, str(e)
     
@@ -540,7 +546,7 @@ class Downloader:
                 content_length = response.headers.get('content-length')
                 if content_length:
                     return int(content_length)
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
             logger.debug(f"Failed to get file size for {url}: {e}")
         
         return None
@@ -640,7 +646,7 @@ class Downloader:
             response = self.session.get(url, timeout=timeout)
             response.raise_for_status()
             return response.text
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Failed to download page {url}: {e}")
             return None
     
@@ -659,15 +665,16 @@ class Downloader:
                 url = 'ftp://' + url
 
             parsed = urlparse(url)
-            import ftplib
 
-            # Try FTPS (explicit TLS) first, fall back to plain FTP
+            # Try FTPS (explicit TLS) first, fall back to plain FTP.
+            # ftplib.all_errors covers ftplib.Error, OSError (incl. ssl.SSLError)
+            # and EOFError.
             try:
                 ftp = ftplib.FTP_TLS(parsed.hostname)
                 ftp.login()
                 ftp.prot_p()  # encrypt the data channel too
                 logger.info(f"Connected to {parsed.hostname} using FTPS (TLS)")
-            except Exception:
+            except ftplib.all_errors:
                 logger.warning(
                     f"SECURITY: falling back to unencrypted FTP for "
                     f"{parsed.hostname}; the directory listing can be "
@@ -681,7 +688,7 @@ class Downloader:
             directory = parsed.path or '/'
             try:
                 ftp.cwd(directory)
-            except Exception:
+            except ftplib.all_errors:
                 pass
             
             # List files (max_size <= 0 means "no upper bound")
@@ -693,8 +700,8 @@ class Downloader:
                         files.append(name)
             
             ftp.quit()
-            
-        except Exception as e:
+
+        except (*ftplib.all_errors, ValueError) as e:
             logger.error(f"Failed to list FTP directory {url}: {e}")
         
         return files
@@ -726,7 +733,7 @@ class Downloader:
                         if href and not href.startswith(
                             '?') and not href.startswith('#'):
                             files.append(href)
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Failed to list HTTP directory {url}: {e}")
         
         return files
@@ -786,9 +793,9 @@ class Downloader:
         """Follow redirects and return final URL."""
         try:
             response = self.session.head(
-    url, allow_redirects=True, timeout=METADATA_TIMEOUT)
+                url, allow_redirects=True, timeout=METADATA_TIMEOUT)
             return response.url
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Failed to get redirect URL for {url}: {e}")
             return url
     
@@ -817,8 +824,8 @@ class Downloader:
             
             actual_checksum = hasher.hexdigest()
             return actual_checksum.lower() == expected_checksum.lower()
-            
-        except Exception as e:
+
+        except OSError as e:
             logger.error(f"Failed to verify checksum for {file_path}: {e}")
             return False
     
@@ -903,7 +910,8 @@ class AsyncDownloader:
                         cancel_check=cancel_check
                     )
                 )
-        except Exception as e:
+        except (*_AIOHTTP_ERRORS, asyncio.TimeoutError, OSError,
+                ValueError, RuntimeError) as e:
             logger.error(f"Async download failed: {e}")
             return False, str(e)
     
@@ -965,7 +973,7 @@ class AsyncDownloader:
         except aiohttp.ClientError as e:
             logger.error(f"aiohttp download failed: {e}")
             return False, str(e)
-        except Exception as e:
+        except (OSError, ValueError, asyncio.TimeoutError) as e:
             logger.error(f"aiohttp download failed with unexpected error: {e}")
             return False, str(e)
     
@@ -988,7 +996,8 @@ class AsyncDownloader:
                     downloader.get_remote_file_size,
                     url
                 )
-        except Exception as e:
+        except (*_AIOHTTP_ERRORS, asyncio.TimeoutError, OSError,
+                ValueError) as e:
             logger.debug(f"Could not get remote file size: {e}")
         return None
     

@@ -107,7 +107,7 @@ class UNetbootinAppPySG:
         try:
             distros = self.distro_manager.get_distributions()
             self.ui.set_distributions(distros)
-        except Exception as e:
+        except (OSError, ValueError, KeyError, RuntimeError) as e:
             logger.error(f"Failed to load distributions: {e}")
             self.show_error("Failed to load distribution list")
     
@@ -122,7 +122,7 @@ class UNetbootinAppPySG:
             drives = get_drive_list()
             drive_display_list = self.format_drive_list(drives)
             return self.ui.set_drive_list(drive_display_list)
-        except Exception as e:
+        except (OSError, ValueError, KeyError, RuntimeError) as e:
             logger.error(f"Failed to load drive list: {e}")
             self.show_error("Failed to load drive list")
             return False
@@ -430,7 +430,7 @@ class UNetbootinAppPySG:
                 
             except InstallationCancelled:
                 logger.info("Installation cancelled by user")
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
                 logger.error(f"Installation failed: {e}")
                 self.show_error(f"Installation failed: {str(e)}")
             finally:
@@ -527,7 +527,7 @@ class UNetbootinAppPySG:
                 if not self.downloader.verify_checksum(iso_path, checksum, "sha256"):
                     try:
                         os.remove(iso_path)
-                    except Exception:
+                    except OSError:
                         pass
                     raise RuntimeError(
                         f"ISO checksum verification failed for {iso_filename}")
@@ -578,7 +578,7 @@ class UNetbootinAppPySG:
             
         except InstallationCancelled:
             logger.info("Installation cancelled by user")
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
             logger.error(f"Installation failed: {e}")
             self.show_error(f"Installation failed: {str(e)}")
         finally:
@@ -688,7 +688,7 @@ class UNetbootinAppPySG:
             self.create_temp_directory()
             self.start_installation(params)
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
             logger.error(f"Error in installation process: {e}")
             self.show_error(f"Installation error: {str(e)}")
         finally:

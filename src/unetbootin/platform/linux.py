@@ -11,6 +11,13 @@ from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Linux drivers shell out to lsblk/findmnt/blkid/etc. and parse their JSON or
+# text output. json.JSONDecodeError is a ValueError subclass, so ValueError
+# also covers malformed JSON.
+_SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
+_SUBPROCESS_PARSE_ERRORS = (subprocess.SubprocessError, OSError,
+                            ValueError, KeyError, TypeError)
+
 
 def get_drive_list() -> List[Dict[str, Any]]:
     """Get list of available drives on Linux."""
@@ -75,7 +82,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                             drive_info['serial'] = serial
                     
                     drives.append(drive_info)
-            except Exception as e:
+            except (ValueError, KeyError, TypeError) as e:
                 logger.error(f"Failed to parse lsblk output: {e}")
         
         # Method 2: Fallback to /dev/disk/by-id
@@ -118,12 +125,12 @@ def get_drive_list() -> List[Dict[str, Any]]:
                                         break
                             
                             drives.append(device_info)
-                        except Exception:
+                        except OSError:
                             continue
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.error(f"Failed to read {by_id_dir}: {e}")
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get drive list: {e}")
     
     return drives
@@ -175,7 +182,7 @@ def get_drive_serial(device: str) -> Optional[str]:
                 if 'Serial number' in line:
                     return line.split(':')[1].strip()
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get serial for {device}: {e}")
     
     return None
@@ -251,7 +258,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                 'removable': False,
             }
         
-    except Exception as e:
+    except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get drive info for {drive}: {e}")
     
     return None
@@ -301,7 +308,7 @@ def unmount_drive(drive: str) -> bool:
         
         return result.returncode == 0
         
-    except Exception as e:
+    except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to unmount {drive}: {e}")
         return False
 
@@ -332,7 +339,7 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
             )
             return result.returncode == 0
             
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to mount {drive}: {e}")
         return False
 
@@ -392,7 +399,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
         logger.error(f"Unsupported filesystem type: {filesystem}")
         return False
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to format {drive} as {filesystem}: {e}")
         return False
 
@@ -422,7 +429,7 @@ def get_parent_disk(device: str) -> Optional[str]:
         )
         if result.returncode == 0 and result.stdout.strip() == 'disk':
             return device
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to resolve parent disk for {device}: {e}")
 
     return None
@@ -523,7 +530,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
         logger.error(f"Unsupported bootloader type: {bootloader_type}")
         return False
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to install bootloader to {drive}: {e}")
         return False
 
@@ -569,7 +576,7 @@ def get_volume_label(drive: str) -> Optional[str]:
         if result.returncode == 0:
             return result.stdout.strip()
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get volume label for {drive}: {e}")
     
     return None
@@ -634,7 +641,7 @@ def set_volume_label(drive: str, label: str) -> bool:
         logger.error(f"Unsupported filesystem type for labeling: {fs_type}")
         return False
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to set volume label for {drive}: {e}")
         return False
 
@@ -672,7 +679,7 @@ def get_device_size(drive: str) -> Optional[int]:
                 else:
                     return sector_count * 512  # Default sector size
         
-    except Exception as e:
+    except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get size for {drive}: {e}")
     
     return None
@@ -693,7 +700,7 @@ def check_drive_writable(drive: str) -> bool:
         )
         return result.returncode == 0
         
-    except Exception:
+    except _SUBPROCESS_ERRORS:
         return False
 
 
@@ -702,7 +709,7 @@ def sync_filesystem() -> bool:
     try:
         result = subprocess.run(['sync'], timeout=10)
         return result.returncode == 0
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to sync filesystem: {e}")
         return False
 
@@ -731,7 +738,7 @@ def get_mount_point(device: str) -> Optional[str]:
                     parts = line.split()
                     return parts[2] if len(parts) > 2 else None
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get mount point for {device}: {e}")
     
     return None
@@ -768,12 +775,12 @@ def is_external_drive(drive: str) -> bool:
                     target = os.readlink(link_path)
                     if target == drive or target.endswith(drive.split('/')[-1]):
                         return 'usb' in entry.lower() or 'ata' in entry.lower()
-                except Exception:
+                except OSError:
                     continue
         
         return False
         
-    except Exception:
+    except _SUBPROCESS_PARSE_ERRORS:
         return False
 
 

@@ -103,7 +103,7 @@ def check_admin() -> bool:
         try:
             import ctypes
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, OSError):
             return False
     elif sys.platform == 'darwin':
         # Writing boot sectors and using diskutil/bless on raw devices
@@ -141,7 +141,7 @@ def get_platform_info() -> Dict[str, Any]:
         mem = psutil.virtual_memory()
         info['memory_total'] = mem.total
         info['memory_available'] = mem.available
-    except Exception:
+    except (psutil.Error, OSError):
         info['memory_total'] = 0
         info['memory_available'] = 0
     
@@ -152,7 +152,7 @@ def get_platform_info() -> Dict[str, Any]:
             {'device': p.device, 'mountpoint': p.mountpoint, 'fstype': p.fstype}
             for p in partitions
         ]
-    except Exception:
+    except (psutil.Error, OSError):
         info['partitions'] = []
     
     return info
@@ -171,7 +171,7 @@ def get_linux_distro() -> Optional[Dict[str, str]]:
                     key, value = line.strip().split('=', 1)
                     distro_info[key] = value.strip('"')
             return distro_info
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error(f"Failed to get Linux distro info: {e}")
     
     return None
@@ -288,7 +288,7 @@ def locate_command(command: str, required_for: str = "",
             path = result.stdout.strip()
             if os.path.exists(path):
                 return path
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         pass
     
     # Try alternative methods
@@ -363,7 +363,7 @@ def call_external_app(exec_file: str, exec_param: str = "",
             process.kill()
         logger.error(f"External app timeout: {exec_file} {exec_param}")
         return (-1, "", "Timeout")
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
         logger.error(f"Failed to call external app: {exec_file} {exec_param} - {e}")
         return (-1, "", str(e))
 

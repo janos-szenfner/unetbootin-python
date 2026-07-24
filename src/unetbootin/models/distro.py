@@ -527,8 +527,8 @@ class DistributionManager:
             self.loaded = True
             logger.info(
                 f"Loaded {len(self.distributions)} distributions from {filepath}")
-            
-        except Exception as e:
+
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
             logger.error(f"Failed to load distributions from {filepath}: {e}")
     
     def load_from_directory(self, directory: str):
@@ -538,7 +538,7 @@ class DistributionManager:
             if distro_dir.exists():
                 for json_file in distro_dir.glob('*.json'):
                     self.load_from_file(str(json_file))
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to load distributions from {directory}: {e}")
     
     def get_categories(self) -> List[str]:

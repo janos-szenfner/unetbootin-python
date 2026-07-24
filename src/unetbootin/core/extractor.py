@@ -8,12 +8,18 @@ import logging
 import asyncio
 import tempfile
 import shutil
+import zipfile
+import tarfile
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+# Extraction shells out to external tools (xorriso/7z/tar/unzip/bsdtar);
+# subprocess failures and missing binaries surface as these.
+_SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
 
 # --- Tunable constants (previously scattered magic numbers) ---
 # Timeout (seconds) for full archive extraction commands (can be slow).
@@ -96,7 +102,7 @@ class ISOExtractor:
                 result[0], result[1] = self.extract_iso_sync(
                     archive_path, dest_dir, files_to_extract, progress_callback
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - transparently re-raised on caller thread
                 exception[0] = e
         
         thread = threading.Thread(target=extract_wrapper, daemon=True)
@@ -139,7 +145,7 @@ class ISOExtractor:
             else:
                 return False, f"Unsupported archive type: {archive_ext}"
                 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.error(f"Extraction failed: {e}")
             return False, str(e)
     
@@ -207,7 +213,7 @@ class ISOExtractor:
                     return True, "Raw image mounted successfully"
                 else:
                     return False, f"Failed to mount raw image: {result.stderr}"
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             return False, str(e)
     
     def _extract_zip(self, zip_path: str, dest_dir: str,
@@ -312,7 +318,7 @@ class ISOExtractor:
                 progress_callback(100)
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.debug(f"xorriso extraction failed: {e}")
             return False
     
@@ -344,7 +350,7 @@ class ISOExtractor:
                 progress_callback(100)
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.debug(f"7z extraction failed: {e}")
             return False
     
@@ -376,7 +382,7 @@ class ISOExtractor:
                 progress_callback(100)
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.debug(f"unzip extraction failed: {e}")
             return False
     
@@ -402,7 +408,7 @@ class ISOExtractor:
         except ImportError:
             logger.debug("zipfile module not available")
             return False
-        except Exception as e:
+        except (zipfile.BadZipFile, OSError) as e:
             logger.debug(f"zipfile extraction failed: {e}")
             return False
     
@@ -445,7 +451,7 @@ class ISOExtractor:
                 progress_callback(100)
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.debug(f"tar extraction failed: {e}")
             return False
     
@@ -504,7 +510,7 @@ class ISOExtractor:
         except ImportError:
             logger.debug("tarfile module not available")
             return False
-        except Exception as e:
+        except (tarfile.TarError, OSError) as e:
             logger.debug(f"tarfile extraction failed: {e}")
             return False
     
@@ -544,7 +550,7 @@ class ISOExtractor:
                 progress_callback(100)
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.debug(f"7z extraction failed: {e}")
             return False
     
@@ -570,7 +576,7 @@ class ISOExtractor:
         except ImportError:
             logger.debug("py7zr library not available")
             return False
-        except Exception as e:
+        except (OSError, ValueError) as e:  # noqa: BLE001 - py7zr raises library-specific errors
             logger.debug(f"py7zr extraction failed: {e}")
             return False
     
@@ -600,7 +606,7 @@ class ISOExtractor:
                 progress_callback(100)
             return True
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.debug(f"bsdtar extraction failed: {e}")
             return False
     
@@ -623,7 +629,7 @@ class ISOExtractor:
                             os.makedirs(os.path.dirname(out_path), exist_ok=True)
                             with open(out_path, 'wb') as f:
                                 f.write(data)
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - pycdlib raises library-specific errors; skip file
                             pass
                 else:
                     # Extract all files
@@ -634,7 +640,7 @@ class ISOExtractor:
                             os.makedirs(os.path.dirname(out_path), exist_ok=True)
                             with open(out_path, 'wb') as f:
                                 f.write(data)
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - pycdlib raises library-specific errors; skip file
                             pass
                 
                 iso.close()
@@ -670,7 +676,7 @@ class ISOExtractor:
                         os.makedirs(os.path.dirname(out_path), exist_ok=True)
                         with open(out_path, 'wb') as f:
                             f.write(data)
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - iso9660 raises library-specific errors; skip file
                         pass
                 
                 if progress_callback:
@@ -679,7 +685,7 @@ class ISOExtractor:
             except ImportError:
                 pass
             
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - optional pycdlib/iso9660 raise library-specific errors
             logger.debug(f"Python lib extraction failed: {e}")
         
         return False
@@ -691,7 +697,7 @@ class ISOExtractor:
                 ['which', command], capture_output=True, text=True,
                 timeout=COMMAND_CHECK_TIMEOUT)
             return result.returncode == 0 and os.path.exists(result.stdout.strip())
-        except Exception:
+        except _SUBPROCESS_ERRORS:
             return False
     
     def list_archive_contents(self, archive_path: str) -> List[ArchiveFileInfo]:
@@ -712,7 +718,7 @@ class ISOExtractor:
             elif archive_ext == '.7z':
                 files = self._list_7z_contents(archive_path)
                 
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to list archive contents: {e}")
         
         return files
@@ -758,7 +764,7 @@ class ISOExtractor:
                         name=file_path,
                         size=file_info.get('file_size', 0)
                     ))
-                except Exception:
+                except Exception:  # noqa: BLE001 - pycdlib raises library-specific errors
                     files.append(ArchiveFileInfo(name=file_path))
             iso.close()
         except ImportError:
@@ -799,7 +805,7 @@ class ISOExtractor:
             return files
         except ImportError:
             pass
-        except Exception:
+        except (zipfile.BadZipFile, OSError):
             pass
         
         return files
@@ -858,7 +864,7 @@ class ISOExtractor:
             return files
         except ImportError:
             pass
-        except Exception:
+        except (tarfile.TarError, OSError):
             pass
         
         return files
@@ -896,7 +902,7 @@ class ISOExtractor:
             return files
         except ImportError:
             pass
-        except Exception:
+        except (OSError, ValueError):  # noqa: BLE001 - py7zr raises library-specific errors
             pass
         
         return files
@@ -990,7 +996,7 @@ class ISOExtractor:
             finally:
                 shutil.rmtree(temp_dir, ignore_errors=True)
             
-        except Exception as e:
+        except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to extract single file: {e}")
         
         return False
@@ -1067,7 +1073,7 @@ class AsyncISOExtractor:
                     archive_path, dest_dir, tool_name, progress_callback
                 )
                 return result
-            except Exception as e:
+            except _SUBPROCESS_ERRORS as e:
                 return False, str(e)
         
         return await loop.run_in_executor(None, sync_extract)

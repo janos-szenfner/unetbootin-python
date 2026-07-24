@@ -4,11 +4,17 @@ Windows-specific functionality for UNetbootin.
 
 import os
 import sys
+import csv
 import logging
 import subprocess
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+# External tools (wmic, vol, fsutil) are driven via subprocess; parsing their
+# output can raise value/index errors. Group the common set for reuse.
+_SUBPROCESS_PARSE_ERRORS = (subprocess.SubprocessError, OSError,
+                            ValueError, IndexError)
 
 
 def get_drive_list() -> List[Dict[str, Any]]:
@@ -54,7 +60,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                     'removable': drive_type == 2,
                 }
                 drives.append(drive_info)
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError, ValueError, csv.Error) as e:
         logger.error(f"Failed to get drive list: {e}")
 
     return drives
@@ -86,7 +92,7 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
             'type': 'removable' if is_external_drive(drive) else 'fixed',
             'removable': is_external_drive(drive),
         }
-    except Exception as e:
+    except (AttributeError, IndexError, TypeError) as e:
         logger.error(f"Failed to get drive info for {drive}: {e}")
     
     return None
@@ -151,7 +157,7 @@ def get_volume_label(drive: str) -> Optional[str]:
             for line in result.stdout.split('\n'):
                 if 'Volume in drive' in line and 'has no label' not in line:
                     return line.split()[-1]
-    except Exception as e:
+    except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get volume label for {drive}: {e}")
     
     return None
@@ -189,7 +195,7 @@ def get_device_size(drive: str) -> Optional[int]:
                 if 'Total # of bytes' in line or 'Capacity' in line:
                     size_str = line.split(':')[1].strip()
                     return int(size_str)
-    except Exception as e:
+    except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to get size for {drive}: {e}")
     
     return None
@@ -208,9 +214,9 @@ def check_drive_writable(drive: str) -> bool:
                 f.write('test')
             os.remove(test_file)
             return True
-        except Exception:
+        except OSError:
             return False
-    except Exception:
+    except OSError:
         return False
 
 
@@ -226,7 +232,7 @@ def get_mount_point(device: str) -> Optional[str]:
         if not device.endswith(':\\') and len(device) == 1 and device.isalpha():
             return f"{device}:\\"
         return device if device.endswith(':\\') else None
-    except Exception:
+    except (AttributeError, TypeError):
         return None
 
 
@@ -237,7 +243,7 @@ def is_external_drive(drive: str) -> bool:
         if info:
             return info.get('removable', False)
         return False
-    except Exception:
+    except (AttributeError, TypeError, KeyError):
         return False
 
 
@@ -246,5 +252,5 @@ def check_admin_privileges() -> bool:
     try:
         import ctypes
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except Exception:
+    except (AttributeError, OSError):
         return False

@@ -8,9 +8,20 @@ import sys
 import shutil
 import logging
 import subprocess
+from xml.parsers.expat import ExpatError
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+# diskutil is driven via subprocess; parsing its plist/text output can fail
+# in a handful of well-defined ways. Group them for reuse.
+# (plistlib.InvalidFileException and json/JSON errors are ValueError subclasses.)
+_SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
+# AttributeError is included because a plist whose top-level type isn't the
+# expected dict (e.g. a bare array) makes `.get()` fail — that's an
+# unexpected-structure condition the fallback path is meant to handle.
+_PLIST_PARSE_ERRORS = (ValueError, KeyError, TypeError, AttributeError,
+                       ExpatError)
 
 
 def get_drive_list() -> List[Dict[str, Any]]:
@@ -59,7 +70,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                         
                         drives.append(drive_info)
                         
-            except Exception as e:
+            except _PLIST_PARSE_ERRORS as e:
                 logger.error(f"Failed to parse diskutil plist output: {e}")
                 # Fallback to text output parsing
                 result = subprocess.run(
@@ -71,7 +82,7 @@ def get_drive_list() -> List[Dict[str, Any]]:
                 if result.returncode == 0:
                     drives = parse_diskutil_text_output(result.stdout)
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get drive list: {e}")
     
     return drives
@@ -182,10 +193,10 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
                     'model': data.get('DeviceModel', ''),
                     'writable': data.get('WritableMedia', False),
                 }
-            except Exception as e:
+            except _PLIST_PARSE_ERRORS as e:
                 logger.error(f"Failed to parse diskutil info plist: {e}")
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get drive info for {drive}: {e}")
     
     return None
@@ -238,7 +249,7 @@ def unmount_drive(drive: str) -> bool:
         )
         return result.returncode == 0
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to unmount {drive}: {e}")
         return False
 
@@ -268,7 +279,7 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
             )
             return result.returncode == 0
             
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to mount {drive}: {e}")
         return False
 
@@ -315,7 +326,7 @@ def format_drive(drive: str, filesystem: str = "vfat",
         logger.error(f"Unsupported filesystem type: {filesystem}")
         return False
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to format {drive} as {filesystem}: {e}")
         return False
 
@@ -401,7 +412,7 @@ def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
         logger.error(f"Unsupported bootloader type: {bootloader_type}")
         return False
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to install bootloader to {drive}: {e}")
         return False
 
@@ -426,7 +437,7 @@ def get_volume_label(drive: str) -> Optional[str]:
                 if line.startswith('Volume Name:') or line.startswith('Name:'):
                     return line.split(':', 1)[1].strip()
 
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get volume label for {drive}: {e}")
 
     return None
@@ -449,7 +460,7 @@ def set_volume_label(drive: str, label: str) -> bool:
         # not erase it. If rename fails, report failure.
         return result.returncode == 0
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to set volume label for {drive}: {e}")
         return False
 
@@ -497,7 +508,7 @@ def check_drive_writable(drive: str) -> bool:
         if info:
             return info.get('writable', False)
         return False
-    except Exception:
+    except (AttributeError, TypeError, KeyError):
         return False
 
 
@@ -506,7 +517,7 @@ def sync_filesystem() -> bool:
     try:
         result = subprocess.run(['sync'], timeout=10)
         return result.returncode == 0
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to sync filesystem: {e}")
         return False
 
@@ -542,7 +553,7 @@ def get_mount_point(device: str) -> Optional[str]:
                         if part.startswith('/Volumes/'):
                             return part
         
-    except Exception as e:
+    except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to get mount point for {device}: {e}")
     
     return None
@@ -560,5 +571,5 @@ def is_external_drive(drive: str) -> bool:
             return True
         
         return False
-    except Exception:
+    except (AttributeError, TypeError, KeyError):
         return False
