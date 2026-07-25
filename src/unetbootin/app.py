@@ -374,6 +374,11 @@ class UNetbootinAppPySG:
         if event == '-CANCEL_DOWNLOAD-':
             logger.info("Cancel requested by user")
             self._cancel_download = True
+        elif event in (sg.WIN_CLOSED, '-EXIT-'):
+            # Closing the window mid-transfer would otherwise be ignored and
+            # the app would look frozen. Stop the download instead.
+            logger.info("Window closed during transfer - cancelling")
+            self._cancel_download = True
         return self._cancel_download
 
     def download_iso(self, iso_url: str, iso_path: str,
@@ -424,6 +429,7 @@ class UNetbootinAppPySG:
                     raise InstallationCancelled("Cancelled by user")
                 raise ValueError(f"Failed to download ISO: {message}")
 
+            self.ui.set_cancellable(False)
             self.ui.set_progress(percent=100, text="Verifying ISO checksum...")
             checksum = self.get_distribution_checksum(
                 distro, version, iso_filename=iso_filename)
@@ -632,7 +638,7 @@ class UNetbootinAppPySG:
 
             # Progress is shown inline in the main window, not in a popup.
             self._cancel_download = False
-            self.ui.begin_progress("Extracting image...")
+            self.ui.begin_progress("Extracting image...", cancellable=False)
 
             try:
                 def extract_progress(percent: int):
@@ -751,6 +757,9 @@ class UNetbootinAppPySG:
             logger.info(f"ISO downloaded successfully: {iso_path}")
 
             # Verify checksum
+            # Past this point neither extraction nor writing can be stopped,
+            # so stop offering a Cancel button that would do nothing.
+            self.ui.set_cancellable(False)
             self.ui.set_progress(percent=30, text="Verifying ISO checksum...")
 
             checksum = self.get_distribution_checksum(

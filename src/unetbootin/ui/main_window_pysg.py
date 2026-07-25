@@ -745,11 +745,55 @@ class MainWindowPySG:
         if self.window:
             self.window.refresh()
 
-    def begin_progress(self, text: str = ""):
+    # Controls that must not be touched while a long operation is running.
+    _BUSY_KEYS = ('-OK-', '-ISO_DOWNLOAD-', '-REFRESH_DRIVES-', '-ABOUT-',
+                  '-ADVANCED_TOGGLE-', '-CATEGORY_SELECT-', '-DISTRO_SELECT-',
+                  '-VERSION_SELECT-', '-DRIVE_SELECT-', '-TYPE_SELECT-',
+                  '-RADIO_DISTRO-', '-RADIO_FLOPPY-', '-RADIO_MANUAL-')
+
+    def set_busy(self, busy: bool):
+        """Grey out the controls while work is running, then restore them.
+
+        Clicks are ignored during a transfer anyway, so disabling makes that
+        visible instead of letting presses silently do nothing. The previous
+        enabled/disabled state is remembered so restoring never enables a
+        control that was legitimately disabled (e.g. the version list).
+        """
+        if busy:
+            self._pre_busy_state = {}
+            for key in self._BUSY_KEYS:
+                try:
+                    element = self.window[key]
+                    self._pre_busy_state[key] = getattr(element, 'Disabled', False)
+                    element.update(disabled=True)
+                except (KeyError, TypeError, AttributeError):
+                    continue
+        else:
+            for key, was_disabled in (getattr(self, '_pre_busy_state', {}) or {}).items():
+                try:
+                    self.window[key].update(disabled=bool(was_disabled))
+                except (KeyError, TypeError, AttributeError):
+                    continue
+            self._pre_busy_state = {}
+        if self.window:
+            self.window.refresh()
+
+    def set_cancellable(self, cancellable: bool):
+        """Show the Cancel button only while the work can really be stopped.
+
+        Only the download is cancellable; extraction and writing to the device
+        are not, so the button is hidden then rather than doing nothing.
+        """
+        self.elements['cancel_download'].update(visible=cancellable)
+        if self.window:
+            self.window.refresh()
+
+    def begin_progress(self, text: str = "", cancellable: bool = True):
         """Reveal the inline progress bar, status text and Cancel button."""
         self.elements['progress_bar'].update(current_count=0, visible=True)
         self.elements['progress_text'].update(value=text, visible=True)
-        self.elements['cancel_download'].update(visible=True)
+        self.elements['cancel_download'].update(visible=cancellable)
+        self.set_busy(True)
         if self.window:
             self.window.refresh()
 
@@ -765,10 +809,11 @@ class MainWindowPySG:
             self.window.refresh()
 
     def end_progress(self):
-        """Hide the inline progress widgets again."""
+        """Hide the inline progress widgets and re-enable the controls."""
         self.elements['progress_bar'].update(current_count=0, visible=False)
         self.elements['progress_text'].update(value="", visible=False)
         self.elements['cancel_download'].update(visible=False)
+        self.set_busy(False)
         if self.window:
             self.window.refresh()
 
