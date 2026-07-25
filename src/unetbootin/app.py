@@ -286,6 +286,33 @@ class UNetbootinAppPySG:
 
         return True
 
+    def resolve_iso_download_dir(self, iso_dir: Optional[str]) -> str:
+        """Directory to download the ISO into.
+
+        Returns the user-chosen folder from Advanced Options → ISO Location if
+        it is usable (exists or can be created, and is writable). Falls back to
+        the temporary directory — which is deleted after the install — so a bad
+        path never aborts the download.
+        """
+        if not iso_dir:
+            return self.tmp_dir
+
+        path = os.path.expanduser(iso_dir.strip())
+        try:
+            os.makedirs(path, exist_ok=True)
+            if os.access(path, os.W_OK):
+                logger.info(f"Using custom ISO download directory: {path}")
+                return path
+            logger.warning(f"ISO directory not writable, using temp: {path}")
+        except OSError as e:
+            logger.warning(f"Cannot use ISO directory {path} ({e}); using temp")
+
+        self.show_error(
+            f"Cannot write to the chosen ISO folder:\n{path}\n\n"
+            "Falling back to a temporary folder for this download."
+        )
+        return self.tmp_dir
+
     def create_temp_directory(self) -> None:
         """Create a temporary directory for extraction."""
         self.tmp_dir = tempfile.mkdtemp(prefix='unetbootin_')
@@ -482,7 +509,9 @@ class UNetbootinAppPySG:
                 f"{params.get('distro')} version {params.get('version')}")
 
         iso_filename = os.path.basename(iso_url)
-        iso_path = os.path.join(self.tmp_dir, iso_filename)
+        iso_path = os.path.join(
+            self.resolve_iso_download_dir(params.get('iso_download_dir')),
+            iso_filename)
 
         logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
 

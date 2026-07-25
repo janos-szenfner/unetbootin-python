@@ -256,6 +256,27 @@ class MainWindowPySG:
         key='-SECURE_BOOT-',
          tooltip="Enable Secure Boot support (requires signed bootloader)")],
                         ])],
+                        [sg.Tab(_("ISO Location"), [
+                            [sg.Text(_("Download the selected ISO to:"))],
+                            [
+                                sg.Input(
+                                    key='-ISO_DIR-',
+                                    size=(44, 1),
+                                    expand_x=True,
+                                    tooltip="Folder to download the ISO into. "
+                                            "Leave empty to use a temporary "
+                                            "folder that is deleted afterwards."),
+                                sg.FolderBrowse(
+                                    _("Browse"),
+                                    key='-ISO_DIR_BROWSE-',
+                                    target='-ISO_DIR-'),
+                            ],
+                            [sg.Text(
+                                _("Leave empty to use a temporary folder. When a "
+                                  "folder is set the downloaded ISO is kept there "
+                                  "instead of being deleted after the install."),
+                                text_color='gray', size=(58, 2))],
+                        ])],
                     ], key='-ADVANCED_TABS-', visible=False)]
                 ], key='-ADVANCED_COLUMN-', visible=False)
             ],
@@ -298,6 +319,8 @@ class MainWindowPySG:
         except (AttributeError, TypeError) as e:
             logger.warning(f"Window expand not supported by this PySimpleGUI: {e}")
 
+        self._apply_combo_heights()
+
         # Store references to elements for easier access
         self.elements = {
             'category_select': self.window['-CATEGORY_SELECT-'],
@@ -321,6 +344,7 @@ class MainWindowPySG:
             'advanced_toggle': self.window['-ADVANCED_TOGGLE-'],
             'advanced_column': self.window['-ADVANCED_COLUMN-'],
             'advanced_tabs': self.window['-ADVANCED_TABS-'],
+            'iso_dir': self.window['-ISO_DIR-'],
             'persistence_check': self.window['-PERSISTENCE_CHECK-'],
             'persistence_size': self.window['-PERSISTENCE_SIZE-'],
             'persistence_label': self.window['-PERSISTENCE_LABEL-'],
@@ -573,7 +597,45 @@ class MainWindowPySG:
             params['enable_uefi_only'] = self.elements['uefi_only'].get()
             params['enable_secure_boot'] = self.elements['secure_boot'].get()
 
+            iso_dir = (self.elements['iso_dir'].get() or '').strip()
+            if iso_dir:
+                params['iso_download_dir'] = iso_dir
+
         return params
+
+    _COMBO_KEYS = ('-CATEGORY_SELECT-', '-DISTRO_SELECT-', '-VERSION_SELECT-',
+                   '-DRIVE_SELECT-', '-TYPE_SELECT-')
+
+    def _apply_combo_heights(self):
+        """Make the drop-down fields taller.
+
+        A ttk Combobox takes its height from the style's padding, not from the
+        element `size` (whose height only sets the drop-down list length), so
+        widen the padding on each combo's own ttk style. Best-effort: a failure
+        here must never stop the window from opening.
+        """
+        try:
+            import tkinter as tk
+            import tkinter.ttk as ttk
+
+            style = ttk.Style()
+            for key in self._COMBO_KEYS:
+                element = self.window[key]
+                widget = getattr(element, 'Widget', None)
+                if widget is None:
+                    continue
+                # Keep PySimpleGUI's own style (it carries the theme colours)
+                # and only extend its padding.
+                style_name = widget.cget('style') or 'TCombobox'
+                style.configure(style_name, padding=(6, 8))
+                try:
+                    widget.configure(height=12)   # rows shown when opened
+                except tk.TclError:
+                    pass
+        except (ImportError, AttributeError, TypeError) as e:
+            logger.warning(f"Could not adjust combo height: {e}")
+        except Exception as e:  # noqa: BLE001 - cosmetic only, never fatal
+            logger.warning(f"Could not adjust combo height: {e}")
 
     def show_about(self):
         """Show a small modal About dialog (icon, version, repo link, notice)."""

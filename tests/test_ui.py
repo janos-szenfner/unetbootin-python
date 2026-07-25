@@ -404,6 +404,34 @@ class TestUIComponents(unittest.TestCase):
         self.assertEqual(usb_mode, [], "external HDD must not appear in USB mode")
         self.assertEqual([dev for _d, dev in hdd_mode], ['/dev/sdc'])
 
+    def test_resolve_iso_download_dir(self):
+        """A usable custom ISO folder is used; anything else falls back to temp."""
+        import tempfile
+        from unittest.mock import MagicMock
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app.tmp_dir = tempfile.mkdtemp(prefix='unetbootin_test_')
+        app.show_error = MagicMock()
+
+        # Empty / unset -> temporary directory.
+        self.assertEqual(app.resolve_iso_download_dir(None), app.tmp_dir)
+        self.assertEqual(app.resolve_iso_download_dir(''), app.tmp_dir)
+
+        # An existing writable folder is used as-is.
+        target = tempfile.mkdtemp(prefix='unetbootin_iso_')
+        self.assertEqual(app.resolve_iso_download_dir(target), target)
+
+        # A folder that does not exist yet is created and used.
+        nested = os.path.join(target, 'sub', 'dir')
+        self.assertEqual(app.resolve_iso_download_dir(nested), nested)
+        self.assertTrue(os.path.isdir(nested))
+
+        # An unusable path falls back to temp and tells the user.
+        bad = '/proc/definitely/not/writable'
+        self.assertEqual(app.resolve_iso_download_dir(bad), app.tmp_dir)
+        app.show_error.assert_called_once()
+
     def test_confirm_destructive_write_refuses_unsafe_device(self):
         """The pre-format confirmation must refuse a non-safe device outright."""
         from unittest.mock import patch, MagicMock
