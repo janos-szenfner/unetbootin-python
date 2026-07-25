@@ -92,8 +92,9 @@ def main():
     app_lang = load_translations(lang=cli_args.get('lang'))
     logger.info(f"Using language: {app_lang}")
 
-    # Set PySimpleGUI theme
-    sg.theme('Default1')
+    # Set the app theme (white background, black text)
+    from unetbootin.ui.main_window_pysg import apply_theme
+    apply_theme()
 
     # Import here to avoid import errors if PySimpleGUI is not installed
     from unetbootin.app import UNetbootinAppPySG

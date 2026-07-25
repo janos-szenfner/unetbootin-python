@@ -42,6 +42,11 @@ class InstallationCancelled(Exception):
     pass
 
 
+class ISOLocationError(Exception):
+    """Raised when no usable folder is available to download the ISO into."""
+    pass
+
+
 class UNetbootinAppPySG:
     """Main application class that coordinates all functionality using PySimpleGUI."""
 
@@ -64,6 +69,8 @@ class UNetbootinAppPySG:
         self.app_lang = normalize_language_code(lang) or \
             normalize_language_code('en')
         self.tmp_dir = None
+        # ISO downloaded to the Downloads folder as staging; removed on success.
+        self.iso_to_delete = None
         self.exit_on_completion = False
         self.testing_download = False
         self.running = False
@@ -286,32 +293,216 @@ class UNetbootinAppPySG:
 
         return True
 
-    def resolve_iso_download_dir(self, iso_dir: Optional[str]) -> str:
-        """Directory to download the ISO into.
-
-        Returns the user-chosen folder from Advanced Options → ISO Location if
-        it is usable (exists or can be created, and is writable). Falls back to
-        the temporary directory — which is deleted after the install — so a bad
-        path never aborts the download.
-        """
-        if not iso_dir:
-            return self.tmp_dir
-
-        path = os.path.expanduser(iso_dir.strip())
+    @staticmethod
+    def _usable_dir(path: str) -> bool:
+        """True if `path` exists (or can be created) and is writable."""
         try:
             os.makedirs(path, exist_ok=True)
-            if os.access(path, os.W_OK):
-                logger.info(f"Using custom ISO download directory: {path}")
-                return path
-            logger.warning(f"ISO directory not writable, using temp: {path}")
-        except OSError as e:
-            logger.warning(f"Cannot use ISO directory {path} ({e}); using temp")
+            return os.access(path, os.W_OK)
+        except OSError:
+            return False
 
-        self.show_error(
-            f"Cannot write to the chosen ISO folder:\n{path}\n\n"
-            "Falling back to a temporary folder for this download."
+    def get_downloads_dir(self) -> Optional[str]:
+        """The user's Downloads folder, or None if it is unusable.
+
+        Honours the XDG user-dirs setting on Linux (so localised folder names
+        work) and falls back to ~/Downloads.
+        """
+        candidates = []
+        try:
+            result = subprocess.run(['xdg-user-dir', 'DOWNLOAD'],
+                                    capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                candidates.append(result.stdout.strip())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        candidates.append(os.path.join(os.path.expanduser('~'), 'Downloads'))
+
+        for path in candidates:
+            # A bare home directory means xdg-user-dir found nothing useful.
+            if path and path != os.path.expanduser('~') and self._usable_dir(path):
+                return path
+        return None
+
+    def resolve_iso_download_dir(self, iso_dir: Optional[str]) -> tuple:
+        """Where to download the ISO, and whether to delete it afterwards.
+
+        Returns (directory, delete_after_success):
+          * a folder set in Advanced Options → ISO Location is used and the ISO
+            is KEPT there;
+          * otherwise the user's Downloads folder is used and the ISO is
+            deleted once the drive has been created successfully.
+
+        Raises ISOLocationError if the chosen folder is not writable, or if no
+        folder was chosen and the Downloads folder is unavailable — in that
+        case the user is told to set the location in Advanced Options.
+        """
+        if iso_dir and iso_dir.strip():
+            path = os.path.expanduser(iso_dir.strip())
+            if self._usable_dir(path):
+                logger.info(f"Using ISO Location folder (kept): {path}")
+                return path, False
+            raise ISOLocationError(
+                f"Cannot write to the ISO folder:\n{path}\n\n"
+                "Choose a different folder in Advanced Options > ISO Location."
+            )
+
+        downloads = self.get_downloads_dir()
+        if downloads:
+            logger.info(f"Using Downloads folder (temporary): {downloads}")
+            return downloads, True
+
+        raise ISOLocationError(
+            "Your Downloads folder is not available or not accessible.\n\n"
+            "Please select the ISO Location from the advanced option."
         )
-        return self.tmp_dir
+
+    def download_iso(self, iso_url: str, iso_path: str,
+                     distro: str, version: str) -> None:
+        """Download an ISO to `iso_path` and verify its checksum.
+
+        Standalone counterpart to the download step inside
+        download_and_install_distribution — kept separate so the install path
+        is untouched. Raises on failure; InstallationCancelled if cancelled.
+        """
+        iso_filename = os.path.basename(iso_path)
+        logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
+
+        progress_layout = [
+            [sg.Text(f"Downloading {iso_filename}...")],
+            [sg.ProgressBar(100, orientation='h', size=(40, 20),
+                            key='-PROGRESS-BAR-')],
+            [sg.Text("", size=(40, 1), key='-PROGRESS-TEXT-')],
+            [sg.Button('Cancel', key='-CANCEL-DOWNLOAD-')]
+        ]
+        progress_window = sg.Window('Download in Progress', progress_layout,
+                                    finalize=True)
+        cancelled = {'flag': False}
+
+        def on_progress(bytes_received: int, bytes_total: int):
+            """Map byte progress onto the full 0-100% bar."""
+            if cancelled['flag']:
+                return
+            if bytes_total > 0:
+                percent = min(int(bytes_received / bytes_total * 100), 100)
+                progress_window['-PROGRESS-BAR-'].update(percent)
+
+        def on_estimated(percentage: int, bytes_received: int, eta_or_speed: int):
+            """Show percentage, or transfer speed when no total is known."""
+            if cancelled['flag']:
+                return
+            if percentage >= 0:
+                progress_window['-PROGRESS-TEXT-'].update(
+                    f"{percentage}% - {format_size(bytes_received)}")
+            else:
+                speed = self.downloader.format_download_speed(eta_or_speed)
+                progress_window['-PROGRESS-TEXT-'].update(
+                    f"{format_size(bytes_received)} at {speed}")
+
+        try:
+            # Let the user cancel while the transfer runs.
+            def check_cancel() -> bool:
+                event, _values = progress_window.read(timeout=0)
+                if event == '-CANCEL-DOWNLOAD-':
+                    cancelled['flag'] = True
+                return cancelled['flag']
+
+            success, message = self.downloader.download_file_sync(
+                iso_url,
+                iso_path,
+                min_size=1024 * 1024,
+                progress_callback=on_progress,
+                progress_estimated_callback=on_estimated,
+                cancel_check=check_cancel
+            )
+            if not success:
+                if cancelled['flag']:
+                    raise InstallationCancelled("Cancelled by user")
+                raise ValueError(f"Failed to download ISO: {message}")
+
+            progress_window['-PROGRESS-TEXT-'].update("Verifying ISO checksum...")
+            checksum = self.get_distribution_checksum(
+                distro, version, iso_filename=iso_filename)
+            if checksum:
+                if not self.downloader.verify_checksum(iso_path, checksum, "sha256"):
+                    try:
+                        os.remove(iso_path)
+                    except OSError:
+                        pass
+                    raise RuntimeError(
+                        f"ISO checksum verification failed for {iso_filename}")
+                logger.info("ISO checksum verified successfully")
+            else:
+                logger.warning(
+                    f"No checksum available for {distro} {version}, "
+                    "skipping verification")
+
+            progress_window['-PROGRESS-BAR-'].update(100)
+        finally:
+            progress_window.close()
+
+    def _discard_staged_iso(self) -> None:
+        """Delete an ISO that was staged in the Downloads folder."""
+        path, self.iso_to_delete = self.iso_to_delete, None
+        if not path:
+            return
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                logger.info(f"Removed staged ISO: {path}")
+        except OSError as e:
+            logger.warning(f"Could not remove staged ISO {path}: {e}")
+
+    def on_iso_download_clicked(self):
+        """Download the selected ISO into the ISO Location folder only."""
+        logger.info("ISO Download clicked")
+        try:
+            params = self.get_installation_parameters()
+
+            iso_dir = (params.get('iso_download_dir') or '').strip()
+            if not iso_dir:
+                self.show_error(
+                    "No ISO Location selected.\n\n"
+                    "For this feature you need to select a location in "
+                    "Advanced Options > ISO Location."
+                )
+                return
+
+            if params.get('install_type') != 'distribution':
+                self.show_error(
+                    "Select a distribution to download."
+                )
+                return
+
+            distro, version = params.get('distro'), params.get('version')
+            if not distro or not version:
+                self.show_error("Please select a distribution and version.")
+                return
+
+            iso_url = self.get_distribution_iso_url(distro, version)
+            if not iso_url:
+                self.show_error(
+                    f"Could not find an ISO URL for {distro} {version}."
+                )
+                return
+
+            target_dir, _delete_after = self.resolve_iso_download_dir(iso_dir)
+            iso_path = os.path.join(target_dir, os.path.basename(iso_url))
+
+            # A plain download: never scheduled for deletion.
+            self.iso_to_delete = None
+            self.download_iso(iso_url, iso_path, distro, version)
+            self.show_info(f"ISO downloaded to:\n{iso_path}",
+                           title="Download Complete")
+
+        except ISOLocationError as e:
+            self.show_error(str(e))
+        except InstallationCancelled:
+            logger.info("ISO download cancelled by user")
+        except (OSError, RuntimeError, ValueError,
+                subprocess.SubprocessError) as e:
+            logger.error(f"ISO download failed: {e}")
+            self.show_error(f"ISO download failed: {str(e)}")
 
     def create_temp_directory(self) -> None:
         """Create a temporary directory for extraction."""
@@ -358,6 +549,11 @@ class UNetbootinAppPySG:
         """
         if message is None:
             message = f"{APP_NAME} has completed successfully!"
+
+        # The drive was created, so drop the ISO staged in the Downloads
+        # folder. An ISO in a user-chosen ISO Location folder is never removed.
+        self._discard_staged_iso()
+
         sg.popup_ok(message, title="Installation Complete")
 
         if self.exit_on_completion:
@@ -509,9 +705,12 @@ class UNetbootinAppPySG:
                 f"{params.get('distro')} version {params.get('version')}")
 
         iso_filename = os.path.basename(iso_url)
-        iso_path = os.path.join(
-            self.resolve_iso_download_dir(params.get('iso_download_dir')),
-            iso_filename)
+        download_dir, delete_after = self.resolve_iso_download_dir(
+            params.get('iso_download_dir'))
+        iso_path = os.path.join(download_dir, iso_filename)
+        # Downloaded into the Downloads folder only as a staging area: remove
+        # it once the drive has been created. A user-chosen folder is kept.
+        self.iso_to_delete = iso_path if delete_after else None
 
         logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
 
@@ -691,8 +890,10 @@ class UNetbootinAppPySG:
                     self.ui.update_version_list(distro_name)
 
             elif event == '-ADVANCED_TOGGLE-':
-                visible = values.get('-ADVANCED_TOGGLE-', False)
-                self.ui.update_advanced_visibility(visible)
+                self.ui.toggle_advanced()
+
+            elif event == '-ISO_DOWNLOAD-':
+                self.on_iso_download_clicked()
 
             elif event == '-PERSISTENCE_CHECK-':
                 enabled = values.get('-PERSISTENCE_CHECK-', False)
@@ -813,6 +1014,9 @@ class UNetbootinAppPySG:
             self.create_temp_directory()
             self.start_installation(params)
 
+        except ISOLocationError as e:
+            logger.error(f"No usable ISO download location: {e}")
+            self.show_error(str(e))
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
             logger.error(f"Error in installation process: {e}")
             self.show_error(f"Installation error: {str(e)}")

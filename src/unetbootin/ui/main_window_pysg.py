@@ -19,6 +19,27 @@ from unetbootin.core.i18n import _
 logger = logging.getLogger(__name__)
 
 
+def apply_theme():
+    """Apply the app's look: a white background with black text.
+
+    Set explicitly rather than relying on a named theme so the colours are the
+    same on every platform and PySimpleGUI build.
+    """
+    if not HAS_PYSIMPLEGUI:
+        return
+    try:
+        sg.theme('Default1')
+        sg.theme_background_color('white')
+        sg.theme_element_background_color('white')
+        sg.theme_text_element_background_color('white')
+        sg.theme_text_color('black')
+        sg.theme_input_background_color('white')
+        sg.theme_input_text_color('black')
+        sg.theme_button_color(('black', '#e8e8e8'))
+    except (AttributeError, TypeError) as e:
+        logger.warning(f"Could not apply white theme: {e}")
+
+
 class MainWindowPySG:
     """
     Main window for UNetbootin using PySimpleGUI.
@@ -44,6 +65,8 @@ class MainWindowPySG:
         self.install_type = "distribution"
         self.window = None
         self.drive_data = []
+        # Advanced options are shown by default; the toggle button closes them.
+        self.advanced_visible = True
 
         # Initialize UI
         self.init_ui()
@@ -52,7 +75,7 @@ class MainWindowPySG:
         """
         Initialize the user interface components.
         """
-        sg.theme('Default1')
+        apply_theme()
 
         # Drop-down fields: a larger font makes the tkinter combo box taller,
         # and the vertical padding stops the rows from looking cramped.
@@ -209,13 +232,12 @@ class MainWindowPySG:
                      "USB drive below.",
                      key='-INFO_MESSAGE-', size=(60, 1), expand_x=True)],
 
-            # Advanced options checkbox
+            # Advanced options toggle (open by default)
             [
-                sg.Checkbox(
-    _("Advanced Options"),
+                sg.Button(
+    _("Close advanced option"),
     key='-ADVANCED_TOGGLE-',
-    enable_events=True,
-     default=False),
+    tooltip="Show or hide the advanced options"),
             ],
 
             # Advanced options (initially hidden)
@@ -277,14 +299,17 @@ class MainWindowPySG:
                                   "instead of being deleted after the install."),
                                 text_color='gray', size=(58, 2))],
                         ])],
-                    ], key='-ADVANCED_TABS-', visible=False)]
-                ], key='-ADVANCED_COLUMN-', visible=False)
+                    ], key='-ADVANCED_TABS-', visible=True)]
+                ], key='-ADVANCED_COLUMN-', visible=True)
             ],
 
             # Buttons
             [
                 sg.Push(),
                 sg.Button(_("OK"), key='-OK-', tooltip="Start the installation"),
+                sg.Button(_("ISO Download"), key='-ISO_DOWNLOAD-',
+                          tooltip="Only download the selected ISO into the "
+                                  "folder set in Advanced Options > ISO Location"),
                 sg.Button(_("Cancel"), key='-CANCEL-', tooltip="Cancel and exit"),
                 sg.Button(_("Exit"), key='-EXIT-', tooltip="Exit the application"),
             ],
@@ -586,7 +611,7 @@ class MainWindowPySG:
             params['initrd'] = self.elements['initrd_file'].get()
             params['cfg'] = self.elements['cfg_file'].get()
 
-        if self.elements['advanced_toggle'].get():
+        if self.advanced_visible:
             params['persistence_enabled'] = self.elements['persistence_check'].get()
             params['persistence_size'] = self.elements['persistence_size'].get()
 
@@ -697,11 +722,19 @@ class MainWindowPySG:
     def update_advanced_visibility(self, visible: bool):
         """Show or hide the advanced options (persistence/boot/firmware tabs)."""
         logger.debug(f"Advanced options visible: {visible}")
-        self.elements['advanced_column'].update(visible=visible)
-        self.elements['advanced_tabs'].update(visible=visible)
+        self.advanced_visible = bool(visible)
+        self.elements['advanced_column'].update(visible=self.advanced_visible)
+        self.elements['advanced_tabs'].update(visible=self.advanced_visible)
+        self.elements['advanced_toggle'].update(
+            text=_("Close advanced option") if self.advanced_visible
+            else _("Open advanced option"))
         # The window was sized without the tabs, so grow/shrink to fit them.
         if self.window:
             self.window.refresh()
+
+    def toggle_advanced(self):
+        """Flip the advanced options open/closed (the toggle button)."""
+        self.update_advanced_visibility(not self.advanced_visible)
 
     def show(self):
         """Show the window."""

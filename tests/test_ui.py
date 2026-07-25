@@ -404,33 +404,76 @@ class TestUIComponents(unittest.TestCase):
         self.assertEqual(usb_mode, [], "external HDD must not appear in USB mode")
         self.assertEqual([dev for _d, dev in hdd_mode], ['/dev/sdc'])
 
-    def test_resolve_iso_download_dir(self):
-        """A usable custom ISO folder is used; anything else falls back to temp."""
+    def test_resolve_iso_download_dir_custom_folder_is_kept(self):
+        """A chosen ISO folder is used and the ISO is NOT scheduled for deletion."""
         import tempfile
-        from unittest.mock import MagicMock
         from unetbootin.app import UNetbootinAppPySG
 
         app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
-        app.tmp_dir = tempfile.mkdtemp(prefix='unetbootin_test_')
-        app.show_error = MagicMock()
 
-        # Empty / unset -> temporary directory.
-        self.assertEqual(app.resolve_iso_download_dir(None), app.tmp_dir)
-        self.assertEqual(app.resolve_iso_download_dir(''), app.tmp_dir)
-
-        # An existing writable folder is used as-is.
         target = tempfile.mkdtemp(prefix='unetbootin_iso_')
-        self.assertEqual(app.resolve_iso_download_dir(target), target)
+        directory, delete_after = app.resolve_iso_download_dir(target)
+        self.assertEqual(directory, target)
+        self.assertFalse(delete_after, "a chosen folder must keep the ISO")
 
         # A folder that does not exist yet is created and used.
         nested = os.path.join(target, 'sub', 'dir')
-        self.assertEqual(app.resolve_iso_download_dir(nested), nested)
+        directory, delete_after = app.resolve_iso_download_dir(nested)
+        self.assertEqual(directory, nested)
         self.assertTrue(os.path.isdir(nested))
 
-        # An unusable path falls back to temp and tells the user.
-        bad = '/proc/definitely/not/writable'
-        self.assertEqual(app.resolve_iso_download_dir(bad), app.tmp_dir)
-        app.show_error.assert_called_once()
+    def test_resolve_iso_download_dir_defaults_to_downloads_and_deletes(self):
+        """With no folder chosen the Downloads folder is used and ISO deleted."""
+        from unittest.mock import patch
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        with patch.object(UNetbootinAppPySG, 'get_downloads_dir',
+                          return_value='/home/someone/Downloads'):
+            directory, delete_after = app.resolve_iso_download_dir(None)
+        self.assertEqual(directory, '/home/someone/Downloads')
+        self.assertTrue(delete_after, "the staged ISO must be deleted on success")
+
+    def test_resolve_iso_download_dir_raises_when_no_downloads_folder(self):
+        """No chosen folder and no Downloads folder -> tell the user to set one."""
+        from unittest.mock import patch
+        from unetbootin.app import UNetbootinAppPySG, ISOLocationError
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        with patch.object(UNetbootinAppPySG, 'get_downloads_dir', return_value=None):
+            with self.assertRaises(ISOLocationError) as ctx:
+                app.resolve_iso_download_dir(None)
+        self.assertIn("ISO Location", str(ctx.exception))
+
+    def test_resolve_iso_download_dir_raises_on_unwritable_choice(self):
+        """An unwritable chosen folder is reported, not silently replaced."""
+        from unetbootin.app import UNetbootinAppPySG, ISOLocationError
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        with self.assertRaises(ISOLocationError):
+            app.resolve_iso_download_dir('/proc/definitely/not/writable')
+
+    def test_discard_staged_iso_removes_only_staged_file(self):
+        """The staged ISO is deleted once; a kept ISO is never touched."""
+        import tempfile
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+
+        fd, staged = tempfile.mkstemp(suffix='.iso')
+        os.close(fd)
+        app.iso_to_delete = staged
+        app._discard_staged_iso()
+        self.assertFalse(os.path.exists(staged), "staged ISO must be removed")
+        self.assertIsNone(app.iso_to_delete)
+
+        # Nothing staged -> no error, nothing removed.
+        fd, kept = tempfile.mkstemp(suffix='.iso')
+        os.close(fd)
+        app.iso_to_delete = None
+        app._discard_staged_iso()
+        self.assertTrue(os.path.exists(kept), "a kept ISO must survive")
+        os.remove(kept)
 
     def test_confirm_destructive_write_refuses_unsafe_device(self):
         """The pre-format confirmation must refuse a non-safe device outright."""
