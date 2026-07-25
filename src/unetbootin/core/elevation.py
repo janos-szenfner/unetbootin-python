@@ -26,6 +26,12 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# The real subprocess.run, captured before install_sudo_interceptor() can
+# monkey-patch it. Elevation internals must use this: they legitimately invoke
+# `sudo`, and going through the patched wrapper would re-enter the elevation
+# path and recurse infinitely.
+_ORIGINAL_RUN = subprocess.run
+
 
 # Platform detection
 _IS_LINUX = sys.platform.startswith('linux')
@@ -192,7 +198,7 @@ def _run_elevated_linux(
     # 1) pkexec (PolicyKit): native GUI password prompt in its own process.
     if _command_exists('pkexec'):
         try:
-            result = subprocess.run(
+            result = _ORIGINAL_RUN(
                 ['pkexec'] + command,
                 capture_output=capture_output,
                 text=text,
@@ -230,10 +236,10 @@ def _run_with_sudo(
 ) -> Tuple[int, str, str]:
     """Run a command via sudo, prompting graphically only when needed."""
     # Cached credentials or NOPASSWD: run non-interactively, no prompt at all.
-    probe = subprocess.run(['sudo', '-n', 'true'], capture_output=True, text=True)
+    probe = _ORIGINAL_RUN(['sudo', '-n', 'true'], capture_output=True, text=True)
     if probe.returncode == 0:
         try:
-            result = subprocess.run(
+            result = _ORIGINAL_RUN(
                 ['sudo', '-n'] + command,
                 capture_output=capture_output, text=text, timeout=timeout
             )
@@ -248,7 +254,7 @@ def _run_with_sudo(
     if askpass:
         env = dict(os.environ, SUDO_ASKPASS=askpass)
         try:
-            result = subprocess.run(
+            result = _ORIGINAL_RUN(
                 ['sudo', '-A'] + command,
                 capture_output=capture_output, text=text, timeout=timeout,
                 env=env

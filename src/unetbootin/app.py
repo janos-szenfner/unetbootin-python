@@ -94,6 +94,10 @@ class UNetbootinAppPySG:
         # Load drive list
         self.load_drive_list()
 
+        # Data is loaded — reveal the window again. Without this the process
+        # runs with a permanently hidden window and the user sees nothing.
+        self.ui.show()
+
         # No startup privilege check: the GUI runs as a normal user and each
         # privileged device operation elevates on demand (pkexec/PolicyKit).
         # Forcing elevation here produced a spurious "Elevation required" dialog
