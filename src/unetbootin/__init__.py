@@ -12,4 +12,7 @@ __license__ = "GPLv2+"
 
 # Application constants
 APP_NAME = "UNetbootin"
+# Shown in window title bars and the task bar, distinguishing this rewrite
+# from the original C++ UNetbootin.
+APP_TITLE = f"{APP_NAME} - Python"
 APP_VERSION = __version__

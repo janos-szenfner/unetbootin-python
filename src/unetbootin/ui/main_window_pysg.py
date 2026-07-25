@@ -14,6 +14,7 @@ except ImportError:
     HAS_PYSIMPLEGUI = False
     sg = None
 
+from unetbootin import APP_TITLE
 from unetbootin.core.i18n import _
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,24 @@ def apply_theme():
         sg.theme_button_color(('black', '#e8e8e8'))
     except (AttributeError, TypeError) as e:
         logger.warning(f"Could not apply white theme: {e}")
+
+
+def window_icon_path() -> Optional[str]:
+    """Path to the bundled app icon used for window/task-bar icons.
+
+    Prefers a mid-size PNG: large enough for the task bar, small enough that
+    Tk scales it well. Returns None when no icon can be located.
+    """
+    try:
+        from unetbootin.resources import icon_path
+        for name in ('unetbootin_128.png', 'unetbootin_64.png',
+                     'unetbootin_256.png', 'unetbootin_48.png'):
+            candidate = icon_path(name)
+            if os.path.exists(candidate):
+                return str(candidate)
+    except (OSError, ValueError, ImportError) as e:
+        logger.debug(f"Bundled window icon unavailable: {e}")
+    return None
 
 
 class MainWindowPySG:
@@ -82,13 +101,14 @@ class MainWindowPySG:
         combo_font = ('Helvetica', 11)
         combo_pad = ((0, 6), (5, 5))
 
-        # Minimal transparent GIF icon (compatible with old tkinter)
-        transparent_gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
+        # The real app icon for the title bar / task bar. PySimpleGUI falls
+        # back internally if the platform's Tk cannot load it.
+        app_icon = window_icon_path()
 
         # Define the layout
         layout = [
             # Title
-            [sg.Text("UNetbootin", font=('Helvetica', 16), pad=(0, (0, 10))),
+            [sg.Text(APP_TITLE, font=('Helvetica', 16), pad=(0, (0, 10))),
              sg.Push(),
              sg.Button(_("About"), key='-ABOUT-', pad=(0, (0, 10)),
                        tooltip="About UNetbootin")],
@@ -330,7 +350,7 @@ class MainWindowPySG:
         # alone only lets the frame be dragged — without an expanding container
         # the contents keep their original size and sit in the top-left corner.
         self.window = sg.Window(
-    "UNetbootin",
+    APP_TITLE,
     [[sg.Column(layout, key='-MAIN_COLUMN-',
                 expand_x=True, expand_y=True,
                 pad=(0, 0))]],
@@ -340,7 +360,7 @@ class MainWindowPySG:
         10,
         10),
         use_default_focus=False,
-         icon=transparent_gif)
+         icon=app_icon)
 
         # Finalize the window immediately so elements can be updated
         self.window.finalize()
@@ -355,6 +375,7 @@ class MainWindowPySG:
             logger.warning(f"Window expand not supported by this PySimpleGUI: {e}")
 
         self._apply_combo_heights()
+        self._apply_window_icon()
 
         # Store references to elements for easier access
         self.elements = {
@@ -644,6 +665,24 @@ class MainWindowPySG:
     _COMBO_KEYS = ('-CATEGORY_SELECT-', '-DISTRO_SELECT-', '-VERSION_SELECT-',
                    '-DRIVE_SELECT-', '-TYPE_SELECT-')
 
+    def _apply_window_icon(self):
+        """Give the window (and task bar) the real app icon.
+
+        The window was created with a 1x1 transparent placeholder, which is why
+        the desktop showed a generic icon. Applied after the window exists so a
+        failure — e.g. Tk 8.5, which cannot read PNG — only leaves the previous
+        placeholder instead of preventing the window from opening.
+        """
+        icon = window_icon_path()
+        if not icon:
+            logger.warning("No bundled icon found for the window")
+            return
+        try:
+            self.window.set_icon(icon)
+            logger.debug(f"Window icon set from {icon}")
+        except Exception as e:  # noqa: BLE001 - cosmetic only, never fatal
+            logger.warning(f"Could not set the window icon: {e}")
+
     def _apply_combo_heights(self):
         """Make the drop-down fields taller.
 
@@ -677,7 +716,7 @@ class MainWindowPySG:
 
     def show_about(self):
         """Show a small modal About dialog (icon, version, repo link, notice)."""
-        from unetbootin import APP_NAME, APP_VERSION
+        from unetbootin import APP_NAME, APP_TITLE, APP_VERSION
 
         repo_url = "https://github.com/janos-szenfner/unetbootin-python"
 
@@ -694,7 +733,7 @@ class MainWindowPySG:
 
         header = icon_row + [
             sg.Column([
-                [sg.Text(APP_NAME, font=('Helvetica', 16))],
+                [sg.Text(APP_TITLE, font=('Helvetica', 16))],
                 [sg.Text(f"{_('Version')} {APP_VERSION}")],
             ], pad=(0, 0))
         ]
@@ -718,8 +757,9 @@ class MainWindowPySG:
             [sg.Push(), sg.Button(_("Close"), key='-ABOUT_CLOSE-'), sg.Push()],
         ]
 
-        win = sg.Window(f"{_('About')} {APP_NAME}", layout, modal=True,
-                        keep_on_top=True, finalize=True)
+        win = sg.Window(f"{_('About')} {APP_TITLE}", layout, modal=True,
+                        keep_on_top=True, finalize=True,
+                        icon=window_icon_path())
         while True:
             event, _values = win.read()
             if event in (sg.WIN_CLOSED, '-ABOUT_CLOSE-', None):

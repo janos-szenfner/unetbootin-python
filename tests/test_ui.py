@@ -590,3 +590,27 @@ class TestBackgroundWorker(unittest.TestCase):
 
         self.assertEqual(
             app.run_in_background(work, cancellable=False), "completed")
+
+
+class TestWindowIdentity(unittest.TestCase):
+    """The window must carry the real app icon and the full title."""
+
+    def test_window_icon_path_resolves_to_a_real_file(self):
+        from unetbootin.ui.main_window_pysg import window_icon_path
+        path = window_icon_path()
+        self.assertIsNotNone(path, "a bundled window icon must be found")
+        self.assertTrue(os.path.exists(path))
+        self.assertTrue(path.endswith('.png'))
+        self.assertGreater(os.path.getsize(path), 0)
+
+    def test_app_title_includes_python(self):
+        from unetbootin import APP_TITLE, APP_NAME
+        self.assertEqual(APP_TITLE, f"{APP_NAME} - Python")
+
+    def test_window_is_not_created_with_the_placeholder_icon(self):
+        """Guard against regressing to the 1x1 transparent GIF placeholder."""
+        import inspect
+        from unetbootin.ui import main_window_pysg
+        src = inspect.getsource(main_window_pysg.MainWindowPySG.init_ui)
+        self.assertNotIn("icon=transparent_gif", src,
+                         "the window must not use the blank placeholder icon")
