@@ -506,3 +506,87 @@ class TestUIComponents(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestBackgroundWorker(unittest.TestCase):
+    """run_in_background must keep results, progress and cancellation correct."""
+
+    def _app_with_fake_window(self):
+        """An app instance whose window records progress and replays events."""
+        from unittest.mock import MagicMock
+        from unetbootin.app import UNetbootinAppPySG
+        import queue
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+
+        class FakeWindow:
+            def __init__(self):
+                self.q = queue.Queue()
+
+            def write_event_value(self, key, value):
+                self.q.put((key, {key: value}))
+
+            def read(self, timeout=None):
+                try:
+                    return self.q.get(timeout=(timeout or 100) / 1000.0)
+                except queue.Empty:
+                    return '__TIMEOUT__', {}
+
+        app.ui = MagicMock()
+        app.ui.window = FakeWindow()
+        app.progress_seen = []
+        app.ui.set_progress.side_effect = (
+            lambda percent=None, text=None: app.progress_seen.append((percent, text))
+        )
+        return app
+
+    def test_returns_worker_result_and_reports_progress(self):
+        app = self._app_with_fake_window()
+
+        def work(report, cancelled):
+            report(percent=42, text="halfway")
+            return "finished"
+
+        self.assertEqual(app.run_in_background(work), "finished")
+        self.assertIn((42, "halfway"), app.progress_seen)
+        app.ui.begin_progress.assert_called_once()
+        app.ui.end_progress.assert_called_once()
+
+    def test_exception_is_raised_on_the_calling_thread(self):
+        app = self._app_with_fake_window()
+
+        def work(report, cancelled):
+            raise RuntimeError("worker blew up")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            app.run_in_background(work)
+        self.assertIn("worker blew up", str(ctx.exception))
+        # The progress widgets must still be cleaned up.
+        app.ui.end_progress.assert_called_once()
+
+    def test_cancel_event_reaches_the_worker(self):
+        """Pressing Cancel must make cancelled() return True in the worker."""
+        import time
+        app = self._app_with_fake_window()
+        # Queue a Cancel press so the pump sees it while the worker spins.
+        app.ui.window.q.put(('-CANCEL_DOWNLOAD-', {}))
+
+        def work(report, cancelled):
+            for _ in range(200):
+                if cancelled():
+                    return "stopped"
+                time.sleep(0.01)
+            return "ran to completion"
+
+        self.assertEqual(app.run_in_background(work, cancellable=True), "stopped")
+
+    def test_cancel_ignored_when_not_cancellable(self):
+        """A non-cancellable stage must not be stopped by a Cancel press."""
+        app = self._app_with_fake_window()
+        app.ui.window.q.put(('-CANCEL_DOWNLOAD-', {}))
+
+        def work(report, cancelled):
+            return "cancelled" if cancelled() else "completed"
+
+        self.assertEqual(
+            app.run_in_background(work, cancellable=False), "completed")

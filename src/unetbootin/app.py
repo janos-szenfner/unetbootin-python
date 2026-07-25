@@ -10,6 +10,7 @@ import subprocess
 import logging
 import tempfile
 import shutil
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -359,27 +360,83 @@ class UNetbootinAppPySG:
             "Please select the ISO Location from the advanced option."
         )
 
-    def cancel_requested(self) -> bool:
-        """Whether the user pressed the inline Cancel button.
+    def run_in_background(self, work, status: str = "",
+                          cancellable: bool = True):
+        """Run blocking `work` off the UI thread while the window stays live.
 
-        A synchronous download blocks the main event loop, so pump the main
-        window here: that keeps the Cancel button live and the UI responsive
-        while the transfer runs. Only the cancel event is acted on; anything
-        else is discarded, since handling it mid-transfer is not meaningful.
+        `work(report, cancelled)` is executed in a worker thread, where
+        `report(percent=, text=)` updates the inline progress and `cancelled()`
+        returns True once the user asks to stop. Meanwhile this method runs the
+        real event loop, so the window redraws, moves and responds normally
+        instead of freezing for the duration.
+
+        A thread rather than a process: the work is I/O-bound (socket reads,
+        file writes, subprocess waits) so the GIL is released throughout, while
+        a child process would have to re-exec this PyInstaller onefile binary,
+        would not inherit the subprocess elevation patch, and could only be
+        stopped by killing it mid-write.
+
+        Returns whatever `work` returns; re-raises its exception on this thread.
         """
+        window = self.ui.window
+        cancel_event = threading.Event()
+        outcome = {}
+
+        def report(percent: Optional[int] = None, text: Optional[str] = None):
+            """Hand a progress update to the UI thread (thread-safe)."""
+            try:
+                window.write_event_value('-WORK_PROGRESS-', (percent, text))
+            except (AttributeError, RuntimeError):
+                pass
+
+        def runner():
+            try:
+                outcome['value'] = work(report, cancel_event.is_set)
+            except BaseException as exc:  # noqa: BLE001 - re-raised on the UI thread
+                outcome['error'] = exc
+            finally:
+                try:
+                    window.write_event_value('-WORK_DONE-', True)
+                except (AttributeError, RuntimeError):
+                    pass
+
+        self.ui.begin_progress(status, cancellable=cancellable)
+        thread = threading.Thread(target=runner, daemon=True)
+        thread.start()
+
         try:
-            event, _values = self.ui.window.read(timeout=0)
-        except (AttributeError, RuntimeError):
-            return self._cancel_download
-        if event == '-CANCEL_DOWNLOAD-':
-            logger.info("Cancel requested by user")
-            self._cancel_download = True
-        elif event in (sg.WIN_CLOSED, '-EXIT-'):
-            # Closing the window mid-transfer would otherwise be ignored and
-            # the app would look frozen. Stop the download instead.
-            logger.info("Window closed during transfer - cancelling")
-            self._cancel_download = True
-        return self._cancel_download
+            while True:
+                event, values = window.read(timeout=100)
+
+                if event == '-WORK_DONE-':
+                    break
+
+                if event == '-WORK_PROGRESS-':
+                    percent, text = values['-WORK_PROGRESS-']
+                    self.ui.set_progress(percent=percent, text=text)
+
+                elif event == '-CANCEL_DOWNLOAD-' and cancellable:
+                    if not cancel_event.is_set():
+                        logger.info("Cancel requested by user")
+                        cancel_event.set()
+                        self.ui.set_progress(text="Cancelling...")
+
+                elif event in (sg.WIN_CLOSED, '-EXIT-'):
+                    if cancellable:
+                        logger.info("Window closed during work - cancelling")
+                        cancel_event.set()
+                        self.ui.set_progress(text="Cancelling...")
+                    else:
+                        # Writing to the device cannot be safely interrupted.
+                        logger.info("Close ignored: operation cannot be stopped")
+
+            thread.join()
+        finally:
+            self.ui.end_progress()
+
+        if 'error' in outcome:
+            raise outcome['error']
+        return outcome.get('value')
 
     def download_iso(self, iso_url: str, iso_path: str,
                      distro: str, version: str) -> None:
@@ -392,62 +449,61 @@ class UNetbootinAppPySG:
         iso_filename = os.path.basename(iso_path)
         logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
 
-        self._cancel_download = False
-        self.ui.begin_progress(f"Downloading {iso_filename}...")
+        def do_download(report, cancelled):
+            """Download on the worker thread, reporting progress to the UI."""
+            def on_progress(bytes_received: int, bytes_total: int):
+                if bytes_total > 0:
+                    report(percent=int(bytes_received / bytes_total * 100))
 
-        def on_progress(bytes_received: int, bytes_total: int):
-            """Map byte progress onto the full 0-100% bar."""
-            if self._cancel_download:
-                return
-            if bytes_total > 0:
-                self.ui.set_progress(
-                    percent=int(bytes_received / bytes_total * 100))
+            def on_estimated(percentage: int, bytes_received: int,
+                             eta_or_speed: int):
+                if percentage >= 0:
+                    report(text=f"{percentage}% - {format_size(bytes_received)}")
+                else:
+                    speed = self.downloader.format_download_speed(eta_or_speed)
+                    report(text=f"{format_size(bytes_received)} at {speed}")
 
-        def on_estimated(percentage: int, bytes_received: int, eta_or_speed: int):
-            """Show percentage, or transfer speed when no total is known."""
-            if self._cancel_download:
-                return
-            if percentage >= 0:
-                self.ui.set_progress(
-                    text=f"{percentage}% - {format_size(bytes_received)}")
-            else:
-                speed = self.downloader.format_download_speed(eta_or_speed)
-                self.ui.set_progress(
-                    text=f"{format_size(bytes_received)} at {speed}")
-
-        try:
-            success, message = self.downloader.download_file_sync(
+            return self.downloader.download_file_sync(
                 iso_url,
                 iso_path,
                 min_size=1024 * 1024,
                 progress_callback=on_progress,
                 progress_estimated_callback=on_estimated,
-                cancel_check=self.cancel_requested
+                cancel_check=cancelled
             )
-            if not success:
-                if self._cancel_download:
-                    raise InstallationCancelled("Cancelled by user")
-                raise ValueError(f"Failed to download ISO: {message}")
 
-            self.ui.set_cancellable(False)
-            self.ui.set_progress(percent=100, text="Verifying ISO checksum...")
-            checksum = self.get_distribution_checksum(
-                distro, version, iso_filename=iso_filename)
-            if checksum:
-                if not self.downloader.verify_checksum(iso_path, checksum, "sha256"):
-                    try:
-                        os.remove(iso_path)
-                    except OSError:
-                        pass
-                    raise RuntimeError(
-                        f"ISO checksum verification failed for {iso_filename}")
-                logger.info("ISO checksum verified successfully")
-            else:
-                logger.warning(
-                    f"No checksum available for {distro} {version}, "
-                    "skipping verification")
-        finally:
-            self.ui.end_progress()
+        success, message = self.run_in_background(
+            do_download, status=f"Downloading {iso_filename}...",
+            cancellable=True)
+
+        if not success:
+            if message and 'cancel' in str(message).lower():
+                raise InstallationCancelled("Cancelled by user")
+            raise ValueError(f"Failed to download ISO: {message}")
+
+        # Hashing a multi-GB ISO also blocks, so verify off the UI thread too.
+        checksum = self.get_distribution_checksum(
+            distro, version, iso_filename=iso_filename)
+        if checksum:
+            def do_verify(report, cancelled):
+                report(percent=100, text="Verifying ISO checksum...")
+                return self.downloader.verify_checksum(
+                    iso_path, checksum, "sha256")
+
+            if not self.run_in_background(
+                    do_verify, status="Verifying ISO checksum...",
+                    cancellable=False):
+                try:
+                    os.remove(iso_path)
+                except OSError:
+                    pass
+                raise RuntimeError(
+                    f"ISO checksum verification failed for {iso_filename}")
+            logger.info("ISO checksum verified successfully")
+        else:
+            logger.warning(
+                f"No checksum available for {distro} {version}, "
+                "skipping verification")
 
     def _discard_staged_iso(self) -> None:
         """Delete an ISO that was staged in the Downloads folder."""
@@ -636,40 +692,40 @@ class UNetbootinAppPySG:
         if install_type in ('iso', 'floppy'):
             source_image = params.get('iso_path') or params.get('floppy_image')
 
-            # Progress is shown inline in the main window, not in a popup.
-            self._cancel_download = False
-            self.ui.begin_progress("Extracting image...", cancellable=False)
-
             try:
-                def extract_progress(percent: int):
-                    """Map extraction progress onto the 0-50% bar range."""
-                    self.ui.set_progress(percent=int(percent * 0.5))
+                # Extraction (0-50%) off the UI thread.
+                def do_extract(report, cancelled):
+                    def extract_progress(percent: int):
+                        report(percent=int(percent * 0.5))
 
-                success, message = self.extractor.extract_iso_sync(
-                    source_image,
-                    self.tmp_dir,
-                    progress_callback=extract_progress
-                )
+                    return self.extractor.extract_iso_sync(
+                        source_image,
+                        self.tmp_dir,
+                        progress_callback=extract_progress
+                    )
+
+                success, message = self.run_in_background(
+                    do_extract, status="Extracting image...", cancellable=False)
                 if not success:
                     raise RuntimeError(f"Extraction failed: {message}")
 
-                # Install to USB
-                self.ui.set_progress(percent=50, text="Installing to USB...")
+                # Write to the device (50-100%). Never cancellable.
+                def do_install(report, cancelled):
+                    def install_progress(percent: int):
+                        report(percent=50 + int(percent * 0.5))
 
-                def install_progress(percent: int):
-                    """Map install progress onto the 50-100% bar range."""
-                    self.ui.set_progress(percent=50 + int(percent * 0.5))
+                    return self.installer.install_sync(
+                        self.tmp_dir,
+                        params['target_drive'],
+                        params,
+                        progress_callback=install_progress
+                    )
 
-                success, message = self.installer.install_sync(
-                    self.tmp_dir,
-                    params['target_drive'],
-                    params,
-                    progress_callback=install_progress
-                )
+                success, message = self.run_in_background(
+                    do_install, status="Installing to USB...", cancellable=False)
                 if not success:
                     raise RuntimeError(f"Installation failed: {message}")
 
-                self.ui.set_progress(percent=100, text="Installation complete!")
                 self.show_completion_message()
 
             except InstallationCancelled:
@@ -678,7 +734,6 @@ class UNetbootinAppPySG:
                 logger.error(f"Installation failed: {e}")
                 self.show_error(f"Installation failed: {str(e)}")
             finally:
-                self.ui.end_progress()
                 self.cleanup()
 
         elif install_type == 'distribution':
@@ -710,109 +765,107 @@ class UNetbootinAppPySG:
 
         logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
 
-        # Progress is shown inline in the main window, not in a popup.
-        self._cancel_download = False
-        self.ui.begin_progress(f"Downloading {iso_filename}...")
-
-        def download_progress(bytes_received: int, bytes_total: int):
-            """Map download byte progress onto the 0-30% bar range."""
-            if self._cancel_download:
-                return
-            if bytes_total > 0:
-                self.ui.set_progress(
-                    percent=min(int((bytes_received / bytes_total) * 30), 30))
-            else:
-                # No total size known
-                self.ui.set_progress(
-                    percent=30 * bytes_received // (bytes_received + 1024 * 1024))
-
-        def download_estimated(percentage: int, bytes_received: int, eta_or_speed: int):
-            """Update the progress text with percentage or transfer speed."""
-            if self._cancel_download:
-                return
-            if percentage >= 0:
-                self.ui.set_progress(
-                    text=f"{percentage}% - {format_size(bytes_received)}")
-            else:
-                speed_str = self.downloader.format_download_speed(eta_or_speed)
-                self.ui.set_progress(
-                    text=f"{format_size(bytes_received)} at {speed_str}")
-
         try:
-            # Download the ISO file
-            success, message = self.downloader.download_file_sync(
-                iso_url,
-                iso_path,
-                min_size=1024 * 1024,
-                progress_callback=download_progress,
-                progress_estimated_callback=download_estimated,
-                cancel_check=self.cancel_requested
-            )
+            # Each stage runs off the UI thread so the window stays responsive.
+            def do_download(report, cancelled):
+                """Download, mapped onto the 0-30% band of the overall job."""
+                def on_progress(bytes_received: int, bytes_total: int):
+                    if bytes_total > 0:
+                        report(percent=min(
+                            int(bytes_received / bytes_total * 30), 30))
+                    else:
+                        report(percent=30 * bytes_received //
+                               (bytes_received + 1024 * 1024))
+
+                def on_estimated(percentage: int, bytes_received: int,
+                                 eta_or_speed: int):
+                    if percentage >= 0:
+                        report(text=f"{percentage}% - "
+                                    f"{format_size(bytes_received)}")
+                    else:
+                        speed = self.downloader.format_download_speed(eta_or_speed)
+                        report(text=f"{format_size(bytes_received)} at {speed}")
+
+                return self.downloader.download_file_sync(
+                    iso_url,
+                    iso_path,
+                    min_size=1024 * 1024,
+                    progress_callback=on_progress,
+                    progress_estimated_callback=on_estimated,
+                    cancel_check=cancelled
+                )
+
+            success, message = self.run_in_background(
+                do_download, status=f"Downloading {iso_filename}...",
+                cancellable=True)
 
             if not success:
-                if self._cancel_download:
+                if message and 'cancel' in str(message).lower():
                     raise InstallationCancelled("Cancelled by user")
                 raise ValueError(f"Failed to download ISO: {message}")
 
             logger.info(f"ISO downloaded successfully: {iso_path}")
 
-            # Verify checksum
-            # Past this point neither extraction nor writing can be stopped,
-            # so stop offering a Cancel button that would do nothing.
-            self.ui.set_cancellable(False)
-            self.ui.set_progress(percent=30, text="Verifying ISO checksum...")
-
+            # Verify checksum (hashing a large ISO blocks too).
             checksum = self.get_distribution_checksum(
                 params.get('distro'), params.get('version'),
                 iso_filename=iso_filename)
             if checksum:
-                if not self.downloader.verify_checksum(iso_path, checksum, "sha256"):
+                def do_verify(report, cancelled):
+                    report(percent=30, text="Verifying ISO checksum...")
+                    return self.downloader.verify_checksum(
+                        iso_path, checksum, "sha256")
+
+                if not self.run_in_background(
+                        do_verify, status="Verifying ISO checksum...",
+                        cancellable=False):
                     try:
                         os.remove(iso_path)
                     except OSError:
                         pass
                     raise RuntimeError(
                         f"ISO checksum verification failed for {iso_filename}")
-                logger.info(f"ISO checksum verified successfully")
+                logger.info("ISO checksum verified successfully")
             else:
                 logger.warning(
                     f"No checksum available for {params.get('distro')} "
                     f"{params.get('version')}, skipping verification")
 
-            # Extract ISO
-            self.ui.set_progress(percent=35, text="Extracting ISO...")
+            # Extract ISO (35-80%).
+            def do_extract(report, cancelled):
+                def extract_progress(percent: int):
+                    report(percent=35 + int(percent * 0.45))
 
-            def extract_progress(percent: int):
-                """Map extraction progress onto the 35-80% bar range."""
-                self.ui.set_progress(percent=35 + int(percent * 0.45))
+                return self.extractor.extract_iso_sync(
+                    iso_path,
+                    self.tmp_dir,
+                    progress_callback=extract_progress
+                )
 
-            success, message = self.extractor.extract_iso_sync(
-                iso_path,
-                self.tmp_dir,
-                progress_callback=extract_progress
-            )
+            success, message = self.run_in_background(
+                do_extract, status="Extracting ISO...", cancellable=False)
             if not success:
                 raise RuntimeError(f"Extraction failed: {message}")
 
             logger.info("ISO extracted successfully")
 
-            # Install to USB
-            self.ui.set_progress(text="Installing to USB...")
+            # Write to the device (80-100%). Never cancellable.
+            def do_install(report, cancelled):
+                def install_progress(percent: int):
+                    report(percent=80 + int(percent * 0.2))
 
-            def install_progress(percent: int):
-                """Map install progress onto the 80-100% bar range."""
-                self.ui.set_progress(percent=80 + int(percent * 0.2))
+                return self.installer.install_sync(
+                    self.tmp_dir,
+                    params['target_drive'],
+                    params,
+                    progress_callback=install_progress
+                )
 
-            success, message = self.installer.install_sync(
-                self.tmp_dir,
-                params['target_drive'],
-                params,
-                progress_callback=install_progress
-            )
+            success, message = self.run_in_background(
+                do_install, status="Installing to USB...", cancellable=False)
             if not success:
                 raise RuntimeError(f"Installation failed: {message}")
 
-            self.ui.set_progress(percent=100, text="Installation complete!")
             self.show_completion_message()
 
         except InstallationCancelled:
@@ -821,7 +874,6 @@ class UNetbootinAppPySG:
             logger.error(f"Installation failed: {e}")
             self.show_error(f"Installation failed: {str(e)}")
         finally:
-            self.ui.end_progress()
             self.cleanup()
 
     def run(self):
