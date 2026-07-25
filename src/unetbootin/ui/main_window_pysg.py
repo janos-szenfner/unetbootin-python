@@ -54,13 +54,21 @@ class MainWindowPySG:
         """
         sg.theme('Default1')
 
+        # Drop-down fields: a larger font makes the tkinter combo box taller,
+        # and the vertical padding stops the rows from looking cramped.
+        combo_font = ('Helvetica', 11)
+        combo_pad = ((0, 6), (5, 5))
+
         # Minimal transparent GIF icon (compatible with old tkinter)
         transparent_gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
 
         # Define the layout
         layout = [
             # Title
-            [sg.Text("UNetbootin", font=('Helvetica', 16), pad=(0, (0, 10)))],
+            [sg.Text("UNetbootin", font=('Helvetica', 16), pad=(0, (0, 10))),
+             sg.Push(),
+             sg.Button(_("About"), key='-ABOUT-', pad=(0, (0, 10)),
+                       tooltip="About UNetbootin")],
 
             # Install Type Radio Buttons
             [
@@ -92,6 +100,8 @@ class MainWindowPySG:
                 sg.Combo(
     [],
     key='-CATEGORY_SELECT-',
+    font=combo_font,
+    pad=combo_pad,
     size=(24, 1),
     expand_x=True,
     readonly=True,
@@ -100,6 +110,8 @@ class MainWindowPySG:
                 sg.Combo(
     [],
     key='-DISTRO_SELECT-',
+    font=combo_font,
+    pad=combo_pad,
     size=(34, 1),
     expand_x=True,
     readonly=True,
@@ -108,6 +120,8 @@ class MainWindowPySG:
                 sg.Combo(
     [],
     key='-VERSION_SELECT-',
+    font=combo_font,
+    pad=combo_pad,
     size=(30, 1),
     expand_x=True,
     readonly=True,
@@ -159,6 +173,8 @@ class MainWindowPySG:
                 sg.Combo(
     [],
     key='-DRIVE_SELECT-',
+    font=combo_font,
+    pad=combo_pad,
     size=(56, 1),
     expand_x=True,
     readonly=True,
@@ -178,6 +194,8 @@ class MainWindowPySG:
                 sg.Combo(["USB Drive",
     "Hard Disk"],
     key='-TYPE_SELECT-',
+    font=combo_font,
+    pad=combo_pad,
     default_value="USB Drive",
     size=(24, 1),
     expand_x=True,
@@ -556,6 +574,72 @@ class MainWindowPySG:
             params['enable_secure_boot'] = self.elements['secure_boot'].get()
 
         return params
+
+    def show_about(self):
+        """Show a small modal About dialog (icon, version, repo link, notice)."""
+        from unetbootin import APP_NAME, APP_VERSION
+
+        repo_url = "https://github.com/janos-szenfner/unetbootin-python"
+
+        # The bundled PNG renders on tkinter 8.6; if the icon can't be loaded
+        # (very old tkinter, missing file) just omit it rather than fail.
+        icon_row = []
+        try:
+            from unetbootin.resources import icon_path
+            png = icon_path('unetbootin_64.png')
+            if os.path.exists(png):
+                icon_row = [sg.Image(filename=str(png), pad=((0, 12), (0, 0)))]
+        except (OSError, ValueError, ImportError) as e:
+            logger.debug(f"About icon unavailable: {e}")
+
+        header = icon_row + [
+            sg.Column([
+                [sg.Text(APP_NAME, font=('Helvetica', 16))],
+                [sg.Text(f"{_('Version')} {APP_VERSION}")],
+            ], pad=(0, 0))
+        ]
+
+        layout = [
+            header,
+            [sg.Text("")],
+            [sg.Text(_("Create bootable USB drives from ISO files"))],
+            [sg.Text(repo_url, enable_events=True, key='-ABOUT_LINK-',
+                     text_color='blue', tooltip=_("Open the project page"))],
+            [sg.Text("")],
+            [sg.Text(
+                _("This project is a creative endeavour, built for learning and "
+                  "experimentation. Use it at your own responsibility. It writes "
+                  "directly to storage devices and can overwrite data, so "
+                  "double-check your target drive before proceeding. The software "
+                  "is provided \"as is\", without warranty of any kind, and the "
+                  "authors accept no liability for any data loss or damage "
+                  "arising from its use."),
+                size=(58, 6))],
+            [sg.Push(), sg.Button(_("Close"), key='-ABOUT_CLOSE-'), sg.Push()],
+        ]
+
+        win = sg.Window(f"{_('About')} {APP_NAME}", layout, modal=True,
+                        keep_on_top=True, finalize=True)
+        while True:
+            event, _values = win.read()
+            if event in (sg.WIN_CLOSED, '-ABOUT_CLOSE-', None):
+                break
+            if event == '-ABOUT_LINK-':
+                try:
+                    import webbrowser
+                    webbrowser.open(repo_url)
+                except (ImportError, OSError) as e:
+                    logger.warning(f"Could not open {repo_url}: {e}")
+        win.close()
+
+    def update_advanced_visibility(self, visible: bool):
+        """Show or hide the advanced options (persistence/boot/firmware tabs)."""
+        logger.debug(f"Advanced options visible: {visible}")
+        self.elements['advanced_column'].update(visible=visible)
+        self.elements['advanced_tabs'].update(visible=visible)
+        # The window was sized without the tabs, so grow/shrink to fit them.
+        if self.window:
+            self.window.refresh()
 
     def show(self):
         """Show the window."""

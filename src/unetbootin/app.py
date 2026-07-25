@@ -632,6 +632,9 @@ class UNetbootinAppPySG:
             elif event == '-OK-':
                 self.on_ok_clicked()
 
+            elif event == '-ABOUT-':
+                self.ui.show_about()
+
             elif event == '-REFRESH_DRIVES-':
                 self.on_refresh_drive_list()
 
