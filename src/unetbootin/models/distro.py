@@ -352,11 +352,18 @@ class DistributionManager:
                 'description': 'Tiny Core Linux - Minimal Linux desktop',
                 'category': 'Linux',
                 'homepage': 'https://www.tinycorelinux.net',
+                # The release ISOs live under the x86 tree, not x86_64 (that
+                # tree only holds CorePure64), and the site does not serve
+                # HTTPS — the previous https://…/x86_64/… URL always failed.
                 'versions': [
                     {
-    'name': 'Latest (17.0)',
-    'url': 'https://www.tinycorelinux.net/17.x/x86_64/release/TinyCore-current.iso',
-     'size': 210000000},
+    'name': '17.1 TinyCore',
+    'url': 'http://tinycorelinux.net/17.x/x86/release/TinyCore-current.iso',
+     'size': 27262976},
+                    {
+    'name': '17.1 Core Plus',
+    'url': 'http://tinycorelinux.net/17.x/x86/release/CorePlus-current.iso',
+     'size': 289406976},
                 ],
                 'icon': 'tinycore',
             },

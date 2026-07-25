@@ -614,3 +614,75 @@ class TestWindowIdentity(unittest.TestCase):
         src = inspect.getsource(main_window_pysg.MainWindowPySG.init_ui)
         self.assertNotIn("icon=transparent_gif", src,
                          "the window must not use the blank placeholder icon")
+
+
+class TestProgressThrottling(unittest.TestCase):
+    """Progress updates must not starve button presses such as Cancel."""
+
+    def _app_with_recording_window(self, preload=()):
+        import queue
+        from unittest.mock import MagicMock
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+
+        class FakeWindow:
+            def __init__(self):
+                self.q = queue.Queue()
+                self.posted = 0
+
+            def write_event_value(self, key, value):
+                self.posted += 1
+                self.q.put((key, {key: value}))
+
+            def read(self, timeout=None):
+                try:
+                    return self.q.get(timeout=(timeout or 100) / 1000.0)
+                except queue.Empty:
+                    return '__TIMEOUT__', {}
+
+        app.ui = MagicMock()
+        app.ui.window = FakeWindow()
+        for item in preload:
+            app.ui.window.q.put(item)
+        return app
+
+    def test_progress_updates_are_rate_limited(self):
+        """Chunk-rate reporting must collapse into a few UI events.
+
+        The downloader calls its progress callbacks once per 8 KB chunk, so an
+        unthrottled report() would queue one event per chunk - hundreds of
+        thousands for a large ISO - and starve button presses.
+        """
+        calls = 50_000
+
+        def work(report, cancelled):
+            for _ in range(calls):
+                report(percent=1, text="downloading")
+            return "done"
+
+        app = self._app_with_recording_window()
+        self.assertEqual(app.run_in_background(work, cancellable=False), "done")
+
+        # Throttled to ~10/s, so a loop this fast must emit only a handful.
+        self.assertLess(app.ui.window.posted, 100,
+                        f"{app.ui.window.posted} events queued for {calls} "
+                        "reports - progress is not throttled")
+
+    def test_cancel_reaches_the_worker_promptly_while_reporting(self):
+        """A pending Cancel must stop a worker that is streaming progress."""
+        import time
+
+        def work(report, cancelled):
+            for _ in range(200_000):
+                report(percent=1, text="downloading")
+                if cancelled():
+                    return "stopped"
+                time.sleep(0)
+            return "ran to completion"
+
+        app = self._app_with_recording_window(
+            preload=[('-CANCEL_DOWNLOAD-', {})])
+        self.assertEqual(
+            app.run_in_background(work, cancellable=True), "stopped",
+            "Cancel must reach the worker instead of queueing behind progress")

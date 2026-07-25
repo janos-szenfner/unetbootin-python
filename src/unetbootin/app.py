@@ -11,6 +11,7 @@ import logging
 import tempfile
 import shutil
 import threading
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -36,6 +37,11 @@ from unetbootin.core.utils import (
 from unetbootin.platform import get_drive_list, is_safe_target
 
 logger = logging.getLogger(__name__)
+
+# Minimum gap between progress updates pushed to the UI thread. The downloader
+# reports every 8 KB chunk; forwarding all of them floods the event queue and
+# starves button presses such as Cancel.
+_PROGRESS_INTERVAL = 0.1
 
 
 class InstallationCancelled(Exception):
@@ -382,8 +388,22 @@ class UNetbootinAppPySG:
         cancel_event = threading.Event()
         outcome = {}
 
+        last_report = [0.0]
+
         def report(percent: Optional[int] = None, text: Optional[str] = None):
-            """Hand a progress update to the UI thread (thread-safe)."""
+            """Hand a progress update to the UI thread (thread-safe).
+
+            Rate-limited on purpose. The downloader invokes its progress
+            callbacks once per 8 KB chunk, so an unthrottled report() queues
+            hundreds of thousands of events for a large ISO; the Cancel press
+            then sits behind that backlog and appears to do nothing. Dropping
+            intermediate frames costs nothing visually — the bar is only
+            redrawn a few times a second anyway.
+            """
+            now = time.monotonic()
+            if now - last_report[0] < _PROGRESS_INTERVAL:
+                return
+            last_report[0] = now
             try:
                 window.write_event_value('-WORK_PROGRESS-', (percent, text))
             except (AttributeError, RuntimeError):
