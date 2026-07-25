@@ -122,22 +122,40 @@ class UNetbootinAppPySG:
         logger.info("Loading drive list")
         try:
             drives = get_drive_list()
-            drive_display_list = self.format_drive_list(drives)
+            drive_display_list = self.format_drive_list(
+                drives, target_type=self.get_target_type()
+            )
             return self.ui.set_drive_list(drive_display_list)
         except (OSError, ValueError, KeyError, RuntimeError) as e:
             logger.error(f"Failed to load drive list: {e}")
             self.show_error("Failed to load drive list")
             return False
 
-    def format_drive_list(self, drives: List[Dict[str, Any]]) -> List[tuple]:
+    def get_target_type(self) -> str:
+        """Current target type from the UI ("USB Drive" or "Hard Disk")."""
+        try:
+            return self.ui.elements['type_select'].get() or "USB Drive"
+        except (AttributeError, KeyError):
+            return "USB Drive"
+
+    def format_drive_list(
+        self,
+        drives: List[Dict[str, Any]],
+        target_type: str = "USB Drive"
+    ) -> List[tuple]:
         """Format drive list for display in UI.
 
-        SAFETY: only genuinely removable/external USB drives are shown. Internal
-        disks, the system disk and virtual drives / disk images are filtered out
-        via the platform `is_safe_target()` check and can never be selected —
-        not even as an exception. If nothing qualifies, the list is empty.
+        SAFETY: only genuinely external drives are shown. The system disk,
+        internal disks and virtual drives / disk images are filtered out via the
+        platform `is_safe_target()` check and can never be selected — not even
+        as an exception. If nothing qualifies, the list is empty.
+
+        With target_type "Hard Disk" the filter widens to include external
+        drives that are not flagged as removable media (external HDDs/SSDs);
+        the system and internal disks stay excluded.
         """
         display_list = []
+        allow_external_fixed = (target_type == "Hard Disk")
 
         for drive in drives:
             device = drive.get('device', '')
@@ -145,9 +163,9 @@ class UNetbootinAppPySG:
                 continue
 
             # Hard safety gate: skip anything that is not a proven-safe
-            # removable target. Fails closed on any uncertainty.
-            if not is_safe_target(device):
-                logger.debug(f"Excluding non-removable/unsafe drive: {device}")
+            # external target. Fails closed on any uncertainty.
+            if not is_safe_target(device, allow_external_fixed=allow_external_fixed):
+                logger.debug(f"Excluding internal/unsafe drive: {device}")
                 continue
 
             parts = [device]
@@ -617,6 +635,11 @@ class UNetbootinAppPySG:
             elif event == '-REFRESH_DRIVES-':
                 self.on_refresh_drive_list()
 
+            elif event == '-TYPE_SELECT-':
+                # Switching between "USB Drive" and "Hard Disk" changes which
+                # devices qualify, so re-filter the list against the new type.
+                self.on_refresh_drive_list()
+
             elif event == '-RADIO_DISTRO-':
                 self.on_install_type_changed('distribution')
 
@@ -694,12 +717,15 @@ class UNetbootinAppPySG:
             self.show_error("Please select a target drive.")
             return False
 
-        # Hard re-check against the live device table (fails closed).
-        if not is_safe_target(device):
+        # Hard re-check against the live device table (fails closed). Uses the
+        # same target type as the list the user picked from, so an external
+        # hard drive stays valid while internal/system disks never are.
+        allow_external_fixed = (self.get_target_type() == "Hard Disk")
+        if not is_safe_target(device, allow_external_fixed=allow_external_fixed):
             logger.error(f"Refusing destructive write to unsafe device: {device}")
             self.show_error(
                 f"Refusing to write to {device}.\n\n"
-                "Only removable USB drives can be used as a target. Internal "
+                "Only external drives can be used as a target. Internal "
                 "disks, the system disk and virtual drives are never allowed."
             )
             return False

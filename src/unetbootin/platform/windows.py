@@ -311,22 +311,39 @@ def is_external_drive(drive: str) -> bool:
         return False
 
 
-def is_safe_target(device: str) -> bool:
+def is_safe_target(device: str, allow_external_fixed: bool = False) -> bool:
     """Whether `device` is a safe (removable) USB target on Windows.
 
     Uses the Win32 DriveType: only ``2`` (DRIVE_REMOVABLE) qualifies. This
     excludes fixed/internal disks (3), network drives (4), CD-ROM (5) and RAM
     disks (6) — and mounted VHDs, which report as fixed. Fails closed if the
     drive can't be found in the current enumeration.
+
+    With ``allow_external_fixed=True`` (the "Hard Disk" target type) fixed
+    drives are also accepted, since an external USB hard drive reports as
+    fixed — except the system drive (normally ``C:``), which is never a valid
+    target. Network, CD-ROM and RAM drives remain excluded.
     """
     try:
         letter = device.rstrip('\\').rstrip(':').upper()
         if not letter:
             return False
+
+        system_drive = (os.environ.get('SystemDrive', 'C:')
+                        .rstrip('\\').rstrip(':').upper())
+
         for drv in get_drive_list():
-            if str(drv.get('letter', '')).upper() == letter:
-                # get_drive_list sets removable = (DriveType == 2)
-                return bool(drv.get('removable', False))
+            if str(drv.get('letter', '')).upper() != letter:
+                continue
+            # get_drive_list sets removable = (DriveType == 2)
+            if bool(drv.get('removable', False)):
+                return True
+            if allow_external_fixed:
+                # Accept a fixed drive only if it is not the system drive.
+                if letter == system_drive:
+                    return False
+                return str(drv.get('type', '')).lower() != 'network'
+            return False
         return False
     except (AttributeError, TypeError, OSError):
         return False

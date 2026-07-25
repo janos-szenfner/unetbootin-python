@@ -299,6 +299,66 @@ class TestLinuxPlatform(unittest.TestCase):
             mock_run.return_value = mock_result
             self.assertFalse(linux.is_safe_target('/dev/sda'))
 
+    def test_is_safe_target_external_hdd_only_in_hard_disk_mode(self):
+        """A fixed external HDD qualifies only with allow_external_fixed."""
+        payload = self._lsblk(
+            name='sdc', type='disk', rm=False, tran='usb', hotplug=True,
+            vendor='Seagate', model='Expansion',
+            children=[{'name': 'sdc1', 'mountpoint': '/media/backup'}])
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = payload
+            mock_run.return_value = mock_result
+            # tran='usb' already qualifies in strict mode…
+            self.assertTrue(linux.is_safe_target('/dev/sdc'))
+            # …and still qualifies when the filter is widened.
+            self.assertTrue(
+                linux.is_safe_target('/dev/sdc', allow_external_fixed=True))
+
+    def test_is_safe_target_hotplug_esata_needs_hard_disk_mode(self):
+        """A hot-pluggable non-USB external disk needs allow_external_fixed."""
+        payload = self._lsblk(
+            name='sdd', type='disk', rm=False, tran='sata', hotplug=True,
+            vendor='WD', model='Elements', children=[])
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = payload
+            mock_run.return_value = mock_result
+            # Strict (USB Drive) mode rejects it: not USB, not removable.
+            self.assertFalse(linux.is_safe_target('/dev/sdd'))
+            # Hard Disk mode accepts it: hot-pluggable, non-system, non-virtual.
+            self.assertTrue(
+                linux.is_safe_target('/dev/sdd', allow_external_fixed=True))
+
+    def test_is_safe_target_hard_disk_mode_still_rejects_system_disk(self):
+        """Widening the filter must never expose the system disk."""
+        payload = self._lsblk(
+            name='sda', type='disk', rm=False, tran='sata', hotplug=True,
+            vendor='ATA', model='SSD',
+            children=[{'name': 'sda1', 'mountpoint': '/'}])
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = payload
+            mock_run.return_value = mock_result
+            self.assertFalse(
+                linux.is_safe_target('/dev/sda', allow_external_fixed=True))
+
+    def test_is_safe_target_hard_disk_mode_still_rejects_virtual_disk(self):
+        """Widening the filter must never expose a virtual disk."""
+        payload = self._lsblk(
+            name='sde', type='disk', rm=False, tran='', hotplug=True,
+            vendor='VBOX', model='HARDDISK', children=[])
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = payload
+            mock_run.return_value = mock_result
+            self.assertFalse(
+                linux.is_safe_target('/dev/sde', allow_external_fixed=True))
+
     def test_is_safe_target_rejects_virtual_disk(self):
         """A virtual (VirtualBox/virtio) disk must be rejected."""
         with patch('subprocess.run') as mock_run:

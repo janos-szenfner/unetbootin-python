@@ -819,19 +819,29 @@ def is_external_drive(drive: str) -> bool:
 
 # Vendor/model substrings that indicate a virtual disk (VM / hypervisor).
 _VIRTUAL_MARKERS = ('VBOX', 'VMWARE', 'QEMU', 'VIRTUAL', 'VIRTIO', 'PARALLELS')
+
+# Transports that can only be an externally attached disk. Used by the
+# "Hard Disk" target type, which also accepts fixed external drives.
+_EXTERNAL_TRANSPORTS = ('usb', 'thunderbolt', 'ieee1394', 'firewire')
 # Mountpoints that mark a disk as holding the running system.
 _SYSTEM_MOUNTPOINTS = ('/', '/boot', '/boot/efi', '/usr', '/var', '/home',
                        '[SWAP]')
 
 
-def is_safe_target(device: str) -> bool:
-    """Whether `device` is a safe (removable/USB, non-system, non-virtual) target.
+def is_safe_target(device: str, allow_external_fixed: bool = False) -> bool:
+    """Whether `device` is a safe (external, non-system, non-virtual) target.
 
     A device qualifies only if ALL of the following hold:
       * it is a whole disk (``TYPE == disk``), not a partition/loop/rom;
       * it is USB-attached (``TRAN == usb``) or flagged removable (``RM``);
       * it is not a virtual disk (vendor/model/transport not VM-like);
       * none of its partitions host the running system (``/``, ``/boot``…).
+
+    With ``allow_external_fixed=True`` (the "Hard Disk" target type) the second
+    rule is widened to any externally attached disk — USB/Thunderbolt/FireWire
+    or kernel-hotpluggable — so external hard drives that are not flagged as
+    removable media also qualify. Every other rule still applies, so the system
+    disk, internal disks and virtual disks remain excluded.
 
     Fails closed (returns False) on any uncertainty, so an internal or virtual
     disk can never be selected — not even as an exception.
@@ -843,7 +853,7 @@ def is_safe_target(device: str) -> bool:
 
         result = subprocess.run(
             ['lsblk', '-J', '-o',
-             'NAME,TYPE,RM,TRAN,VENDOR,MODEL,MOUNTPOINT', device],
+             'NAME,TYPE,RM,TRAN,VENDOR,MODEL,MOUNTPOINT,HOTPLUG', device],
             capture_output=True, text=True, timeout=5
         )
         if result.returncode != 0:
@@ -863,7 +873,14 @@ def is_safe_target(device: str) -> bool:
         tran = (dev.get('tran') or '').lower()
         is_removable = bool(dev.get('rm'))
         is_usb = tran == 'usb'
-        if not (is_usb or is_removable):
+        if allow_external_fixed:
+            # "Hard Disk" mode: any externally attached disk qualifies, even a
+            # fixed one (external HDDs report RM=0 but are hot-pluggable).
+            is_external_bus = tran in _EXTERNAL_TRANSPORTS
+            is_hotplug = bool(dev.get('hotplug'))
+            if not (is_usb or is_removable or is_external_bus or is_hotplug):
+                return False
+        elif not (is_usb or is_removable):
             return False
 
         # Reject virtual disks

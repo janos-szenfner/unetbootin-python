@@ -575,7 +575,7 @@ def is_external_drive(drive: str) -> bool:
         return False
 
 
-def is_safe_target(device: str) -> bool:
+def is_safe_target(device: str, allow_external_fixed: bool = False) -> bool:
     """Whether `device` is a safe external/removable target on macOS.
 
     Reads ``diskutil info -plist`` and requires ALL of:
@@ -583,6 +583,11 @@ def is_safe_target(device: str) -> bool:
       * the device is physical, not a disk image
         (``VirtualOrPhysical`` != 'Virtual', ``BusProtocol`` != 'Disk Image');
       * it is ``Ejectable`` or ``RemovableMedia`` (real removable media).
+
+    With ``allow_external_fixed=True`` (the "Hard Disk" target type) the last
+    rule is dropped, so external hard drives that are neither ejectable nor
+    removable media also qualify. ``Internal`` is still required to be False,
+    so the built-in/system disk remains excluded.
 
     Fails closed (returns False) on any uncertainty, so an internal disk or a
     mounted .dmg can never be selected — not even as an exception.
@@ -611,7 +616,7 @@ def is_safe_target(device: str) -> bool:
             return False
         if virt == 'Virtual' or bus == 'Disk Image':
             return False
-        if not (ejectable or removable):
+        if not (ejectable or removable) and not allow_external_fixed:
             return False
         return True
 

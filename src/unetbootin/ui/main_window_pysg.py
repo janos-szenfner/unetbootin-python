@@ -92,28 +92,28 @@ class MainWindowPySG:
                 sg.Combo(
     [],
     key='-CATEGORY_SELECT-',
-    size=(
-        20,
-        1),
-        enable_events=True,
-         tooltip="Select distribution category"),
+    size=(24, 1),
+    expand_x=True,
+    readonly=True,
+    enable_events=True,
+    tooltip="Select distribution category"),
                 sg.Combo(
     [],
     key='-DISTRO_SELECT-',
-    size=(
-        30,
-        1),
-        enable_events=True,
-         tooltip="Select from a list of supported distributions"),
+    size=(34, 1),
+    expand_x=True,
+    readonly=True,
+    enable_events=True,
+    tooltip="Select from a list of supported distributions"),
                 sg.Combo(
     [],
     key='-VERSION_SELECT-',
-    size=(
-        25,
-        1),
-        enable_events=True,
-        disabled=True,
-         tooltip="Select the distribution version"),
+    size=(30, 1),
+    expand_x=True,
+    readonly=True,
+    enable_events=True,
+    disabled=True,
+    tooltip="Select the distribution version"),
             ],
 
             # Floppy image selection (hidden initially)
@@ -159,11 +159,11 @@ class MainWindowPySG:
                 sg.Combo(
     [],
     key='-DRIVE_SELECT-',
-    size=(
-        50,
-        1),
-        enable_events=True,
-         tooltip="Select the target drive"),
+    size=(56, 1),
+    expand_x=True,
+    readonly=True,
+    enable_events=True,
+    tooltip="Select the target drive"),
                 sg.Button(
     _("Refresh"),
     key='-REFRESH_DRIVES-',
@@ -179,16 +179,17 @@ class MainWindowPySG:
     "Hard Disk"],
     key='-TYPE_SELECT-',
     default_value="USB Drive",
-    size=(20,
-    1),
+    size=(24, 1),
+    expand_x=True,
+    readonly=True,
     enable_events=True,
-     tooltip="Select the installation target type"),
+    tooltip="Select the installation target type"),
             ],
 
             # Info message
             [sg.Text("Select a distribution or ISO file, then select your "
                      "USB drive below.",
-                     key='-INFO_MESSAGE-', size=(60, 1))],
+                     key='-INFO_MESSAGE-', size=(60, 1), expand_x=True)],
 
             # Advanced options checkbox
             [
@@ -251,9 +252,14 @@ class MainWindowPySG:
         ]
 
         # Create the window
+        # Wrap the layout in a Column that fills the window. `resizable=True`
+        # alone only lets the frame be dragged — without an expanding container
+        # the contents keep their original size and sit in the top-left corner.
         self.window = sg.Window(
     "UNetbootin",
-    layout,
+    [[sg.Column(layout, key='-MAIN_COLUMN-',
+                expand_x=True, expand_y=True,
+                pad=(0, 0))]],
     finalize=True,
     resizable=True,
     margins=(
@@ -264,6 +270,15 @@ class MainWindowPySG:
 
         # Finalize the window immediately so elements can be updated
         self.window.finalize()
+
+        # Let the container (and with it the expand_x elements) actually track
+        # the window size. Guarded: a PySimpleGUI build without expand() must
+        # not stop the app from starting.
+        try:
+            self.window['-MAIN_COLUMN-'].expand(expand_x=True, expand_y=True)
+            self.window.set_min_size((640, 480))
+        except (AttributeError, TypeError) as e:
+            logger.warning(f"Window expand not supported by this PySimpleGUI: {e}")
 
         # Store references to elements for easier access
         self.elements = {

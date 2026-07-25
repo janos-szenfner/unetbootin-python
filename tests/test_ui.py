@@ -351,7 +351,7 @@ class TestUIComponents(unittest.TestCase):
         ]
 
         # Only the USB drive is a safe target; the system disk must be dropped.
-        def fake_safe(device):
+        def fake_safe(device, allow_external_fixed=False):
             return device == '/dev/sdb'
 
         with patch('unetbootin.app.is_safe_target', side_effect=fake_safe):
@@ -378,6 +378,31 @@ class TestUIComponents(unittest.TestCase):
         with patch('unetbootin.app.is_safe_target', return_value=False):
             formatted = app.format_drive_list(drives)
         self.assertEqual(formatted, [])
+
+    def test_format_drive_list_target_type_selects_filter_strictness(self):
+        """"Hard Disk" widens the filter; "USB Drive" keeps the strict one.
+
+        The target type must be forwarded to is_safe_target as
+        allow_external_fixed, so external hard drives become selectable only in
+        "Hard Disk" mode.
+        """
+        from unittest.mock import patch
+        from unetbootin.app import UNetbootinAppPySG
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        # An external HDD: not removable media, so only allowed when the filter
+        # is widened for the "Hard Disk" target type.
+        drives = [{'device': '/dev/sdc', 'size': 2000000000000, 'removable': False}]
+
+        def fake_safe(device, allow_external_fixed=False):
+            return allow_external_fixed
+
+        with patch('unetbootin.app.is_safe_target', side_effect=fake_safe):
+            usb_mode = app.format_drive_list(drives, target_type="USB Drive")
+            hdd_mode = app.format_drive_list(drives, target_type="Hard Disk")
+
+        self.assertEqual(usb_mode, [], "external HDD must not appear in USB mode")
+        self.assertEqual([dev for _d, dev in hdd_mode], ['/dev/sdc'])
 
     def test_confirm_destructive_write_refuses_unsafe_device(self):
         """The pre-format confirmation must refuse a non-safe device outright."""
