@@ -71,6 +71,8 @@ class UNetbootinAppPySG:
         self.tmp_dir = None
         # ISO downloaded to the Downloads folder as staging; removed on success.
         self.iso_to_delete = None
+        # Set when the user presses the inline Cancel button during a transfer.
+        self._cancel_download = False
         self.exit_on_completion = False
         self.testing_download = False
         self.running = False
@@ -357,70 +359,72 @@ class UNetbootinAppPySG:
             "Please select the ISO Location from the advanced option."
         )
 
+    def cancel_requested(self) -> bool:
+        """Whether the user pressed the inline Cancel button.
+
+        A synchronous download blocks the main event loop, so pump the main
+        window here: that keeps the Cancel button live and the UI responsive
+        while the transfer runs. Only the cancel event is acted on; anything
+        else is discarded, since handling it mid-transfer is not meaningful.
+        """
+        try:
+            event, _values = self.ui.window.read(timeout=0)
+        except (AttributeError, RuntimeError):
+            return self._cancel_download
+        if event == '-CANCEL_DOWNLOAD-':
+            logger.info("Cancel requested by user")
+            self._cancel_download = True
+        return self._cancel_download
+
     def download_iso(self, iso_url: str, iso_path: str,
                      distro: str, version: str) -> None:
         """Download an ISO to `iso_path` and verify its checksum.
 
-        Standalone counterpart to the download step inside
-        download_and_install_distribution — kept separate so the install path
-        is untouched. Raises on failure; InstallationCancelled if cancelled.
+        Progress is shown inline in the main window (bar, status text and
+        Cancel button next to the advanced options), not in a popup. Raises on
+        failure; InstallationCancelled if cancelled.
         """
         iso_filename = os.path.basename(iso_path)
         logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
 
-        progress_layout = [
-            [sg.Text(f"Downloading {iso_filename}...")],
-            [sg.ProgressBar(100, orientation='h', size=(40, 20),
-                            key='-PROGRESS-BAR-')],
-            [sg.Text("", size=(40, 1), key='-PROGRESS-TEXT-')],
-            [sg.Button('Cancel', key='-CANCEL-DOWNLOAD-')]
-        ]
-        progress_window = sg.Window('Download in Progress', progress_layout,
-                                    finalize=True)
-        cancelled = {'flag': False}
+        self._cancel_download = False
+        self.ui.begin_progress(f"Downloading {iso_filename}...")
 
         def on_progress(bytes_received: int, bytes_total: int):
             """Map byte progress onto the full 0-100% bar."""
-            if cancelled['flag']:
+            if self._cancel_download:
                 return
             if bytes_total > 0:
-                percent = min(int(bytes_received / bytes_total * 100), 100)
-                progress_window['-PROGRESS-BAR-'].update(percent)
+                self.ui.set_progress(
+                    percent=int(bytes_received / bytes_total * 100))
 
         def on_estimated(percentage: int, bytes_received: int, eta_or_speed: int):
             """Show percentage, or transfer speed when no total is known."""
-            if cancelled['flag']:
+            if self._cancel_download:
                 return
             if percentage >= 0:
-                progress_window['-PROGRESS-TEXT-'].update(
-                    f"{percentage}% - {format_size(bytes_received)}")
+                self.ui.set_progress(
+                    text=f"{percentage}% - {format_size(bytes_received)}")
             else:
                 speed = self.downloader.format_download_speed(eta_or_speed)
-                progress_window['-PROGRESS-TEXT-'].update(
-                    f"{format_size(bytes_received)} at {speed}")
+                self.ui.set_progress(
+                    text=f"{format_size(bytes_received)} at {speed}")
 
         try:
-            # Let the user cancel while the transfer runs.
-            def check_cancel() -> bool:
-                event, _values = progress_window.read(timeout=0)
-                if event == '-CANCEL-DOWNLOAD-':
-                    cancelled['flag'] = True
-                return cancelled['flag']
-
             success, message = self.downloader.download_file_sync(
                 iso_url,
                 iso_path,
                 min_size=1024 * 1024,
                 progress_callback=on_progress,
                 progress_estimated_callback=on_estimated,
-                cancel_check=check_cancel
+                cancel_check=self.cancel_requested
             )
             if not success:
-                if cancelled['flag']:
+                if self._cancel_download:
                     raise InstallationCancelled("Cancelled by user")
                 raise ValueError(f"Failed to download ISO: {message}")
 
-            progress_window['-PROGRESS-TEXT-'].update("Verifying ISO checksum...")
+            self.ui.set_progress(percent=100, text="Verifying ISO checksum...")
             checksum = self.get_distribution_checksum(
                 distro, version, iso_filename=iso_filename)
             if checksum:
@@ -436,10 +440,8 @@ class UNetbootinAppPySG:
                 logger.warning(
                     f"No checksum available for {distro} {version}, "
                     "skipping verification")
-
-            progress_window['-PROGRESS-BAR-'].update(100)
         finally:
-            progress_window.close()
+            self.ui.end_progress()
 
     def _discard_staged_iso(self) -> None:
         """Delete an ISO that was staged in the Downloads folder."""
@@ -628,25 +630,14 @@ class UNetbootinAppPySG:
         if install_type in ('iso', 'floppy'):
             source_image = params.get('iso_path') or params.get('floppy_image')
 
-            # Show progress in a popup with a progress bar
-            progress_layout = [
-                [sg.Text("Extracting image...")],
-                [sg.ProgressBar(100, orientation='h', size=(
-                    40, 20), key='-PROGRESS-BAR-')],
-                [sg.Button('Cancel', key='-CANCEL-INSTALL-')]
-            ]
-            progress_window = sg.Window(
-    'Installation in Progress',
-    progress_layout,
-     finalize=True)
+            # Progress is shown inline in the main window, not in a popup.
+            self._cancel_download = False
+            self.ui.begin_progress("Extracting image...")
 
             try:
-                # Extract image
-                progress_text = progress_window['-PROGRESS-BAR-']
-
                 def extract_progress(percent: int):
-                    """Forward extraction progress to the event loop."""
-                    progress_window.write_event_value('-PROGRESS-', percent)
+                    """Map extraction progress onto the 0-50% bar range."""
+                    self.ui.set_progress(percent=int(percent * 0.5))
 
                 success, message = self.extractor.extract_iso_sync(
                     source_image,
@@ -657,12 +648,11 @@ class UNetbootinAppPySG:
                     raise RuntimeError(f"Extraction failed: {message}")
 
                 # Install to USB
-                progress_window['-PROGRESS-BAR-'].update(50)
+                self.ui.set_progress(percent=50, text="Installing to USB...")
 
                 def install_progress(percent: int):
-                    """Forward install progress (mapped to 50-100%) to the loop."""
-                    progress_window.write_event_value(
-                        '-PROGRESS-', 50 + int(percent * 0.5))
+                    """Map install progress onto the 50-100% bar range."""
+                    self.ui.set_progress(percent=50 + int(percent * 0.5))
 
                 success, message = self.installer.install_sync(
                     self.tmp_dir,
@@ -673,7 +663,7 @@ class UNetbootinAppPySG:
                 if not success:
                     raise RuntimeError(f"Installation failed: {message}")
 
-                progress_window['-PROGRESS-BAR-'].update(100)
+                self.ui.set_progress(percent=100, text="Installation complete!")
                 self.show_completion_message()
 
             except InstallationCancelled:
@@ -682,7 +672,7 @@ class UNetbootinAppPySG:
                 logger.error(f"Installation failed: {e}")
                 self.show_error(f"Installation failed: {str(e)}")
             finally:
-                progress_window.close()
+                self.ui.end_progress()
                 self.cleanup()
 
         elif install_type == 'distribution':
@@ -714,43 +704,33 @@ class UNetbootinAppPySG:
 
         logger.info(f"Downloading ISO from {iso_url} to {iso_path}")
 
-        # Create progress window
-        progress_layout = [
-            [sg.Text(f"Downloading {iso_filename}...")],
-            [sg.ProgressBar(100, orientation='h', size=(40, 20), key='-PROGRESS-BAR-')],
-            [sg.Text("", size=(40, 1), key='-PROGRESS-TEXT-')],
-            [sg.Button('Cancel', key='-CANCEL-DOWNLOAD-')]
-        ]
-        progress_window = sg.Window(
-    'Download in Progress',
-    progress_layout,
-     finalize=True)
-
-        cancel_download = False
+        # Progress is shown inline in the main window, not in a popup.
+        self._cancel_download = False
+        self.ui.begin_progress(f"Downloading {iso_filename}...")
 
         def download_progress(bytes_received: int, bytes_total: int):
             """Map download byte progress onto the 0-30% bar range."""
-            if cancel_download:
+            if self._cancel_download:
                 return
             if bytes_total > 0:
-                percent = min(int((bytes_received / bytes_total) * 30), 30)
-                progress_window['-PROGRESS-BAR-'].update(percent)
+                self.ui.set_progress(
+                    percent=min(int((bytes_received / bytes_total) * 30), 30))
             else:
                 # No total size known
-                progress_window['-PROGRESS-BAR-'].update(
-                    30 * bytes_received // (bytes_received + 1024 * 1024))
+                self.ui.set_progress(
+                    percent=30 * bytes_received // (bytes_received + 1024 * 1024))
 
         def download_estimated(percentage: int, bytes_received: int, eta_or_speed: int):
             """Update the progress text with percentage or transfer speed."""
-            if cancel_download:
+            if self._cancel_download:
                 return
             if percentage >= 0:
-                progress_window['-PROGRESS-TEXT-'].update(
-                    f"{percentage}% - {format_size(bytes_received)}")
+                self.ui.set_progress(
+                    text=f"{percentage}% - {format_size(bytes_received)}")
             else:
                 speed_str = self.downloader.format_download_speed(eta_or_speed)
-                progress_window['-PROGRESS-TEXT-'].update(
-                    f"{format_size(bytes_received)} at {speed_str}")
+                self.ui.set_progress(
+                    text=f"{format_size(bytes_received)} at {speed_str}")
 
         try:
             # Download the ISO file
@@ -760,19 +740,18 @@ class UNetbootinAppPySG:
                 min_size=1024 * 1024,
                 progress_callback=download_progress,
                 progress_estimated_callback=download_estimated,
-                cancel_check=lambda: cancel_download
+                cancel_check=self.cancel_requested
             )
 
             if not success:
-                if cancel_download:
+                if self._cancel_download:
                     raise InstallationCancelled("Cancelled by user")
                 raise ValueError(f"Failed to download ISO: {message}")
 
             logger.info(f"ISO downloaded successfully: {iso_path}")
 
             # Verify checksum
-            progress_window['-PROGRESS-BAR-'].update(30)
-            progress_window['-PROGRESS-TEXT-'].update("Verifying ISO checksum...")
+            self.ui.set_progress(percent=30, text="Verifying ISO checksum...")
 
             checksum = self.get_distribution_checksum(
                 params.get('distro'), params.get('version'),
@@ -791,14 +770,12 @@ class UNetbootinAppPySG:
                     f"No checksum available for {params.get('distro')} "
                     f"{params.get('version')}, skipping verification")
 
-            progress_window['-PROGRESS-BAR-'].update(35)
-
             # Extract ISO
-            progress_window['-PROGRESS-TEXT-'].update("Extracting ISO...")
+            self.ui.set_progress(percent=35, text="Extracting ISO...")
 
             def extract_progress(percent: int):
                 """Map extraction progress onto the 35-80% bar range."""
-                progress_window['-PROGRESS-BAR-'].update(35 + int(percent * 0.45))
+                self.ui.set_progress(percent=35 + int(percent * 0.45))
 
             success, message = self.extractor.extract_iso_sync(
                 iso_path,
@@ -811,11 +788,11 @@ class UNetbootinAppPySG:
             logger.info("ISO extracted successfully")
 
             # Install to USB
-            progress_window['-PROGRESS-TEXT-'].update("Installing to USB...")
+            self.ui.set_progress(text="Installing to USB...")
 
             def install_progress(percent: int):
                 """Map install progress onto the 80-100% bar range."""
-                progress_window['-PROGRESS-BAR-'].update(80 + int(percent * 0.2))
+                self.ui.set_progress(percent=80 + int(percent * 0.2))
 
             success, message = self.installer.install_sync(
                 self.tmp_dir,
@@ -826,8 +803,7 @@ class UNetbootinAppPySG:
             if not success:
                 raise RuntimeError(f"Installation failed: {message}")
 
-            progress_window['-PROGRESS-BAR-'].update(100)
-            progress_window['-PROGRESS-TEXT-'].update("Installation complete!")
+            self.ui.set_progress(percent=100, text="Installation complete!")
             self.show_completion_message()
 
         except InstallationCancelled:
@@ -836,7 +812,7 @@ class UNetbootinAppPySG:
             logger.error(f"Installation failed: {e}")
             self.show_error(f"Installation failed: {str(e)}")
         finally:
-            progress_window.close()
+            self.ui.end_progress()
             self.cleanup()
 
     def run(self):
@@ -859,6 +835,11 @@ class UNetbootinAppPySG:
 
             elif event == '-OK-':
                 self.on_ok_clicked()
+
+            elif event == '-CANCEL_DOWNLOAD-':
+                # Only meaningful while a transfer is running (it is polled by
+                # cancel_requested()); ignore a stray press otherwise.
+                logger.debug("Cancel pressed with no transfer in progress")
 
             elif event == '-ABOUT-':
                 self.ui.show_about()

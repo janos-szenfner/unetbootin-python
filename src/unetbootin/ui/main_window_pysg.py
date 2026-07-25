@@ -232,12 +232,22 @@ class MainWindowPySG:
                      "USB drive below.",
                      key='-INFO_MESSAGE-', size=(60, 1), expand_x=True)],
 
-            # Advanced options toggle (open by default)
+            # Advanced options toggle (open by default) with the inline
+            # download/installation progress beside it. The bar, its status
+            # text and the Cancel button stay hidden until work starts.
             [
                 sg.Button(
     _("Close advanced option"),
     key='-ADVANCED_TOGGLE-',
     tooltip="Show or hide the advanced options"),
+                sg.Text("", key='-PROGRESS_TEXT-', size=(34, 1),
+                        visible=False),
+                sg.ProgressBar(100, orientation='h', size=(22, 18),
+                               key='-PROGRESS_BAR-', expand_x=True,
+                               visible=False),
+                sg.Button(_("Cancel download"), key='-CANCEL_DOWNLOAD-',
+                          visible=False,
+                          tooltip="Stop the download in progress"),
             ],
 
             # Advanced options (initially hidden)
@@ -370,6 +380,9 @@ class MainWindowPySG:
             'advanced_column': self.window['-ADVANCED_COLUMN-'],
             'advanced_tabs': self.window['-ADVANCED_TABS-'],
             'iso_dir': self.window['-ISO_DIR-'],
+            'progress_text': self.window['-PROGRESS_TEXT-'],
+            'progress_bar': self.window['-PROGRESS_BAR-'],
+            'cancel_download': self.window['-CANCEL_DOWNLOAD-'],
             'persistence_check': self.window['-PERSISTENCE_CHECK-'],
             'persistence_size': self.window['-PERSISTENCE_SIZE-'],
             'persistence_label': self.window['-PERSISTENCE_LABEL-'],
@@ -729,6 +742,33 @@ class MainWindowPySG:
             text=_("Close advanced option") if self.advanced_visible
             else _("Open advanced option"))
         # The window was sized without the tabs, so grow/shrink to fit them.
+        if self.window:
+            self.window.refresh()
+
+    def begin_progress(self, text: str = ""):
+        """Reveal the inline progress bar, status text and Cancel button."""
+        self.elements['progress_bar'].update(current_count=0, visible=True)
+        self.elements['progress_text'].update(value=text, visible=True)
+        self.elements['cancel_download'].update(visible=True)
+        if self.window:
+            self.window.refresh()
+
+    def set_progress(self, percent: Optional[int] = None,
+                     text: Optional[str] = None):
+        """Update the inline progress bar and/or its status text."""
+        if percent is not None:
+            self.elements['progress_bar'].update(
+                current_count=max(0, min(int(percent), 100)))
+        if text is not None:
+            self.elements['progress_text'].update(value=text)
+        if self.window:
+            self.window.refresh()
+
+    def end_progress(self):
+        """Hide the inline progress widgets again."""
+        self.elements['progress_bar'].update(current_count=0, visible=False)
+        self.elements['progress_text'].update(value="", visible=False)
+        self.elements['cancel_download'].update(visible=False)
         if self.window:
             self.window.refresh()
 
