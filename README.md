@@ -65,6 +65,32 @@ python_unetbootin/
 
 ## Installation
 
+### From a release (recommended)
+
+Prebuilt packages for every platform are attached to each
+[GitHub release](https://github.com/janos-szenfner/unetbootin-python/releases).
+Download the one for your system — no Python or extra toolkit required.
+
+| Platform | Asset | Install / run |
+|---|---|---|
+| Windows | `unetbootin.exe` | Double-click (prompts for UAC elevation) |
+| macOS | `unetbootin.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
+| macOS | `unetbootin.zip` | Extract, then right-click → Open |
+| Linux | `unetbootin.AppImage` | `chmod +x unetbootin.AppImage && ./unetbootin.AppImage` |
+| Linux (Debian/Ubuntu) | `unetbootin-<version>.deb` | `sudo apt install ./unetbootin-<version>.deb` |
+| Linux (Fedora/RHEL) | `unetbootin-<version>.rpm` | `sudo dnf install ./unetbootin-<version>.rpm` |
+| Linux (Flatpak) | `unetbootin.flatpak` | `flatpak install --user unetbootin.flatpak` |
+
+After installing the DEB/RPM/Flatpak the app appears in the GNOME and KDE
+application menus (under **Utilities**) with its icon, and launches with a
+normal double-click — no terminal needed.
+
+> The macOS build is **unsigned** (no Apple Developer certificate), so Gatekeeper
+> requires the right-click → Open step on first launch. See `README-macOS.md` in
+> the release for details.
+
+### From source
+
 ```bash
 # Clone or navigate to the project
 cd python_unetbootin
@@ -98,7 +124,20 @@ python -m unetbootin.main
 unetbootin
 ```
 
-> ⚠️ **Current limitation:** creating a USB writes to raw block devices, which needs elevated privileges. Until the double-click elevation model is implemented (see 🛑 Critical in *Next Steps*), the app must be launched with `sudo` (Linux/macOS) or as Administrator (Windows) — it does **not** yet meet the "just double-click the executable" goal.
+### Privileges
+
+The GUI runs as a **normal user** — just double-click it. Writing to a raw block
+device needs root, so only the privileged steps of an install elevate, on demand,
+using the mechanism the OS already provides:
+
+| Platform | Mechanism | Extra software needed |
+|---|---|---|
+| Linux | `pkexec` (PolicyKit), falling back to `sudo` with a graphical askpass | None — the DEB/RPM depend on `sudo` |
+| macOS | `osascript` with administrator privileges (Authorization Services) | None |
+| Windows | UAC (`ShellExecute` `runas`; the EXE also embeds a `uac_admin` manifest) | None |
+
+You are prompted for your password only when an install actually begins. On Linux
+`sudo` caches the credential, so a single install does not re-prompt for every step.
 
 ## Requirements
 
@@ -258,9 +297,44 @@ pip install -e .
 
 ### Build Standalone Executables
 
-> ⚠️ **Status: Partially working.** These commands are a starting point only. The GUI dependency is settled (PySimpleGUI 6.2, GPLv3). Packaging metadata is now correct (`setup.py` `package_data` matches the real asset paths), and a `sys._MEIPASS`-aware resource resolver (`unetbootin.resources`) finds bundled icons/bootloader binaries at runtime. See *Next Steps → 🔧 Build & Distribution* for remaining packaging tasks.
+> ✅ **Status: working and automated.** Every artifact is built in CI by
+> [`.github/workflows/release.yml`](.github/workflows/release.yml) and attached to
+> the GitHub release when a `v*` tag is pushed. The commands below are for
+> building locally.
 
-Using PyInstaller (illustrative):
+### Automated releases
+
+```bash
+# Cut a release: builds all artifacts and publishes them
+git tag -a v1.2.3 -m "v1.2.3"
+git push origin v1.2.3
+```
+
+The workflow builds Windows EXE, macOS `.app` (Universal 2, as ZIP **and** DMG),
+Linux AppImage, DEB, RPM and Flatpak, then publishes them as **raw, un-zipped
+release assets**. Running the workflow manually (`workflow_dispatch`) builds the
+artifacts without publishing a release — the release job is tag-only.
+
+Notes on the packaging setup, learned the hard way:
+
+- The `create-release` job needs `permissions: contents: write`, otherwise the
+  release API returns `403 Resource not accessible by integration`.
+- `fpm` must be invoked as `fpm -C package … usr`, not `fpm … package/` — the
+  latter installs everything under `/package/usr/...` and produces a package
+  whose binary, icon and metadata are all in the wrong place.
+- The DEB/RPM ship AppStream metadata (`com.unetbootin.UNetbootin.appdata.xml`)
+  and icons named after the app id, so software centres show the icon, name,
+  description and the GPL license once installed.
+- The AppImage build pins `ARCH=x86_64` and `OUTPUT`, since `appimagetool`
+  cannot infer either on its own here.
+- The Flatpak manifest resolves its source paths relative to its **own**
+  directory, builds against `org.freedesktop.{Platform,Sdk}//24.08`, needs
+  `--share=network` for pip, and must be exported with `--repo=` before
+  `flatpak build-bundle` can read it.
+
+### Building locally
+
+Using PyInstaller:
 ```bash
 # Install PyInstaller
 pip install pyinstaller
@@ -395,7 +469,19 @@ brew install xorriso
 ```
 
 **"Permission denied" on USB drive**
-- Writing to raw devices needs elevated privileges. Today the app relies on `sudo`/admin, so in practice it must currently be started from a terminal with `sudo` (Linux/macOS) or "Run as Administrator" (Windows). *This is a known limitation — a proper double-click elevation model (polkit / Authorization Services / UAC) is tracked under 🛑 Critical in Next Steps.*
+- Writing to raw devices needs elevated privileges. The app requests them on
+  demand when an install starts (pkexec/sudo on Linux, Authorization Services on
+  macOS, UAC on Windows) — you do **not** need to launch it from a terminal.
+- If no password prompt appears on Linux, the system has neither `pkexec` nor a
+  graphical askpass helper. Install polkit (`sudo apt install policykit-1`) or
+  start the app from a terminal once so `sudo` can prompt.
+
+**Nothing happens / no icon when opening a `.deb` in a software centre**
+- A `.deb` carries no icon or AppStream data in its file header, so the
+  *pre-install* preview of any local `.deb` shows a placeholder icon and
+  "Unknown License". After installing, the correct icon, description and GPL
+  license appear, and the app shows up under **Utilities**. The Flatpak bundle
+  is the format that can display this metadata before installing.
 
 **"Drive not found"**
 - Make sure the USB drive is inserted
@@ -498,10 +584,10 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] **Replace per-command `sudo` with a single elevation model** per OS (polkit/`pkexec` on Linux, Authorization Services on macOS, a UAC-elevated manifest on Windows). ✅ **Done.** Created `core/elevation.py` with:
   - `run_elevated()` - main entry point using platform-specific elevation (pkexec/osascript/ShellExecute)
   - `install_sudo_interceptor()` - monkey-patches `subprocess.run` to intercept `['sudo', ...]` calls and redirect through `run_elevated()`
-  - `ensure_elevated()` - checks elevation at startup and attempts to relaunch if needed
-  - Platform-specific implementations for Linux (pkexec), macOS (osascript with admin privileges), Windows (ShellExecute with runas)
+  - Platform-specific implementations for Linux (**pkexec, falling back to `sudo` with a graphical askpass** so no extra toolkit is required), macOS (osascript with admin privileges), Windows (ShellExecute with runas)
   - The sudo interceptor is installed in `main()` so existing code automatically uses the new system without modification.
-- [x] **Remove the terminal-dependent privilege flow.** ✅ **Done.** Replaced `show_root_warning()`, `show_admin_warning()`, and `relaunch_with_sudo()` in `app.py` with `check_privileges()` that uses the new `ensure_elevated()` function. No longer relies on Terminal.app or command-line sudo instructions.
+  - **The GUI itself is never relaunched as root.** An earlier version called `ensure_elevated()` at startup; on Linux that `pkexec` relaunch strips `DISPLAY`/`XAUTHORITY` and cannot reopen the window, so it failed with a spurious "Elevation required" dialog. Elevation now happens per privileged command, only once an install actually starts.
+- [x] **Remove the terminal-dependent privilege flow.** ✅ **Done.** Replaced `show_root_warning()`, `show_admin_warning()` and `relaunch_with_sudo()` in `app.py`. The startup privilege check was removed entirely: the app no longer blocks or warns on launch, and no longer relies on Terminal.app or command-line sudo instructions.
 - [x] **Actually use the bundled bootloader binaries** - ✅ **Done.** Added a frozen-app-aware resolver (`unetbootin/resources/__init__.py`: `resource_path()`/`bootloader_path()` with `sys._MEIPASS` support + `ensure_executable()`). The installer now writes the bundled `mbr.bin`, copies the bundled `menu.c32`/`vesamenu.c32`, and runs the bundled syslinux (`ubnsylnx64`/`ubnsylnx`, Windows `syslinux.exe`), falling back to system tools only if a bundled binary is missing. (Also fixed a latent `result.return_code` typo that would have crashed the Linux path.)
 - [x] **Harden device resolution** - ✅ **Done.** macOS `_format_device`/`_mount_device` now resolve the whole disk and data partition via `diskutil info -plist` / `diskutil list -plist` (`_macos_whole_disk`, `_macos_data_partition`) instead of substring-scanning `diskutil list` text and hardcoding `…s1`; Linux uses `lsblk -no pkname` (`_linux_parent_disk`) for the MBR target.
 - [x] **Populate distribution checksums** - ✅ **Done (dynamic).** Added a `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` and BSD `SHA256 (file) = <hex>` layouts). Wired for Ubuntu, Debian and Fedora — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
@@ -512,11 +598,12 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] **Fix packaging metadata first:** ✅ **Done.** `setup.py` `package_data` globs now match the real layout (`resources/bootloader/*`, `resources/icons/*`, `resources/logos/*`, `resources/translations/*.ts`), and `MANIFEST.in` was added to ensure resources are included in source distributions. Assets are now properly bundled in wheels, sdists and PyInstaller bundles.
 - [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `unetbootin/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
 - [x] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon. ✅ **Done.** Created `unetbootin.spec` with cross-platform support: uses `unetbootin.ico` for Windows, `unetbootin.icns` for macOS, and `unetbootin.xpm` for Linux. Includes all resources (icons, logos, bootloader, translations) in the bundle.
-- [ ] Create Windows `.exe` (no install) — PyInstaller `--onefile --windowed` **+ a UAC `uac_admin` manifest**; replace the interactive `format` command with scripted `diskpart`.
-- [ ] Create macOS `.app` → `.dmg` (drag-to-Applications) — **codesign + notarize** (Gatekeeper blocks unsigned apps); replace the Terminal-sudo flow with Authorization Services.
-- [ ] Create Linux packages: **AppImage** first (simplest single-file), then `.deb`/`.rpm` via `fpm`, then **Flatpak** last (sandbox makes raw block-device writes hard — needs `--device=all` + host tools); ship a `.desktop` file and declare runtime deps (syslinux, dosfstools).
-- [ ] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag.
+- [x] Create Windows `.exe` (no install) ✅ **Done.** PyInstaller onefile/windowed via `unetbootin-windows.spec`, with the UAC `uac_admin` manifest embedded by the spec (no fragile post-build `mt.exe` step). The app icon is a real multi-resolution `.ico` (16–256 px). *Scripted `diskpart` to replace the interactive `format` command is still open.*
+- [x] Create macOS `.app` → `.dmg` (drag-to-Applications) ✅ **Done.** Universal 2 bundle shipped as both a ZIP and a DMG; the DMG carries a volume icon and an Applications symlink. The Terminal-sudo flow is replaced by Authorization Services. *Still unsigned — codesign + notarize remain open.*
+- [x] Create Linux packages ✅ **Done.** AppImage, `.deb`/`.rpm` (via `fpm`, declaring `syslinux`, `dosfstools`, `mtools`, `sudo`) and Flatpak (`--device=all`, runtime 24.08). Each ships a `.desktop` file and AppStream metadata so the app appears in the GNOME/KDE menus.
+- [x] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag. ✅ **Done.** `.github/workflows/release.yml` builds all six artifacts and publishes a GitHub release on any `v*` tag.
 - [ ] Set up automatic updates.
+- [ ] Codesign + notarize the macOS build so Gatekeeper stops warning.
 - [x] Add `build/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.). Note: `unetbootin.spec` is tracked in the repo.
 
 ### 🏗️ Architecture Improvements
@@ -540,7 +627,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ⚠️ **Not working end-to-end** — depends on interactive `sudo`, needs system-installed syslinux, fragile device detection (see 🛑 Critical). *Drive-safety filtering + erase confirmation are now in place.* |
+| Installer | ⚠️ **Not verified end-to-end** — elevation no longer needs an interactive terminal (per-command pkexec/sudo/UAC), but writing a real bootable USB has not been validated on all platforms; still needs system-installed syslinux for some paths. *Drive-safety filtering + erase confirmation are in place.* |
 | Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
 | Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths implemented (including UEFI-only mode via system-installed `grub-install --target=x86_64-efi`, syslinux EFI modules, and Secure Boot via shim+mmx64.efi) but not verified end-to-end on all 3 platforms |
 | Core Utilities | ✅ Complete |
@@ -550,13 +637,14 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Full Distribution List | ✅ Complete (21 distros; checksums dynamically fetched) |
 | Translations | ✅ Implemented — `core/i18n.py` parses bundled Qt `.ts` catalogs (de/es/fr/it/hu) into gettext-style `_()`; wired in `main.load_translations()` |
 | Checksum Verification | ✅ Dynamic — downloads and verifies distro checksums from published checksum files (wired for Ubuntu, Debian, Fedora) |
-| Packaging | ⚠️ Partially complete — `setup.py` metadata and `package_data` are correct; frozen-app resolver works; PyInstaller `.spec` added (cross-platform, uses platform-appropriate icons). Remaining: platform-specific packaging, CI/CD |
-| Elevation / "no-terminal" launch | ✅ Implemented — `core/elevation.py` provides single elevation model with sudo interceptor; `main()` installs interceptor and attempts elevation at startup; `app.py` no longer uses terminal-dependent flows. Uses pkexec on Linux, osascript on macOS, and ShellExecute on Windows. Automatic relaunch with UAC requires a manifest for packaged Windows builds |
+| Packaging | ✅ Complete — CI builds Windows EXE, macOS ZIP + DMG, AppImage, DEB, RPM and Flatpak on every `v*` tag and publishes them as raw release assets. DEB/RPM/Flatpak ship `.desktop` + AppStream metadata and icons, so the app appears in the GNOME/KDE menus with its icon and GPL license. *macOS build is not yet codesigned/notarized.* |
+| Elevation / "no-terminal" launch | ✅ Implemented — `core/elevation.py` provides a single elevation model with a `sudo` interceptor. The GUI runs as a normal user and each privileged command elevates on demand: pkexec → `sudo` (graphical askpass) on Linux, osascript on macOS, UAC on Windows. No extra toolkit is required; the DEB/RPM depend on `sudo`. Double-click launch works on all three platforms |
 
 ---
 
 ## Links
 
+- [Releases (prebuilt packages)](https://github.com/janos-szenfner/unetbootin-python/releases)
 - [Original UNetbootin](https://unetbootin.sourceforge.net/)
 - [SourceForge Project](https://sourceforge.net/projects/unetbootin/)
 - [GitHub Mirror](https://github.com/unetbootin/unetbootin)
