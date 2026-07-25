@@ -455,6 +455,33 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # Full history and tags are needed to diff against the previous tag.
+          fetch-depth: 0
+
+      - name: Build changelog
+        id: changelog
+        run: |
+          CURRENT="${GITHUB_REF_NAME}"
+          # The tag reachable before this one, i.e. the previous release.
+          PREV="$(git describe --tags --abbrev=0 "${CURRENT}^" 2>/dev/null || true)"
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..${CURRENT}"
+            echo "Changelog range: $RANGE"
+          else
+            RANGE="${CURRENT}"
+            echo "No previous tag; listing all commits"
+          fi
+          {
+            echo 'notes<<CHANGELOG_EOF'
+            # Subject lines only: the commit bodies are too verbose for notes.
+            git log --no-merges --pretty=format:'* %s' "$RANGE" || true
+            echo
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+          if [ -n "$PREV" ]; then
+            echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v6
@@ -476,8 +503,12 @@ jobs:
           name: Release ${{ github.ref_name }}
           tag_name: ${{ github.ref }}
           body: |
+            ### What's Changed in ${{ github.ref_name }}
+
+            ${{ steps.changelog.outputs.notes }}
+
             ### Changes
-            
+
             - Windows: EXE with UAC manifest for admin elevation
             - macOS: .app bundle (Universal 2 - Apple Silicon + Intel), distributed as ZIP and DMG
             - Linux: AppImage, DEB, RPM, and Flatpak packages
