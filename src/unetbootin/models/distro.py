@@ -167,11 +167,17 @@ class DistributionManager:
                 'description': 'Ubuntu Linux distribution',
                 'category': 'Linux',
                 'homepage': 'https://ubuntu.com',
+                # LTS first so it stays the default selection; the interim
+                # (non-LTS) release follows it.
                 'versions': [
                     {'name': '24.04 LTS',
                      'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso',
                      'sha256_url': 'https://releases.ubuntu.com/24.04/SHA256SUMS',
                      'size': 4500000000},
+                    {'name': '25.10 (non-LTS)',
+                     'url': 'https://releases.ubuntu.com/25.10/ubuntu-25.10-desktop-amd64.iso',
+                     'sha256_url': 'https://releases.ubuntu.com/25.10/SHA256SUMS',
+                     'size': 5702520832},
                     {'name': '22.04 LTS',
                      'url': 'https://releases.ubuntu.com/22.04/ubuntu-22.04.5-desktop-amd64.iso',
                      'sha256_url': 'https://releases.ubuntu.com/22.04/SHA256SUMS',
@@ -250,30 +256,22 @@ class DistributionManager:
                 'icon': 'archlinux',
             },
             {
-                'name': 'suse_tumbleweed',
-                'display_name': 'SUSE Tumbleweed',
-                'description': 'openSUSE Tumbleweed - Rolling release distribution',
+                # Tumbleweed (rolling) and Leap (stable) are one distribution
+                # with two release streams, selectable like Ubuntu's versions.
+                'name': 'opensuse',
+                'display_name': 'openSUSE',
+                'description': 'openSUSE - Leap (stable) and Tumbleweed (rolling)',
                 'category': 'Linux',
-                'homepage': 'https://get.opensuse.org/tumbleweed',
+                'homepage': 'https://get.opensuse.org',
                 'versions': [
                     {
-    'name': 'Latest',
-    'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso',
-     'size': 4700000000},
-                ],
-                'icon': 'opensuse',
-            },
-            {
-                'name': 'suse_leap',
-                'display_name': 'SUSE Leap',
-                'description': 'openSUSE Leap - Stable release distribution',
-                'category': 'Linux',
-                'homepage': 'https://get.opensuse.org/leap',
-                'versions': [
-                    {
-    'name': '16.0',
+    'name': 'Leap 16.0 (Stable)',
     'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64.install.iso',
-     'size': 4200000000},
+     'size': 4538236928},
+                    {
+    'name': 'Tumbleweed (Rolling)',
+    'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso',
+     'size': 4469030912},
                 ],
                 'icon': 'opensuse',
             },
@@ -320,29 +318,24 @@ class DistributionManager:
                 'icon': 'slackware',
             },
             {
+                # ROME (rolling) and 6.0 (stable) are one distribution with two
+                # release streams, selectable like Ubuntu's versions.
+                # The old downloads.openmandriva.org host no longer resolves;
+                # these paths are on the project's live mirror.
                 'name': 'openmandriva',
                 'display_name': 'OpenMandriva',
-                'description': 'OpenMandriva Lx - Freedom in Diversity (Rolling Release)',
+                'description': 'OpenMandriva Lx - 6.0 (stable) and ROME (rolling)',
                 'category': 'Linux',
                 'homepage': 'https://www.openmandriva.org',
                 'versions': [
                     {
-    'name': 'Latest (ROME)',
-    'url': 'https://downloads.openmandriva.org/ROME/OpenMandrivaLx-ROME-Plasma5-x86_64.iso',
-     'size': 2800000000},
-                ],
-                'icon': 'openmandriva',
-            },
-            {
-                'name': 'openmandriva6',
-                'display_name': 'OpenMandriva 6.0',
-                'description': 'OpenMandriva Lx 6.0 - Stable Release',
-                'category': 'Linux',
-                'homepage': 'https://www.openmandriva.org',
-                'versions': [
-                    {'name': '6.0',
-    'url': 'https://downloads.openmandriva.org/6.0/OpenMandrivaLx-6.0-Plasma5-x86_64.iso',
-     'size': 2900000000},
+    'name': '6.0 (Stable, Plasma 6)',
+    'url': 'https://mirror.openmandriva.org/release_current/6.0/openmandriva-6.0-plasma6-x11.x86_64.iso',
+     'size': 3227226112},
+                    {
+    'name': 'ROME (Rolling, GNOME)',
+    'url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-rome-gnome3.x86_64.iso',
+     'size': 3401375744},
                 ],
                 'icon': 'openmandriva',
             },

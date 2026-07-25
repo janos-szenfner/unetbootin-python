@@ -235,10 +235,10 @@ class TestDistributionManager(unittest.TestCase):
         # List of distributions requested by user
         requested_distros = [
             'ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux',
-            'zorin', 'kali', 'slackware', 'openmandriva', 'openmandriva6', 'tinycore',
+            'zorin', 'kali', 'slackware', 'openmandriva', 'tinycore',
             'freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas',
             'windows11', 'windows10',
-            'suse_tumbleweed', 'suse_leap'
+            'opensuse'
         ]
 
         all_distros = self.manager.get_distributions()
@@ -262,7 +262,7 @@ class TestDistributionManager(unittest.TestCase):
         linux_names = [d['name'] for d in linux_distros]
         self.assertIn('ubuntu', linux_names)
         self.assertIn('zorin', linux_names)
-        self.assertIn('suse_tumbleweed', linux_names)
+        self.assertIn('opensuse', linux_names)
 
         bsd_distros = self.manager.get_distributions_by_category('BSD')
         bsd_names = [d['name'] for d in bsd_distros]
