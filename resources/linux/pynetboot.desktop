@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PyNetboot
+GenericName=Bootable USB Creator
+Comment=Create bootable USB drives from ISO files
+Exec=/usr/bin/pynetboot %F
+Icon=/usr/share/icons/hicolor/256x256/apps/pynetboot.png
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=pynetboot
+MimeType=application/x-iso;application/x-cd-image;
+Keywords=usb;boot;iso;install;live;

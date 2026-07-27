@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.pynetboot.PyNetboot</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>PyNetboot</name>
+  <summary>Create bootable USB drives from ISO files</summary>
+  <developer_name>Janos Szenfner</developer_name>
+  <description>
+    <p>PyNetboot is a cross-platform tool for creating bootable USB drives from ISO files.</p>
+    <p>It allows you to create bootable Live USB drives for a variety of Linux distributions,
+    as well as other operating systems and utilities.</p>
+    <p>Features:</p>
+    <ul>
+      <li>Download ISO files from various distributions automatically</li>
+      <li>Create bootable USB drives from existing ISO files</li>
+      <li>Supports Windows, macOS, and Linux</li>
+      <li>Persistent storage support for Live USB drives</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.pynetboot.PyNetboot.desktop</launchable>
+  <provides>
+    <binary>pynetboot</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>System</category>
+  </categories>
+  <icon type="stock">com.pynetboot.PyNetboot</icon>
+  <content_rating type="oars-1.1"/>
+  <update_contact>szenfner@outlook.com</update_contact>
+  <url type="homepage">https://github.com/janos-szenfner/unetbootin-python</url>
+</component>

@@ -21,8 +21,8 @@ except ImportError:
     HAS_CTK = False
 
 # Now we can import without errors
-from unetbootin.models.distro import DistributionManager
-from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
+from pynetboot.models.distro import DistributionManager
+from pynetboot.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
 
 
 class TestMainWindowInitialization(unittest.TestCase):
@@ -227,9 +227,9 @@ class TestAppIntegration(unittest.TestCase):
     def test_app_components(self):
         """Test that app components can be initialized."""
         # Test that we can create the components
-        from unetbootin.core.extractor import ISOExtractor
-        from unetbootin.core.downloader import Downloader
-        from unetbootin.core.installer import USBInstaller
+        from pynetboot.core.extractor import ISOExtractor
+        from pynetboot.core.downloader import Downloader
+        from pynetboot.core.installer import USBInstaller
 
         extractor = ISOExtractor()
         downloader = Downloader()
@@ -291,7 +291,7 @@ class TestDriveRefresh(unittest.TestCase):
         # 3. Update the UI
 
         # For now, we test that the platform module can be imported
-        from unetbootin.platform import get_drive_list
+        from pynetboot.platform import get_drive_list
         self.assertTrue(callable(get_drive_list))
 
     def test_drive_format_string(self):
@@ -325,7 +325,7 @@ class TestDriveRefresh(unittest.TestCase):
 
 # Note: Full UI tests with PySimpleGUI can be run directly
 # For testing with actual PySimpleGUI windows, use:
-#   from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
+#   from pynetboot.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
 #   window = MainWindowCTk()
 #   # Test UI interactions here
 
@@ -339,9 +339,9 @@ class TestUIComponents(unittest.TestCase):
         Only drives that `is_safe_target()` approves may appear in the UI list.
         """
         from unittest.mock import patch
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
 
         drives = [
             {'device': '/dev/sda', 'size': 100000000000, 'label': 'System', 'removable': False},
@@ -352,7 +352,7 @@ class TestUIComponents(unittest.TestCase):
         def fake_safe(device, allow_external_fixed=False):
             return device == '/dev/sdb'
 
-        with patch('unetbootin.app.is_safe_target', side_effect=fake_safe):
+        with patch('pynetboot.app.is_safe_target', side_effect=fake_safe):
             formatted = app.format_drive_list(drives)
 
         devices = [dev for _display, dev in formatted]
@@ -366,14 +366,14 @@ class TestUIComponents(unittest.TestCase):
     def test_format_drive_list_excludes_all_when_none_safe(self):
         """If no drive is a safe target, the list is empty (nothing selectable)."""
         from unittest.mock import patch
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
         drives = [
             {'device': '/dev/sda', 'size': 100000000000, 'removable': False},
             {'device': 'disk0', 'size': 500000000000, 'removable': False},
         ]
-        with patch('unetbootin.app.is_safe_target', return_value=False):
+        with patch('pynetboot.app.is_safe_target', return_value=False):
             formatted = app.format_drive_list(drives)
         self.assertEqual(formatted, [])
 
@@ -385,9 +385,9 @@ class TestUIComponents(unittest.TestCase):
         "Hard Disk" mode.
         """
         from unittest.mock import patch
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
         # An external HDD: not removable media, so only allowed when the filter
         # is widened for the "Hard Disk" target type.
         drives = [{'device': '/dev/sdc', 'size': 2000000000000, 'removable': False}]
@@ -395,7 +395,7 @@ class TestUIComponents(unittest.TestCase):
         def fake_safe(device, allow_external_fixed=False):
             return allow_external_fixed
 
-        with patch('unetbootin.app.is_safe_target', side_effect=fake_safe):
+        with patch('pynetboot.app.is_safe_target', side_effect=fake_safe):
             usb_mode = app.format_drive_list(drives, target_type="USB Drive")
             hdd_mode = app.format_drive_list(drives, target_type="Hard Disk")
 
@@ -405,11 +405,11 @@ class TestUIComponents(unittest.TestCase):
     def test_resolve_iso_download_dir_custom_folder_is_kept(self):
         """A chosen ISO folder is used and the ISO is NOT scheduled for deletion."""
         import tempfile
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
 
-        target = tempfile.mkdtemp(prefix='unetbootin_iso_')
+        target = tempfile.mkdtemp(prefix='pynetboot_iso_')
         directory, delete_after = app.resolve_iso_download_dir(target)
         self.assertEqual(directory, target)
         self.assertFalse(delete_after, "a chosen folder must keep the ISO")
@@ -423,10 +423,10 @@ class TestUIComponents(unittest.TestCase):
     def test_resolve_iso_download_dir_defaults_to_downloads_and_deletes(self):
         """With no folder chosen the Downloads folder is used and ISO deleted."""
         from unittest.mock import patch
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
-        with patch.object(UNetbootinAppPySG, 'get_downloads_dir',
+        app = PyNetbootApp.__new__(PyNetbootApp)
+        with patch.object(PyNetbootApp, 'get_downloads_dir',
                           return_value='/home/someone/Downloads'):
             directory, delete_after = app.resolve_iso_download_dir(None)
         self.assertEqual(directory, '/home/someone/Downloads')
@@ -435,28 +435,28 @@ class TestUIComponents(unittest.TestCase):
     def test_resolve_iso_download_dir_raises_when_no_downloads_folder(self):
         """No chosen folder and no Downloads folder -> tell the user to set one."""
         from unittest.mock import patch
-        from unetbootin.app import UNetbootinAppPySG, ISOLocationError
+        from pynetboot.app import PyNetbootApp, ISOLocationError
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
-        with patch.object(UNetbootinAppPySG, 'get_downloads_dir', return_value=None):
+        app = PyNetbootApp.__new__(PyNetbootApp)
+        with patch.object(PyNetbootApp, 'get_downloads_dir', return_value=None):
             with self.assertRaises(ISOLocationError) as ctx:
                 app.resolve_iso_download_dir(None)
         self.assertIn("ISO Location", str(ctx.exception))
 
     def test_resolve_iso_download_dir_raises_on_unwritable_choice(self):
         """An unwritable chosen folder is reported, not silently replaced."""
-        from unetbootin.app import UNetbootinAppPySG, ISOLocationError
+        from pynetboot.app import PyNetbootApp, ISOLocationError
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
         with self.assertRaises(ISOLocationError):
             app.resolve_iso_download_dir('/proc/definitely/not/writable')
 
     def test_discard_staged_iso_removes_only_staged_file(self):
         """The staged ISO is deleted once; a kept ISO is never touched."""
         import tempfile
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
 
         fd, staged = tempfile.mkstemp(suffix='.iso')
         os.close(fd)
@@ -476,15 +476,15 @@ class TestUIComponents(unittest.TestCase):
     def test_confirm_destructive_write_refuses_unsafe_device(self):
         """The pre-format confirmation must refuse a non-safe device outright."""
         from unittest.mock import patch, MagicMock
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
         app.show_error = MagicMock()
 
-        with patch('unetbootin.app.is_safe_target', return_value=False):
+        with patch('pynetboot.app.is_safe_target', return_value=False):
             # Even if the user would click "Yes", an unsafe device is rejected
             # before any prompt.
-            with patch('unetbootin.app.sg') as mock_sg:
+            with patch('pynetboot.app.sg') as mock_sg:
                 mock_sg.popup_yes_no.return_value = 'Yes'
                 result = app._confirm_destructive_write('/dev/sda')
 
@@ -493,7 +493,7 @@ class TestUIComponents(unittest.TestCase):
 
     def test_format_size_in_app(self):
         """Test format_size function used in app.py."""
-        from unetbootin.core.utils import format_size
+        from pynetboot.core.utils import format_size
 
         # Bytes are whole numbers; larger units use one decimal place
         # (consistent with test_core and test_integration).
@@ -512,10 +512,10 @@ class TestBackgroundWorker(unittest.TestCase):
     def _app_with_fake_window(self):
         """An app instance whose window records progress and replays events."""
         from unittest.mock import MagicMock
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
         import queue
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
 
         class FakeWindow:
             def __init__(self):
@@ -594,21 +594,21 @@ class TestWindowIdentity(unittest.TestCase):
     """The window must carry the real app icon and the full title."""
 
     def test_window_icon_path_resolves_to_a_real_file(self):
-        from unetbootin.ui.main_window_ctk import window_icon_path
+        from pynetboot.ui.main_window_ctk import window_icon_path
         path = window_icon_path()
         self.assertIsNotNone(path, "a bundled window icon must be found")
         self.assertTrue(os.path.exists(path))
         self.assertTrue(path.endswith('.png'))
         self.assertGreater(os.path.getsize(path), 0)
 
-    def test_app_title_includes_python(self):
-        from unetbootin import APP_TITLE, APP_NAME
-        self.assertEqual(APP_TITLE, f"{APP_NAME} - Python")
+    def test_app_title_is_the_app_name(self):
+        from pynetboot import APP_TITLE, APP_NAME
+        self.assertEqual(APP_TITLE, APP_NAME)
 
     def test_window_is_not_created_with_the_placeholder_icon(self):
         """Guard against regressing to the 1x1 transparent GIF placeholder."""
         import inspect
-        from unetbootin.ui import main_window_ctk
+        from pynetboot.ui import main_window_ctk
         src = inspect.getsource(main_window_ctk.MainWindowCTk.init_ui)
         self.assertNotIn("transparent_gif", src,
                          "the window must not use the blank placeholder icon")
@@ -620,9 +620,9 @@ class TestProgressThrottling(unittest.TestCase):
     def _app_with_recording_window(self, preload=()):
         import queue
         from unittest.mock import MagicMock
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
 
         class FakeWindow:
             def __init__(self):
@@ -690,7 +690,7 @@ class TestVendorOnlyDownloads(unittest.TestCase):
     """Images with no direct URL must guide the user, not fail."""
 
     def test_windows_versions_have_a_download_page_and_no_url(self):
-        from unetbootin.models.distro import DistributionManager
+        from pynetboot.models.distro import DistributionManager
         m = DistributionManager()
         for key in ('windows11', 'windows10'):
             distro = m.get_distribution(key)
@@ -705,13 +705,13 @@ class TestVendorOnlyDownloads(unittest.TestCase):
 
     def test_manual_download_is_detected_and_reported(self):
         from unittest.mock import patch, MagicMock
-        from unetbootin.app import UNetbootinAppPySG
-        from unetbootin.models.distro import DistributionManager
+        from pynetboot.app import PyNetbootApp
+        from pynetboot.models.distro import DistributionManager
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
         app.distro_manager = DistributionManager()
 
-        with patch('unetbootin.app.sg') as mock_sg:
+        with patch('pynetboot.app.sg') as mock_sg:
             mock_sg.popup_yes_no.return_value = 'No'
             handled = app._handle_manual_download(
                 'windows11', app.distro_manager.get_distribution(
@@ -724,10 +724,10 @@ class TestVendorOnlyDownloads(unittest.TestCase):
         self.assertIn("Disk image", shown)
 
     def test_normal_distro_is_not_treated_as_manual(self):
-        from unetbootin.app import UNetbootinAppPySG
-        from unetbootin.models.distro import DistributionManager
+        from pynetboot.app import PyNetbootApp
+        from pynetboot.models.distro import DistributionManager
 
-        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app = PyNetbootApp.__new__(PyNetbootApp)
         app.distro_manager = DistributionManager()
         self.assertFalse(
             app._handle_manual_download('ubuntu', '26.04 LTS'),
@@ -738,9 +738,9 @@ class TestCategoryIcons(unittest.TestCase):
     """Each main category must map to a bundled icon."""
 
     def test_icon_files_exist_for_every_category(self):
-        from unetbootin.resources import icon_path
-        from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
-        from unetbootin.models.distro import DistributionManager
+        from pynetboot.resources import icon_path
+        from pynetboot.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
+        from pynetboot.models.distro import DistributionManager
 
         mapping = MainWindowPySG._CATEGORY_ICONS
         categories = DistributionManager().get_categories()
@@ -755,7 +755,7 @@ class TestCategoryIcons(unittest.TestCase):
 
     def test_unknown_category_maps_to_no_icon(self):
         """'All' must not show a misleading icon."""
-        from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
+        from pynetboot.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
         mapping = MainWindowPySG._CATEGORY_ICONS
         self.assertIsNone(mapping.get('all'))
         self.assertIsNone(mapping.get(''))
@@ -766,8 +766,8 @@ class TestDistroOrdering(unittest.TestCase):
 
     def _sorted_names(self, category=None):
         from unittest.mock import MagicMock
-        from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
-        from unetbootin.models.distro import DistributionManager
+        from pynetboot.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
+        from pynetboot.models.distro import DistributionManager
 
         ui = MainWindowPySG.__new__(MainWindowPySG)
         ui.distributions = {
@@ -817,9 +817,9 @@ class TestCancelAndWindowIdentity(unittest.TestCase):
     def test_cancel_does_not_stop_the_application(self):
         """Only Exit closes the app; Cancel with nothing running is a no-op."""
         import inspect
-        from unetbootin.app import UNetbootinAppPySG
+        from pynetboot.app import PyNetbootApp
 
-        src = inspect.getsource(UNetbootinAppPySG.run)
+        src = inspect.getsource(PyNetbootApp.run)
         # Isolate the -CANCEL- branch (not -CANCEL_DOWNLOAD-).
         idx = src.index("event == '-CANCEL-'")
         branch = src[idx:idx + 400].split("elif event ==")[0]
@@ -829,8 +829,8 @@ class TestCancelAndWindowIdentity(unittest.TestCase):
 
     def test_exit_still_stops_the_application(self):
         import inspect
-        from unetbootin.app import UNetbootinAppPySG
-        src = inspect.getsource(UNetbootinAppPySG.run)
+        from pynetboot.app import PyNetbootApp
+        src = inspect.getsource(PyNetbootApp.run)
         self.assertIn("'-EXIT-'", src)
         self.assertIn("self.running = False", src,
                       "Exit must still be able to stop the loop")
@@ -838,7 +838,7 @@ class TestCancelAndWindowIdentity(unittest.TestCase):
     def test_wm_class_matches_the_desktop_entries(self):
         """The task bar matches a window to its launcher via WM_CLASS."""
         import re, glob
-        from unetbootin.ui.main_window_ctk import WM_CLASS
+        from pynetboot.ui.main_window_ctk import WM_CLASS
 
         entries = glob.glob(os.path.join(
             os.path.dirname(__file__), '..', 'resources', 'linux', '*.desktop'))
@@ -854,7 +854,7 @@ class TestCancelAndWindowIdentity(unittest.TestCase):
     def test_window_icon_reference_is_retained(self):
         """Tk holds only a weak reference; an inline image would be collected."""
         import inspect
-        from unetbootin.ui.main_window_ctk import MainWindowCTk
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
         src = inspect.getsource(MainWindowCTk._apply_window_icon)
         self.assertIn("self._window_icon", src,
                       "the PhotoImage must be stored, or the icon disappears")
@@ -864,7 +864,7 @@ class TestDialogIcons(unittest.TestCase):
     """Dialogs must carry the right status mark."""
 
     def test_dialog_icon_files_exist(self):
-        from unetbootin.resources import icon_path
+        from pynetboot.resources import icon_path
         for name in ('dlg_success.png', 'dlg_error.png', 'dlg_warning.png'):
             path = icon_path(name)
             self.assertTrue(os.path.exists(path), f"missing {name}")
@@ -872,14 +872,14 @@ class TestDialogIcons(unittest.TestCase):
 
     def test_each_dialog_kind_uses_its_own_icon(self):
         import inspect
-        from unetbootin.ui import main_window_ctk as ui
+        from pynetboot.ui import main_window_ctk as ui
         self.assertIn("dlg_success.png", inspect.getsource(ui.popup_ok))
         self.assertIn("dlg_error.png", inspect.getsource(ui.popup_error))
         self.assertIn("dlg_warning.png", inspect.getsource(ui.popup_yes_no))
 
     def test_version_is_current(self):
         """About shows __version__, so it must not drift behind the tags."""
-        from unetbootin import __version__, APP_VERSION
+        from pynetboot import __version__, APP_VERSION
         self.assertEqual(APP_VERSION, __version__)
         parts = __version__.split('.')
         self.assertEqual(len(parts), 3, "expected a three-part version")
@@ -892,7 +892,7 @@ class TestFontFallback(unittest.TestCase):
     """The UI must not depend on a font it has to install at runtime."""
 
     def test_candidates_include_fonts_common_on_linux(self):
-        from unetbootin.ui.main_window_ctk import FONT_CANDIDATES
+        from pynetboot.ui.main_window_ctk import FONT_CANDIDATES
         # Roboto is CustomTkinter's default but is not installable inside a
         # Flatpak sandbox, so widely-shipped fallbacks must follow it.
         for family in ("DejaVu Sans", "Noto Sans", "Liberation Sans"):
@@ -902,7 +902,7 @@ class TestFontFallback(unittest.TestCase):
 
     def test_resolution_is_safe_without_a_tk_root(self):
         """Called with no interpreter available it must return None, not raise."""
-        from unetbootin.ui.main_window_ctk import resolve_font_family
+        from pynetboot.ui.main_window_ctk import resolve_font_family
         from unittest.mock import patch
         with patch('tkinter.font.families', side_effect=RuntimeError('no root')):
             self.assertIsNone(resolve_font_family())
@@ -911,7 +911,7 @@ class TestFontFallback(unittest.TestCase):
         """The sandbox must be able to read fonts, or Tk renders a bitmap font."""
         import json
         path = os.path.join(os.path.dirname(__file__), '..', 'resources',
-                            'linux', 'com.unetbootin.UNetbootin.json')
+                            'linux', 'com.pynetboot.PyNetboot.json')
         manifest = json.load(open(path))
         args = ' '.join(manifest['finish-args'])
         self.assertIn('/usr/share/fonts', args)
@@ -919,7 +919,7 @@ class TestFontFallback(unittest.TestCase):
         # And a font is shipped inside the bundle as a last resort. Find the
         # module by name: dependency modules precede the application one.
         app_module = next(m for m in manifest['modules']
-                          if m['name'] == 'unetbootin')
+                          if m['name'] == 'pynetboot')
         commands = ' '.join(app_module['build-commands'])
         self.assertIn('/app/share/fonts', commands)
 
@@ -928,7 +928,7 @@ class TestLogWindow(unittest.TestCase):
     """The Log button must expose the captured log."""
 
     def setUp(self):
-        from unetbootin.core import log_buffer
+        from pynetboot.core import log_buffer
         log_buffer.install()
         buf = log_buffer.get_buffer()
         if buf is not None:
@@ -936,25 +936,25 @@ class TestLogWindow(unittest.TestCase):
 
     def test_buffer_captures_records(self):
         import logging
-        from unetbootin.core import log_buffer
+        from pynetboot.core import log_buffer
 
         log_buffer.install()
-        logging.getLogger('unetbootin.test').warning('a distinctive message')
+        logging.getLogger('pynetboot.test').warning('a distinctive message')
         self.assertIn('a distinctive message', log_buffer.get_text())
 
     def test_buffer_is_bounded(self):
         import logging
-        from unetbootin.core import log_buffer
+        from pynetboot.core import log_buffer
 
         buf = log_buffer.install(capacity=50)
         # install() is idempotent, so use whatever capacity is in force.
         cap = buf._records.maxlen
         for i in range(cap + 120):
-            logging.getLogger('unetbootin.test').info(f'line {i}')
+            logging.getLogger('pynetboot.test').info(f'line {i}')
         self.assertLessEqual(len(buf), cap, "the buffer must not grow forever")
 
     def test_text_is_useful_before_any_logging(self):
-        from unetbootin.core import log_buffer
+        from pynetboot.core import log_buffer
         buf = log_buffer.get_buffer()
         buf.clear()
         self.assertTrue(log_buffer.get_text().strip(),
@@ -962,12 +962,12 @@ class TestLogWindow(unittest.TestCase):
 
     def test_log_button_is_wired_to_the_window(self):
         import inspect
-        from unetbootin.app import UNetbootinAppPySG
-        from unetbootin.ui.main_window_ctk import MainWindowCTk
+        from pynetboot.app import PyNetbootApp
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
 
         import ast, textwrap
 
-        self.assertIn("'-LOG-'", inspect.getsource(UNetbootinAppPySG.run))
+        self.assertIn("'-LOG-'", inspect.getsource(PyNetbootApp.run))
         self.assertTrue(hasattr(MainWindowCTk, 'show_log'))
 
         # An ordinary window: minimisable and maximisable, so it must not be
@@ -982,7 +982,7 @@ class TestLogWindow(unittest.TestCase):
                          "a transient window cannot be minimised separately")
 
     def test_log_icons_exist(self):
-        from unetbootin.resources import icon_path
+        from pynetboot.resources import icon_path
         for name in ('ui_log.png', 'ui_copy.png'):
             self.assertTrue(os.path.exists(icon_path(name)), f"missing {name}")
 
@@ -994,7 +994,7 @@ class TestFlatpakTooling(unittest.TestCase):
         import json
         return json.load(open(os.path.join(
             os.path.dirname(__file__), '..', 'resources', 'linux',
-            'com.unetbootin.UNetbootin.json')))
+            'com.pynetboot.PyNetboot.json')))
 
     def test_formatting_tools_are_built_into_the_flatpak(self):
         """A Flatpak inherits no host utilities, so mkfs.vfat must be shipped."""
@@ -1014,5 +1014,5 @@ class TestFlatpakTooling(unittest.TestCase):
 
     def test_dependencies_are_built_before_the_application(self):
         names = [m['name'] for m in self._manifest()['modules']]
-        self.assertLess(names.index('dosfstools'), names.index('unetbootin'))
-        self.assertLess(names.index('mtools'), names.index('unetbootin'))
+        self.assertLess(names.index('dosfstools'), names.index('pynetboot'))
+        self.assertLess(names.index('mtools'), names.index('pynetboot'))

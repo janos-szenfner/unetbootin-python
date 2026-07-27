@@ -15,17 +15,17 @@ class TestResourceResolver(unittest.TestCase):
     """The bundled resource resolver + bootloader lookup."""
 
     def test_resource_path_finds_bundled_mbr(self):
-        from unetbootin.resources import bootloader_path
+        from pynetboot.resources import bootloader_path
         self.assertTrue(bootloader_path('mbr.bin').exists())
 
     def test_find_bundled_syslinux(self):
-        from unetbootin.resources import find_bundled_syslinux
+        from pynetboot.resources import find_bundled_syslinux
         p = find_bundled_syslinux()
         self.assertIsNotNone(p)
         self.assertIn('ubnsylnx', p.name)
 
     def test_ensure_executable_missing_file(self):
-        from unetbootin.resources import ensure_executable
+        from pynetboot.resources import ensure_executable
         self.assertFalse(ensure_executable('/no/such/binary'))
 
 
@@ -33,7 +33,7 @@ class TestChecksumFetch(unittest.TestCase):
     """Dynamic SHA256 fetching from published checksum files."""
 
     def setUp(self):
-        from unetbootin.core.downloader import Downloader
+        from pynetboot.core.downloader import Downloader
         self.downloader = Downloader()
 
     def _fetch(self, text, iso):
@@ -75,27 +75,27 @@ class TestI18n(unittest.TestCase):
     """The translation layer that parses the bundled .ts catalogs."""
 
     def tearDown(self):
-        from unetbootin.core import i18n
+        from pynetboot.core import i18n
         i18n.set_language('en')  # reset global state
 
     def test_known_language_translates(self):
-        from unetbootin.core import i18n
+        from pynetboot.core import i18n
         self.assertEqual(i18n.set_language('de'), 'de')
         self.assertEqual(i18n._('USB Drive'), 'USB-Laufwerk')
         self.assertEqual(i18n._('Hard Disk'), 'Festplatte')
 
     def test_locale_is_normalized(self):
-        from unetbootin.core import i18n
+        from pynetboot.core import i18n
         self.assertEqual(i18n.set_language('fr_FR.UTF-8'), 'fr')
         self.assertEqual(i18n._('USB Drive'), 'Lecteur USB')
 
     def test_unknown_language_falls_back_to_english(self):
-        from unetbootin.core import i18n
+        from pynetboot.core import i18n
         self.assertEqual(i18n.set_language('xx'), 'en')
         self.assertEqual(i18n._('USB Drive'), 'USB Drive')  # source verbatim
 
     def test_unknown_string_returns_source(self):
-        from unetbootin.core import i18n
+        from pynetboot.core import i18n
         i18n.set_language('de')
         self.assertEqual(i18n._('a string with no translation'),
                          'a string with no translation')
@@ -105,7 +105,7 @@ class TestDeviceResolution(unittest.TestCase):
     """Hardened device resolution helpers on the installer."""
 
     def setUp(self):
-        from unetbootin.core.installer import USBInstaller
+        from pynetboot.core.installer import USBInstaller
         self.installer = USBInstaller.__new__(USBInstaller)
 
     def test_linux_parent_disk_uses_pkname(self):

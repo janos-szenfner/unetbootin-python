@@ -1,5 +1,5 @@
 """
-Integration tests for UNetbootin.
+Integration tests for PyNetboot.
 
 These tests verify the interaction between different components:
 - Downloader + Extractor
@@ -18,11 +18,11 @@ from unittest.mock import patch, MagicMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from unetbootin.models.distro import DistributionManager, Distribution, DistributionVersion
-from unetbootin.core.downloader import Downloader
-from unetbootin.core.extractor import ISOExtractor
-from unetbootin.core.installer import USBInstaller
-from unetbootin.core.utils import format_size, check_root, check_admin
+from pynetboot.models.distro import DistributionManager, Distribution, DistributionVersion
+from pynetboot.core.downloader import Downloader
+from pynetboot.core.extractor import ISOExtractor
+from pynetboot.core.installer import USBInstaller
+from pynetboot.core.utils import format_size, check_root, check_admin
 
 
 class TestDownloadExtractIntegration(unittest.TestCase):

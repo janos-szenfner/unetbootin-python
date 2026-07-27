@@ -13,9 +13,9 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from unetbootin.core.downloader import Downloader, AsyncDownloader
-from unetbootin.core.extractor import ISOExtractor, AsyncISOExtractor
-from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
+from pynetboot.core.downloader import Downloader, AsyncDownloader
+from pynetboot.core.extractor import ISOExtractor, AsyncISOExtractor
+from pynetboot.core.installer import USBInstaller, AsyncUSBInstaller
 
 
 class TestDownloader(unittest.TestCase):
@@ -33,12 +33,12 @@ class TestDownloader(unittest.TestCase):
 
     def test_downloader_initialization(self):
         """Test downloader initialization."""
-        from unetbootin import APP_VERSION
+        from pynetboot import APP_VERSION
         self.assertIsNotNone(self.downloader.session)
         # Derive the expected UA from the current version so a version bump
         # doesn't break this test.
         self.assertEqual(self.downloader.session.headers['User-Agent'],
-                         f'UNetbootin/{APP_VERSION}')
+                         f'PyNetboot/{APP_VERSION}')
 
     def test_get_version(self):
         """Test version retrieval."""
@@ -336,7 +336,7 @@ class TestInstaller(unittest.TestCase):
 
     def test_format_size(self):
         """Test size formatting from utils (used by installer)."""
-        from unetbootin.core.utils import format_size
+        from pynetboot.core.utils import format_size
         self.assertEqual(format_size(0), '0 B')
         self.assertEqual(format_size(1024), '1.0 KB')
         self.assertEqual(format_size(1024 * 1024), '1.0 MB')
@@ -398,7 +398,7 @@ class TestArchiveExtractionSafety(unittest.TestCase):
 
     def test_traversal_and_absolute_members_are_rejected(self):
         import tempfile
-        from unetbootin.core.extractor import safe_archive_names
+        from pynetboot.core.extractor import safe_archive_names
 
         dest = tempfile.mkdtemp()
         names = ['boot/grub.cfg', '../../etc/passwd', '/etc/shadow',
@@ -413,7 +413,7 @@ class TestArchiveExtractionSafety(unittest.TestCase):
     def test_no_unguarded_extractall_remains(self):
         """Every extractall must restrict members, as the tar path does."""
         import ast, inspect
-        from unetbootin.core import extractor
+        from pynetboot.core import extractor
 
         tree = ast.parse(inspect.getsource(extractor))
         unguarded = []

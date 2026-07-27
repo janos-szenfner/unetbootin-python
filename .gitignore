@@ -1,7 +1,7 @@
 # macOS metadata
 .DS_Store
-src/unetbootin/.DS_Store
-src/unetbootin/resources/.DS_Store
+src/pynetboot/.DS_Store
+src/pynetboot/resources/.DS_Store
 
 # Python
 __pycache__/

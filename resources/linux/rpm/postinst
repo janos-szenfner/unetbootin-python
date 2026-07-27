@@ -1,5 +1,5 @@
 #!/bin/bash
-# Post-installation script for UNetbootin RPM package
+# Post-installation script for PyNetboot RPM package
 
 # Update desktop database
 if [ -x "$(command -v update-desktop-database)" ]; then

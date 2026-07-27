@@ -1,5 +1,5 @@
 """
-Tests for UNetbootin models.
+Tests for PyNetboot models.
 """
 
 import unittest
@@ -9,8 +9,8 @@ import sys
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from unetbootin.models.distro import Distribution, DistributionVersion, DistributionManager
-from unetbootin.models.config import ConfigManager, AppConfig
+from pynetboot.models.distro import Distribution, DistributionVersion, DistributionManager
+from pynetboot.models.config import ConfigManager, AppConfig
 
 
 class TestDistribution(unittest.TestCase):

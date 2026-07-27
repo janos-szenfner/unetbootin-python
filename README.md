@@ -1,4 +1,4 @@
-# UNetbootin - Python Rewrite
+# PyNetboot - Python Rewrite
 
 A Python rewrite of UNetbootin, the cross-platform tool for creating bootable USB drives from ISO files.
 
@@ -16,15 +16,15 @@ accept no liability for any data loss or damage arising from its use.
 ## Project Structure
 
 ```
-python_unetbootin/
+pynetboot/
 ├── README.md                          # Project documentation
 ├── requirements.txt                   # Python dependencies
 ├── setup.py                           # Setup script for installation
 │
 ├── src/
-│   └── unetbootin/
+│   └── pynetboot/
 │       ├── __init__.py               # Package init with version info
-│       ├── __main__.py               # Allow python -m unetbootin
+│       ├── __main__.py               # Allow python -m pynetboot
 │       ├── main.py                   # Main entry point (CustomTkinter)
 │       ├── app.py                    # Main application class
 │       │
@@ -73,13 +73,13 @@ Download the one for your system — no Python or extra toolkit required.
 
 | Platform | Asset | Install / run |
 |---|---|---|
-| Windows | `unetbootin-python.exe` | Double-click (prompts for UAC elevation) |
-| macOS | `unetbootin-python.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
-| macOS | `unetbootin-python.zip` | Extract, then right-click → Open |
-| Linux | `unetbootin-python.AppImage` | `chmod +x unetbootin-python.AppImage && ./unetbootin-python.AppImage` |
-| Linux (Debian/Ubuntu) | `unetbootin-python-<version>.deb` | `sudo apt install ./unetbootin-python-<version>.deb` |
-| Linux (Fedora/RHEL) | `unetbootin-python-<version>.rpm` | `sudo dnf install ./unetbootin-python-<version>.rpm` |
-| Linux (Flatpak) | `unetbootin-python.flatpak` | `flatpak install --user unetbootin-python.flatpak` |
+| Windows | `pynetboot.exe` | Double-click (prompts for UAC elevation) |
+| macOS | `pynetboot.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
+| macOS | `pynetboot.zip` | Extract, then right-click → Open |
+| Linux | `pynetboot.AppImage` | `chmod +x pynetboot.AppImage && ./pynetboot.AppImage` |
+| Linux (Debian/Ubuntu) | `pynetboot-<version>.deb` | `sudo apt install ./pynetboot-<version>.deb` |
+| Linux (Fedora/RHEL) | `pynetboot-<version>.rpm` | `sudo dnf install ./pynetboot-<version>.rpm` |
+| Linux (Flatpak) | `pynetboot.flatpak` | `flatpak install --user pynetboot.flatpak` |
 
 After installing the DEB/RPM/Flatpak the app appears in the GNOME and KDE
 application menus (under **Utilities**) with its icon, and launches with a
@@ -93,7 +93,7 @@ normal double-click — no terminal needed.
 
 ```bash
 # Clone or navigate to the project
-cd python_unetbootin
+cd pynetboot
 
 # Create virtual environment
 python -m venv venv
@@ -115,13 +115,13 @@ pip install -e .
 
 ```bash
 # Development mode
-python -m src.unetbootin.main
+python -m src.pynetboot.main
 
 # After installation
-python -m unetbootin.main
+python -m pynetboot.main
 
 # Or using the entry point (after pip install -e .)
-unetbootin
+pynetboot
 ```
 
 ### Privileges
@@ -260,8 +260,8 @@ You are prompted for your password only when an install actually begins. On Linu
 - JSON-based configuration storage
 - Cross-platform config directory handling:
   - Windows: `%APPDATA%\UNetbootin` or `%USERPROFILE%\.unetbootin`
-  - macOS: `~/Library/Application Support/UNetbootin`
-  - Linux: `~/.config/unetbootin` or `$XDG_CONFIG_HOME/unetbootin`
+  - macOS: `~/Library/Application Support/PyNetboot`
+  - Linux: `~/.config/pynetboot` or `$XDG_CONFIG_HOME/pynetboot`
 - User preferences persistence (language, last paths, etc.)
 
 ### Utility Functions
@@ -286,7 +286,7 @@ python -m pytest tests/test_models.py
 python -m pytest -v tests/
 
 # Run with coverage
-python -m pytest --cov=src/unetbootin tests/
+python -m pytest --cov=src/pynetboot tests/
 ```
 
 ## Build & Distribution
@@ -323,7 +323,7 @@ Notes on the packaging setup, learned the hard way:
 - `fpm` must be invoked as `fpm -C package … usr`, not `fpm … package/` — the
   latter installs everything under `/package/usr/...` and produces a package
   whose binary, icon and metadata are all in the wrong place.
-- The DEB/RPM ship AppStream metadata (`com.unetbootin.UNetbootin.appdata.xml`)
+- The DEB/RPM ship AppStream metadata (`com.pynetboot.PyNetboot.appdata.xml`)
   and icons named after the app id, so software centres show the icon, name,
   description and the GPL license once installed.
 - The AppImage build pins `ARCH=x86_64` and `OUTPUT`, since `appimagetool`
@@ -341,24 +341,24 @@ Using PyInstaller:
 pip install pyinstaller
 
 # Build using the spec file (recommended - includes all resources)
-pyinstaller unetbootin.spec
+pyinstaller pynetboot.spec
 
 # Or build directly with command line (icon lives under resources/icons/)
-pyinstaller --onefile --windowed --name unetbootin \
-    --icon=src/unetbootin/resources/icons/unetbootin.ico \
-    src/unetbootin/main.py
+pyinstaller --onefile --windowed --name pynetboot \
+    --icon=src/pynetboot/resources/icons/unetbootin.ico \
+    src/pynetboot/main.py
 
 # Build for macOS (app bundle)
-pyinstaller --windowed --name UNetbootin \
-    --icon=src/unetbootin/resources/icons/unetbootin.icns \
-    src/unetbootin/main.py
+pyinstaller --windowed --name PyNetboot \
+    --icon=src/pynetboot/resources/icons/unetbootin.icns \
+    src/pynetboot/main.py
 ```
 
-> Note: `python setup.py build` does **not** produce an executable — there is no cx_Freeze configuration in `setup.py`. Use PyInstaller (above) plus the per-OS packaging steps in *Next Steps*. The `unetbootin.spec` file bundles all required resources (icons, logos, bootloader, translations) automatically.
+> Note: `python setup.py build` does **not** produce an executable — there is no cx_Freeze configuration in `setup.py`. Use PyInstaller (above) plus the per-OS packaging steps in *Next Steps*. The `pynetboot.spec` file bundles all required resources (icons, logos, bootloader, translations) automatically.
 
 ## Adding New Distributions
 
-Edit `src/unetbootin/models/distro.py`:
+Edit `src/pynetboot/models/distro.py`:
 
 ```python
 builtin_distros = [
@@ -436,12 +436,12 @@ The application uses a JSON configuration file to store user preferences:
 
 ## Logging
 
-The application logs to both console and file (`unetbootin.log`):
+The application logs to both console and file (`pynetboot.log`):
 
 ```
-2026-07-23 10:00:00 - unetbootin.app - INFO - Initializing UNetbootinApp
-2026-07-23 10:00:01 - unetbootin.core.downloader - INFO - Downloading https://.../ubuntu.iso to /tmp/...
-2026-07-23 10:05:01 - unetbootin.core.downloader - INFO - Downloaded 2500000000 bytes
+2026-07-23 10:00:00 - pynetboot.app - INFO - Initializing PyNetbootApp
+2026-07-23 10:00:01 - pynetboot.core.downloader - INFO - Downloading https://.../ubuntu.iso to /tmp/...
+2026-07-23 10:05:01 - pynetboot.core.downloader - INFO - Downloaded 2500000000 bytes
 ```
 
 ## Command Line Arguments
@@ -450,16 +450,16 @@ The application supports command line arguments for automation:
 
 ```bash
 # Specify language
-python -m unetbootin.main --lang=en_US
+python -m pynetboot.main --lang=en_US
 
 # Skip root check (Linux)
-python -m unetbootin.main --rootcheck=no
+python -m pynetboot.main --rootcheck=no
 
 # Automate installation
-python -m unetbootin.main --automate
+python -m pynetboot.main --automate
 ```
 
-See `src/unetbootin/core/utils.py:parse_command_line_args()` for full list.
+See `src/pynetboot/core/utils.py:parse_command_line_args()` for full list.
 
 ## Troubleshooting
 
@@ -603,7 +603,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
   - The sudo interceptor is installed in `main()` so existing code automatically uses the new system without modification.
   - **The GUI itself is never relaunched as root.** An earlier version called `ensure_elevated()` at startup; on Linux that `pkexec` relaunch strips `DISPLAY`/`XAUTHORITY` and cannot reopen the window, so it failed with a spurious "Elevation required" dialog. Elevation now happens per privileged command, only once an install actually starts.
 - [x] **Remove the terminal-dependent privilege flow.** ✅ **Done.** Replaced `show_root_warning()`, `show_admin_warning()` and `relaunch_with_sudo()` in `app.py`. The startup privilege check was removed entirely: the app no longer blocks or warns on launch, and no longer relies on Terminal.app or command-line sudo instructions.
-- [x] **Actually use the bundled bootloader binaries** - ✅ **Done.** Added a frozen-app-aware resolver (`unetbootin/resources/__init__.py`: `resource_path()`/`bootloader_path()` with `sys._MEIPASS` support + `ensure_executable()`). The installer now writes the bundled `mbr.bin`, copies the bundled `menu.c32`/`vesamenu.c32`, and runs the bundled syslinux (`ubnsylnx64`/`ubnsylnx`, Windows `syslinux.exe`), falling back to system tools only if a bundled binary is missing. (Also fixed a latent `result.return_code` typo that would have crashed the Linux path.)
+- [x] **Actually use the bundled bootloader binaries** - ✅ **Done.** Added a frozen-app-aware resolver (`pynetboot/resources/__init__.py`: `resource_path()`/`bootloader_path()` with `sys._MEIPASS` support + `ensure_executable()`). The installer now writes the bundled `mbr.bin`, copies the bundled `menu.c32`/`vesamenu.c32`, and runs the bundled syslinux (`ubnsylnx64`/`ubnsylnx`, Windows `syslinux.exe`), falling back to system tools only if a bundled binary is missing. (Also fixed a latent `result.return_code` typo that would have crashed the Linux path.)
 - [x] **Harden device resolution** - ✅ **Done.** macOS `_format_device`/`_mount_device` now resolve the whole disk and data partition via `diskutil info -plist` / `diskutil list -plist` (`_macos_whole_disk`, `_macos_data_partition`) instead of substring-scanning `diskutil list` text and hardcoding `…s1`; Linux uses `lsblk -no pkname` (`_linux_parent_disk`) for the MBR target.
 - [x] **Populate distribution checksums** - ✅ **Done (dynamic).** Added a `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` and BSD `SHA256 (file) = <hex>` layouts). Wired for Ubuntu, Debian and Fedora — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
 - [x] **Wire real translations** - ✅ **Done.** Added `core/i18n.py`, which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` now activates the catalog from the CLI `--lang` / system locale, and the UI wraps its user-facing labels/buttons in `_()`. (Semantic combo *values* like "USB Drive" are deliberately left untranslated so installer logic still matches.)
@@ -611,15 +611,15 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 🔧 Build & Distribution
 > **GUI dependency:** ✅ **CustomTkinter** — modern, HiDPI-aware widgets on Tkinter, MIT licensed and free to bundle. Replaced PySimpleGUI, whose licence terms changed across major versions.
 - [x] **Fix packaging metadata first:** ✅ **Done.** `setup.py` `package_data` globs now match the real layout (`resources/bootloader/*`, `resources/icons/*`, `resources/logos/*`, `resources/translations/*.ts`), and `MANIFEST.in` was added to ensure resources are included in source distributions. Assets are now properly bundled in wheels, sdists and PyInstaller bundles.
-- [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `unetbootin/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
-- [x] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon. ✅ **Done.** Created `unetbootin.spec` with cross-platform support: uses `unetbootin.ico` for Windows, `unetbootin.icns` for macOS, and `unetbootin.xpm` for Linux. Includes all resources (icons, logos, bootloader, translations) in the bundle.
-- [x] Create Windows `.exe` (no install) ✅ **Done.** PyInstaller onefile/windowed via `unetbootin-windows.spec`, with the UAC `uac_admin` manifest embedded by the spec (no fragile post-build `mt.exe` step). The app icon is a real multi-resolution `.ico` (16–256 px). *Scripted `diskpart` to replace the interactive `format` command is still open.*
+- [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `pynetboot/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
+- [x] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon. ✅ **Done.** Created `pynetboot.spec` with cross-platform support: uses `unetbootin.ico` for Windows, `unetbootin.icns` for macOS, and `unetbootin.xpm` for Linux. Includes all resources (icons, logos, bootloader, translations) in the bundle.
+- [x] Create Windows `.exe` (no install) ✅ **Done.** PyInstaller onefile/windowed via `pynetboot-windows.spec`, with the UAC `uac_admin` manifest embedded by the spec (no fragile post-build `mt.exe` step). The app icon is a real multi-resolution `.ico` (16–256 px). *Scripted `diskpart` to replace the interactive `format` command is still open.*
 - [x] Create macOS `.app` → `.dmg` (drag-to-Applications) ✅ **Done.** Universal 2 bundle shipped as both a ZIP and a DMG; the DMG carries a volume icon and an Applications symlink. The Terminal-sudo flow is replaced by Authorization Services. *Still unsigned — codesign + notarize remain open.*
 - [x] Create Linux packages ✅ **Done.** AppImage, `.deb`/`.rpm` (via `fpm`, declaring `syslinux`, `dosfstools`, `mtools`, `sudo`) and Flatpak (`--device=all`, runtime 24.08). Each ships a `.desktop` file and AppStream metadata so the app appears in the GNOME/KDE menus.
 - [x] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag. ✅ **Done.** `.github/workflows/release.yml` builds all six artifacts and publishes a GitHub release on any `v*` tag.
 - [ ] Set up automatic updates.
 - [ ] Codesign + notarize the macOS build so Gatekeeper stops warning.
-- [x] Add `build/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.). Note: `unetbootin.spec` is tracked in the repo.
+- [x] Add `build/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.). Note: `pynetboot.spec` is tracked in the repo.
 
 ### 🏗️ Architecture Improvements
 - [x] Consider using async/await for I/O operations - ✅ Complete
@@ -648,7 +648,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |
-| Resources | ✅ Bundled and used — bootloader binaries in `resources/bootloader/` are now referenced via `unetbootin.resources` resolver; icons and logos are also properly bundled |
+| Resources | ✅ Bundled and used — bootloader binaries in `resources/bootloader/` are now referenced via `pynetboot.resources` resolver; icons and logos are also properly bundled |
 | Full Distribution List | ✅ Complete (21 distros; checksums dynamically fetched) |
 | Translations | ✅ Implemented — `core/i18n.py` parses bundled Qt `.ts` catalogs (de/es/fr/it/hu) into gettext-style `_()`; wired in `main.load_translations()` |
 | Checksum Verification | ✅ Dynamic — downloads and verifies distro checksums from published checksum files (wired for Ubuntu, Debian, Fedora) |
@@ -661,8 +661,8 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 - [Releases (prebuilt packages)](https://github.com/janos-szenfner/unetbootin-python/releases)
 - [Original UNetbootin](https://unetbootin.sourceforge.net/)
-- [SourceForge Project](https://sourceforge.net/projects/unetbootin/)
-- [GitHub Mirror](https://github.com/unetbootin/unetbootin)
+- [SourceForge Project](https://sourceforge.net/projects/pynetboot/)
+- [GitHub Mirror](https://github.com/pynetboot/pynetboot)
 
 ---
 

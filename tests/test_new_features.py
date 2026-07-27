@@ -12,13 +12,13 @@ from unittest.mock import patch, MagicMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from unetbootin.models.config import ConfigManager, AppConfig
-from unetbootin.models.distro import Distribution, DistributionVersion, DistributionManager
-from unetbootin.core.downloader import (
+from pynetboot.models.config import ConfigManager, AppConfig
+from pynetboot.models.distro import Distribution, DistributionVersion, DistributionManager
+from pynetboot.core.downloader import (
     Downloader, AsyncDownloader,
     MirrorManager, MirrorInfo, DownloadResumeManager
 )
-from unetbootin.core.installer import USBInstaller, AsyncUSBInstaller
+from pynetboot.core.installer import USBInstaller, AsyncUSBInstaller
 
 
 class TestNewConfigOptions(unittest.TestCase):
@@ -514,7 +514,7 @@ class TestMainWindowNewFeatures(unittest.TestCase):
         ``sys.modules`` here is too late — the module imported ``ctk`` at load
         time — and a real window fails on a headless CI runner (no ``$DISPLAY``).
         """
-        import unetbootin.ui.main_window_ctk as mw
+        import pynetboot.ui.main_window_ctk as mw
 
         self._sg_patcher = patch.object(mw, 'ctk', MagicMock())
         self._sg_patcher.start()

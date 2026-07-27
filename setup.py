@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setup script for UNetbootin Python rewrite.
+Setup script for PyNetboot Python rewrite.
 """
 
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 # Get version from package
-PACKAGE_NAME = "unetbootin"
+PACKAGE_NAME = "pynetboot"
 PACKAGE_DIR = Path(__file__).parent / "src" / PACKAGE_NAME
 
 # Read version from __init__.py
@@ -39,13 +39,13 @@ if readme_path.exists():
 
 
 setup(
-    name="unetbootin-python",
+    name="pynetboot",
     version=version,
     description="A lightweight cross-platform tool for creating bootable USB drives from ISO files (CustomTkinter)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="UNetbootin Team",
-    author_email="geza0kovacs@gmail.com",
+    author="Janos Szenfner",
+    author_email="szenfner@outlook.com",
     url="https://github.com/janosszenfner/unetbootin-python",
     license="GPLv2+",
 
@@ -84,8 +84,8 @@ setup(
     # Entry points
     entry_points={
         "console_scripts": [
-            "unetbootin-python=unetbootin.main:main",
-            "unetbootin-python-cli=unetbootin.main:main",
+            "pynetboot=pynetboot.main:main",
+            "pynetboot-cli=pynetboot.main:main",
         ],
         "gui_scripts": [
             # For macOS app bundle support
@@ -97,7 +97,7 @@ setup(
     # they are actually included in wheels/sdists and PyInstaller bundles.
     include_package_data=True,
     package_data={
-        "unetbootin": [
+        "pynetboot": [
             "resources/bootloader/*",
             "resources/icons/*",
             "resources/logos/*",

@@ -1,8 +1,8 @@
 # Final Implementation Summary
 
-## ✅ Complete CI/CD Solution for UNetbootin
+## ✅ Complete CI/CD Solution for PyNetboot
 
-This document describes the **complete, production-ready implementation** that enables UNetbootin to be built and distributed using **GitHub's free build services** with **no local builds required**.
+This document describes the **complete, production-ready implementation** that enables PyNetboot to be built and distributed using **GitHub's free build services** with **no local builds required**.
 
 ---
 
@@ -29,12 +29,12 @@ This document describes the **complete, production-ready implementation** that e
 ## 📦 Distribution Strategy
 
 ### macOS (Apple Silicon + Intel Universal 2)
-1. **Primary**: `unetbootin.zip` - No Gatekeeper warnings on download, right-click → Open on first launch
-2. **Alternative**: `unetbootin.dmg` - Traditional macOS format, right-click → Open on first launch
+1. **Primary**: `pynetboot.zip` - No Gatekeeper warnings on download, right-click → Open on first launch
+2. **Alternative**: `pynetboot.dmg` - Traditional macOS format, right-click → Open on first launch
 3. **Instructions**: `README-macOS.md` included in artifact with clear Gatekeeper bypass instructions
 
 ### Windows
-- `unetbootin.exe` - Single-file executable with embedded UAC manifest
+- `pynetboot.exe` - Single-file executable with embedded UAC manifest
 - Admin elevation prompt on first privileged operation
 - diskpart-based non-interactive drive formatting
 
@@ -46,7 +46,7 @@ This document describes the **complete, production-ready implementation** that e
 
 ### Python Package
 - Published to PyPI
-- `pip install unetbootin`
+- `pip install pynetboot`
 - Runs via Python interpreter (no Gatekeeper issues)
 
 ---
@@ -91,16 +91,16 @@ After the workflow completes (15-25 minutes):
 
 ### macOS Resources
 - `resources/macos/README-macOS.md` (5.4 KB) - Gatekeeper bypass instructions
-- `unetbootin-macos.spec` (1.9 KB) - PyInstaller spec for macOS Universal 2
+- `pynetboot-macos.spec` (1.9 KB) - PyInstaller spec for macOS Universal 2
 
 ### Windows Resources
 - `resources/windows/unetbootin.exe.manifest` (1.3 KB) - UAC manifest
-- `unetbootin-windows.spec` (1.6 KB) - PyInstaller spec for Windows
+- `pynetboot-windows.spec` (1.6 KB) - PyInstaller spec for Windows
 
 ### Linux Resources
-- `resources/linux/unetbootin.desktop` (0.4 KB) - Desktop entry file
-- `resources/linux/com.unetbootin.UNetbootin.json` (3.6 KB) - Flatpak manifest
-- `unetbootin.spec` (0.7 KB) - Generic PyInstaller spec for Linux
+- `resources/linux/pynetboot.desktop` (0.4 KB) - Desktop entry file
+- `resources/linux/com.pynetboot.PyNetboot.json` (3.6 KB) - Flatpak manifest
+- `pynetboot.spec` (0.7 KB) - Generic PyInstaller spec for Linux
 
 ### Documentation
 - `.github/CI_CD_SETUP.md` - Setup guide
@@ -114,14 +114,14 @@ After the workflow completes (15-25 minutes):
 
 ### Modified Files
 
-1. **`src/unetbootin/platform/windows.py`**
+1. **`src/pynetboot/platform/windows.py`**
    - Implemented `format_drive()` with diskpart scripting
    - Replaced stub that told users to format manually
    - Non-interactive, automated drive formatting
    - Supports FAT32, NTFS, exFAT
    - Proper error handling and cleanup
 
-2. **`src/unetbootin/core/installer.py`**
+2. **`src/pynetboot/core/installer.py`**
    - Updated `_format_device()` to use platform-specific `format_drive()`
    - Consistent formatting across all platforms
    - Better error handling
@@ -132,14 +132,14 @@ After the workflow completes (15-25 minutes):
 
 | Platform | Format | File | Arch | Notes |
 |----------|--------|------|------|-------|
-| Windows | EXE | `unetbootin.exe` | x86_64 | UAC manifest, diskpart |
-| macOS | ZIP | `unetbootin.zip` | Universal 2 | Primary distribution |
-| macOS | DMG | `unetbootin.dmg` | Universal 2 | Alternative |
-| Linux | AppImage | `unetbootin.AppImage` | x86_64 | Portable |
-| Linux | DEB | `unetbootin.deb` | amd64 | Debian/Ubuntu |
-| Linux | RPM | `unetbootin.rpm` | x86_64 | Fedora/RHEL |
-| Linux | Flatpak | `unetbootin.flatpak` | - | Sandboxed |
-| Python | Wheel | `unetbootin-*.whl` | Any | PyPI package |
+| Windows | EXE | `pynetboot.exe` | x86_64 | UAC manifest, diskpart |
+| macOS | ZIP | `pynetboot.zip` | Universal 2 | Primary distribution |
+| macOS | DMG | `pynetboot.dmg` | Universal 2 | Alternative |
+| Linux | AppImage | `pynetboot.AppImage` | x86_64 | Portable |
+| Linux | DEB | `pynetboot.deb` | amd64 | Debian/Ubuntu |
+| Linux | RPM | `pynetboot.rpm` | x86_64 | Fedora/RHEL |
+| Linux | Flatpak | `pynetboot.flatpak` | - | Sandboxed |
+| Python | Wheel | `pynetboot-*.whl` | Any | PyPI package |
 
 ---
 
@@ -255,8 +255,8 @@ Uses `pypa/gh-action-pypi-publish` action:
 
 ### All Code Compiles
 ```bash
-python3 -m py_compile src/unetbootin/platform/windows.py
-python3 -m py_compile src/unetbootin/core/installer.py
+python3 -m py_compile src/pynetboot/platform/windows.py
+python3 -m py_compile src/pynetboot/core/installer.py
 # All files compile successfully
 ```
 
@@ -264,13 +264,13 @@ python3 -m py_compile src/unetbootin/core/installer.py
 ```
 .github/workflows/release.yml
 .github/CI_CD_SETUP.md
-unetbootin-windows.spec
-unetbootin-macos.spec
-unetbootin.spec
+pynetboot-windows.spec
+pynetboot-macos.spec
+pynetboot.spec
 resources/windows/unetbootin.exe.manifest
 resources/macos/README-macOS.md
-resources/linux/unetbootin.desktop
-resources/linux/com.unetbootin.UNetbootin.json
+resources/linux/pynetboot.desktop
+resources/linux/com.pynetboot.PyNetboot.json
 ```
 
 ---
@@ -306,14 +306,14 @@ Then watch GitHub Actions build and release everything automatically! 🚀
 
 **Windows:**
 ```
-1. Download unetbootin.exe
+1. Download pynetboot.exe
 2. Run it (UAC elevation prompt will appear)
 3. Use the app
 ```
 
 **macOS:**
 ```
-1. Download unetbootin.zip (recommended) or unetbootin.dmg
+1. Download pynetboot.zip (recommended) or pynetboot.dmg
 2. Extract/unmount
 3. Drag to Applications
 4. Right-click → Open (first time only)
@@ -322,29 +322,29 @@ Then watch GitHub Actions build and release everything automatically! 🚀
 
 **Linux (AppImage):**
 ```bash
-chmod +x unetbootin.AppImage
-./unetbootin.AppImage
+chmod +x pynetboot.AppImage
+./pynetboot.AppImage
 ```
 
 **Linux (DEB):**
 ```bash
-sudo dpkg -i unetbootin.deb
+sudo dpkg -i pynetboot.deb
 ```
 
 **Linux (RPM):**
 ```bash
-sudo rpm -i unetbootin.rpm
+sudo rpm -i pynetboot.rpm
 ```
 
 **Linux (Flatpak):**
 ```bash
-flatpak install unetbootin.flatpak
+flatpak install pynetboot.flatpak
 ```
 
 **Python:**
 ```bash
-pip install unetbootin
-unetbootin
+pip install pynetboot
+pynetboot
 ```
 
 ---

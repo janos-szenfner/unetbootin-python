@@ -1,16 +1,16 @@
-# Open Issues - UNetbootin Python Rewrite
+# Open Issues - PyNetboot Python Rewrite
 
 > **Last Updated**: 2026-07-27
 > **Status**: Code Audit Complete | ALL issues resolved — H-001..H-002, M-001..M-013, L-001..L-007 Fixed
 > **Auditor**: Mistral Vibe CLI Agent
 >
 > **Note (2026-07-27):** the GUI layer has since been rebuilt with
-> **CustomTkinter** (`src/unetbootin/ui/main_window_ctk.py`), replacing
+> **CustomTkinter** (`src/pynetboot/ui/main_window_ctk.py`), replacing
 > PySimpleGUI. Entries below that mention PySimpleGUI describe the
 > implementation as it was when each issue was resolved and are kept as a
 > record; they are not a description of the current UI.
 
-This document tracks all identified issues, warnings, security concerns, and code quality problems in the UNetbootin Python rewrite codebase. Issues are categorized by priority and type.
+This document tracks all identified issues, warnings, security concerns, and code quality problems in the PyNetboot Python rewrite codebase. Issues are categorized by priority and type.
 
 ---
 
@@ -43,7 +43,7 @@ This document tracks all identified issues, warnings, security concerns, and cod
 **Files**: `setup.py`, `setup_pysg.py`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
-**Description**: Two setup files exist with different package names (`unetbootin` vs `unetbootin-pysg`), creating potential conflicts during installation.  
+**Description**: Two setup files exist with different package names (`pynetboot` vs `pynetboot-pysg`), creating potential conflicts during installation.  
 **Impact**: Confuses users, may cause installation conflicts  
 **Recommendation**: Consolidate into a single `setup.py` with feature flags, or clearly document the purpose of each and ensure they don't conflict.
 **Resolution**: Removed `setup_pysg.py` to eliminate conflict. Only `setup.py` remains.
@@ -66,7 +66,7 @@ This document tracks all identified issues, warnings, security concerns, and cod
 
 ### M-001: Wildcard Imports in Platform Module
 **Type**: Code Style / PEP 8  
-**File**: `src/unetbootin/platform/__init__.py`  
+**File**: `src/pynetboot/platform/__init__.py`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Lines**: 9, 11, 13, 16, 19  
@@ -79,7 +79,7 @@ This document tracks all identified issues, warnings, security concerns, and cod
 
 ### M-002: Excessive Broad Exception Handling
 **Type**: Code Quality  
-**Files**: Throughout `src/unetbootin/`  
+**Files**: Throughout `src/pynetboot/`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Overuse of `except Exception as e` catches too broadly, hiding bugs and making debugging difficult.  
@@ -100,7 +100,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-003: Line Length Violations
 **Type**: Code Style / PEP 8  
-**Files**: `src/unetbootin/app.py`, `downloader.py`, `extractor.py`, `installer.py`, `utils.py`, `macos.py`, UI, models  
+**Files**: `src/pynetboot/app.py`, `downloader.py`, `extractor.py`, `installer.py`, `utils.py`, `macos.py`, UI, models  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: 100+ lines exceed the 88-character limit specified in README.  
@@ -112,7 +112,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-004: Inconsistent Logging
 **Type**: Code Quality  
-**Files**: `src/unetbootin/main.py:64-66`, `app.py`, and others  
+**Files**: `src/pynetboot/main.py:64-66`, `app.py`, and others  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Mix of `logger.error()`, `logger.warning()`, `logger.info()` with direct `print()` statements.  
@@ -124,19 +124,19 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-005: Duplicate Drive Listing Logic
 **Type**: Code Duplication  
-**Files**: `src/unetbootin/core/utils.py:356-497`, `src/unetbootin/platform/*.py`  
+**Files**: `src/pynetboot/core/utils.py:356-497`, `src/pynetboot/platform/*.py`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Drive listing logic exists in both `utils.py` and platform-specific modules.  
 **Impact**: Maintenance burden, potential for inconsistencies  
 **Recommendation**: Consolidate drive listing into platform-specific modules only; remove from `utils.py`.
-**Resolution**: Removed `list_available_drives()` and the duplicate `get_drive_info()` (~204 lines) from `core/utils.py`. Confirmed neither had any callers — the app uses `unetbootin.platform.get_drive_list` exclusively. Platform modules are now the single source of truth for drive enumeration.
+**Resolution**: Removed `list_available_drives()` and the duplicate `get_drive_info()` (~204 lines) from `core/utils.py`. Confirmed neither had any callers — the app uses `pynetboot.platform.get_drive_list` exclusively. Platform modules are now the single source of truth for drive enumeration.
 
 ---
 
 ### M-006: Temporary File Cleanup
 **Type**: Potential Resource Leak  
-**Files**: `src/unetbootin/app.py:232-240`  
+**Files**: `src/pynetboot/app.py:232-240`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Cleanup only runs if `self.tmp_dir` is set; errors might occur before it's initialized.  
@@ -160,7 +160,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-008: Incomplete Platform Implementations
 **Type**: Code Quality  
-**Files**: `src/unetbootin/platform/base.py`, `src/unetbootin/platform/windows.py`  
+**Files**: `src/pynetboot/platform/base.py`, `src/pynetboot/platform/windows.py`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Many functions are stubs that just return `False` or `None`.  
@@ -172,7 +172,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-009: Subprocess Parameter Validation
 **Type**: Security  
-**File**: `src/unetbootin/core/utils.py:287-327`  
+**File**: `src/pynetboot/core/utils.py:287-327`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: `call_external_app()` uses `shlex.split()` which is good, but if `exec_param` comes from user input, it could still be risky.  
@@ -184,7 +184,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-010: Plain FTP Usage
 **Type**: Security  
-**File**: `src/unetbootin/core/downloader.py:613-646`  
+**File**: `src/pynetboot/core/downloader.py:613-646`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: `list_ftp_directory()` uses plain FTP without encryption.  
@@ -196,7 +196,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-011: macOS Privilege Escalation Limitation
 **Type**: Platform Support  
-**File**: `src/unetbootin/app.py:189-200`  
+**File**: `src/pynetboot/app.py:189-200`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Uses `osascript` to relaunch with sudo, which only works if Terminal is available.  
@@ -208,7 +208,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-012: Unused Imports
 **Type**: Code Quality  
-**Files**: Various throughout `src/unetbootin/`  
+**Files**: Various throughout `src/pynetboot/`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Several files import modules that aren't used.  
@@ -220,7 +220,7 @@ The 9 documented broad catches: **3 worker-thread wrappers** (download/extract/i
 
 ### M-013: Broad Exception Handling for Elevation Errors
 **Type**: Code Quality / Error Handling  
-**Files**: `src/unetbootin/core/elevation.py:58`, `src/unetbootin/core/elevation.py:129`, `src/unetbootin/core/elevation.py:298`  
+**Files**: `src/pynetboot/core/elevation.py:58`, `src/pynetboot/core/elevation.py:129`, `src/pynetboot/core/elevation.py:298`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-24  
 **Description**: The elevation module had 3 broad `except Exception` handlers that were not documented with `# noqa: BLE001`. These were in `is_elevated()` (Windows ctypes check), `run_elevated()` (direct command execution when already elevated), and `_run_elevated_windows()` (Windows UAC elevation via ShellExecute).
@@ -262,7 +262,7 @@ All changes maintain the same error handling behavior while providing better deb
 
 ### L-003: Magic Numbers
 **Type**: Code Quality  
-**Files**: Throughout `src/unetbootin/core/downloader.py`, `extractor.py`  
+**Files**: Throughout `src/pynetboot/core/downloader.py`, `extractor.py`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Hardcoded values like `timeout=300`, `chunk_size=8192`.  
@@ -286,7 +286,7 @@ All changes maintain the same error handling behavior while providing better deb
 
 ### L-005: Missing Docstrings
 **Type**: Documentation  
-**Files**: Various throughout `src/unetbootin/`  
+**Files**: Various throughout `src/pynetboot/`  
 **Status**: ✅ Fixed  
 **Fixed On**: 2026-07-23  
 **Description**: Some functions lack docstrings despite README stating "Include docstrings for all public methods".  
@@ -304,7 +304,7 @@ All changes maintain the same error handling behavior while providing better deb
 **Description**: Some modules could benefit from main guards for testing.  
 **Impact**: Minor - modules can't be easily tested standalone  
 **Recommendation**: Add `if __name__ == "__main__":` to all executable modules.
-**Resolution**: `main.py` and `__main__.py` already had guards; added a `main()` entry point and `if __name__ == "__main__":` guard to `app.py` (delegating to `unetbootin.main.main` so `python -m unetbootin.app` shares identical startup).
+**Resolution**: `main.py` and `__main__.py` already had guards; added a `main()` entry point and `if __name__ == "__main__":` guard to `app.py` (delegating to `pynetboot.main.main` so `python -m pynetboot.app` shares identical startup).
 
 ---
 

@@ -13,7 +13,7 @@ from unittest.mock import patch, MagicMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from unetbootin.platform import base, linux, windows, macos
+from pynetboot.platform import base, linux, windows, macos
 
 
 class TestBasePlatform(unittest.TestCase):
@@ -228,7 +228,7 @@ class TestLinuxPlatform(unittest.TestCase):
             
             mock_run.side_effect = [mock_findmnt, mock_mkfs]
 
-            result = linux.format_drive('/dev/sdb1', 'vfat', 'UNETBOOTIN')
+            result = linux.format_drive('/dev/sdb1', 'vfat', 'PYNETBOOT')
             self.assertTrue(result)
 
     def test_set_volume_label(self):
@@ -440,7 +440,7 @@ DriveType : 3
             mock_result.returncode = 0
             mock_run.return_value = mock_result
 
-            result = windows.format_drive('D:\\', 'FAT32', 'UNETBOOTIN')
+            result = windows.format_drive('D:\\', 'FAT32', 'PYNETBOOT')
             self.assertTrue(result)
 
     def test_set_volume_label(self):
@@ -572,7 +572,7 @@ class TestMacOSPlatform(unittest.TestCase):
             mock_result.stdout = ""
             mock_run.return_value = mock_result
 
-            result = macos.format_drive('/dev/disk2', 'vfat', 'UNETBOOTIN')
+            result = macos.format_drive('/dev/disk2', 'vfat', 'PYNETBOOT')
             self.assertTrue(result)
 
     def test_set_volume_label(self):
@@ -679,7 +679,7 @@ class TestPlatformDetection(unittest.TestCase):
 
     def test_get_drive_list_import(self):
         """Test that get_drive_list can be imported from platform."""
-        from unetbootin.platform import get_drive_list
+        from pynetboot.platform import get_drive_list
         self.assertTrue(callable(get_drive_list))
 
     def test_platform_module_structure(self):
@@ -704,7 +704,7 @@ class TestDriveSerialToolFallback(unittest.TestCase):
 
     @unittest.skipIf(sys.platform != 'linux', "Linux-only")
     def test_missing_tool_falls_through_to_the_next_probe(self):
-        from unetbootin.platform import linux as linux_mod
+        from pynetboot.platform import linux as linux_mod
 
         def only_hdparm(name):
             return '/usr/sbin/hdparm' if name == 'hdparm' else None
@@ -725,10 +725,10 @@ class TestDriveSerialToolFallback(unittest.TestCase):
     @unittest.skipIf(sys.platform != 'linux', "Linux-only")
     def test_absent_tools_are_not_logged_as_errors(self):
         """Inside a sandbox none of these exist; that is expected, not an error."""
-        from unetbootin.platform import linux as linux_mod
+        from pynetboot.platform import linux as linux_mod
 
         with patch('shutil.which', return_value=None):
-            with self.assertLogs('unetbootin.platform.linux',
+            with self.assertLogs('pynetboot.platform.linux',
                                  level='DEBUG') as captured:
                 result = linux_mod.get_drive_serial('/dev/sdb')
 

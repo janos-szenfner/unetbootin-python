@@ -1,8 +1,8 @@
-# CI/CD Implementation for UNetbootin
+# CI/CD Implementation for PyNetboot
 
 ## Summary
 
-This implementation provides a complete GitHub Actions CI/CD pipeline that automatically builds and releases UNetbootin for all major platforms (Windows, macOS, Linux) using GitHub's free build services. No local builds are required.
+This implementation provides a complete GitHub Actions CI/CD pipeline that automatically builds and releases PyNetboot for all major platforms (Windows, macOS, Linux) using GitHub's free build services. No local builds are required.
 
 ## What Was Implemented
 
@@ -20,25 +20,25 @@ This implementation provides a complete GitHub Actions CI/CD pipeline that autom
   - `create-release`: Creates GitHub Release with all artifacts
 
 ### 2. Platform-Specific Spec Files
-- **`unetbootin-windows.spec`**: Windows PyInstaller spec with manifest support
-- **`unetbootin-macos.spec`**: macOS PyInstaller spec with app bundle settings
-- **`unetbootin.spec`**: Generic spec for Linux builds
+- **`pynetboot-windows.spec`**: Windows PyInstaller spec with manifest support
+- **`pynetboot-macos.spec`**: macOS PyInstaller spec with app bundle settings
+- **`pynetboot.spec`**: Generic spec for Linux builds
 
 ### 3. Resource Files
 - **`resources/windows/unetbootin.exe.manifest`**: UAC manifest for Windows elevation
-- **`resources/linux/unetbootin.desktop`**: Linux desktop entry file
-- **`resources/linux/com.unetbootin.UNetbootin.json`**: Flatpak manifest
+- **`resources/linux/pynetboot.desktop`**: Linux desktop entry file
+- **`resources/linux/com.pynetboot.PyNetboot.json`**: Flatpak manifest
 
 ### 4. Code Changes
 
-#### Windows Platform (`src/unetbootin/platform/windows.py`)
+#### Windows Platform (`src/pynetboot/platform/windows.py`)
 - **Replaced interactive format command with scripted diskpart**
 - Implemented `format_drive()` using diskpart scripting
 - Creates temporary script files for non-interactive diskpart operations
 - Supports FAT32, NTFS, and exFAT filesystems
 - Properly cleans up temporary files
 
-#### Installer (`src/unetbootin/core/installer.py`)
+#### Installer (`src/pynetboot/core/installer.py`)
 - Updated `_format_device()` to use platform-specific `format_drive()` function
 - Consistent formatting across all platforms
 - Better error handling
@@ -46,7 +46,7 @@ This implementation provides a complete GitHub Actions CI/CD pipeline that autom
 ## Build Artifacts
 
 ### Windows
-- **Output**: `unetbootin.exe`
+- **Output**: `pynetboot.exe`
 - **Type**: Single-file executable
 - **Features**:
   - Windowed mode (no console)
@@ -55,33 +55,33 @@ This implementation provides a complete GitHub Actions CI/CD pipeline that autom
   - diskpart-based non-interactive formatting
 
 ### macOS
-- **Output**: `unetbootin.dmg`
-- **Contains**: `unetbootin.app` bundle
+- **Output**: `pynetboot.dmg`
+- **Contains**: `pynetboot.app` bundle
 - **Features**:
   - Native .app bundle
-  - DMG with volume name "UNetbootin"
+  - DMG with volume name "PyNetboot"
   - Optional code signing (requires secrets)
   - Optional notarization (requires secrets)
   - All resources bundled
 
 ### Linux
-1. **AppImage** (`unetbootin.AppImage`)
+1. **AppImage** (`pynetboot.AppImage`)
    - Single-file portable executable
    - Works on most modern distributions
    - Includes all dependencies
    - No installation required
 
-2. **DEB Package** (`unetbootin.deb`)
+2. **DEB Package** (`pynetboot.deb`)
    - For Debian/Ubuntu-based distributions
    - Declares dependencies: syslinux, syslinux-common, dosfstools, mtools
    - Proper .desktop file integration
 
-3. **RPM Package** (`unetbootin.rpm`)
+3. **RPM Package** (`pynetboot.rpm`)
    - For Fedora/RHEL-based distributions
    - Declares dependencies: syslinux, dosfstools, mtools
    - Proper .desktop file integration
 
-4. **Flatpak** (`unetbootin.flatpak`)
+4. **Flatpak** (`pynetboot.flatpak`)
    - Sandboxed application
    - Uses Flatpak runtime 23.08
    - Has access to all devices (`--device=all`)
@@ -138,8 +138,8 @@ resources/
 ├── windows/
 │   └── unetbootin.exe.manifest  # UAC manifest
 └── linux/
-    ├── unetbootin.desktop       # Desktop entry
-    └── com.unetbootin.UNetbootin.json  # Flatpak manifest
+    ├── pynetboot.desktop       # Desktop entry
+    └── com.pynetboot.PyNetboot.json  # Flatpak manifest
 
 *.spec                     # PyInstaller spec files
 ```
@@ -182,13 +182,13 @@ You can test individual components locally:
 
 ```bash
 # Test Windows build (requires Windows)
-pyinstaller unetbootin-windows.spec --onefile --windowed
+pyinstaller pynetboot-windows.spec --onefile --windowed
 
 # Test macOS build (requires macOS)
-pyinstaller unetbootin-macos.spec --windowed
+pyinstaller pynetboot-macos.spec --windowed
 
 # Test Linux build
-pyinstaller unetbootin.spec --onefile
+pyinstaller pynetboot.spec --onefile
 ```
 
 ### Verifying the Setup
@@ -267,4 +267,4 @@ For issues with the CI/CD setup:
 
 ## License
 
-This CI/CD implementation is provided under the same license as UNetbootin (GPLv2+).
+This CI/CD implementation is provided under the same license as PyNetboot (GPLv2+).

@@ -1,0 +1,131 @@
+{
+    "app-id": "com.pynetboot.PyNetboot",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "24.08",
+    "sdk": "org.freedesktop.Sdk",
+    "command": "pynetboot",
+    "finish-args": [
+        "--device=all",
+        "--share=ipc",
+        "--share=network",
+        "--socket=wayland",
+        "--socket=x11",
+        "--filesystem=host",
+        "--filesystem=/usr/share/fonts:ro",
+        "--filesystem=/usr/local/share/fonts:ro",
+        "--filesystem=/var/cache/fontconfig:ro",
+        "--filesystem=xdg-config/fontconfig:ro",
+        "--filesystem=xdg-data/fonts:ro",
+        "--filesystem=~/.fonts:ro",
+        "--filesystem=/etc/fonts:ro",
+        "--filesystem=xdg-cache/fontconfig:ro"
+    ],
+    "cleanup": [
+        "/.local/share",
+        "/.cache"
+    ],
+    "modules": [
+        {
+            "name": "dosfstools",
+            "buildsystem": "autotools",
+            "config-opts": [
+                "--enable-compat-symlinks"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/dosfstools/dosfstools/releases/download/v4.2/dosfstools-4.2.tar.gz",
+                    "sha256": "64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527"
+                }
+            ]
+        },
+        {
+            "name": "mtools",
+            "buildsystem": "autotools",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://ftp.gnu.org/gnu/mtools/mtools-4.0.43.tar.gz",
+                    "sha256": "8866666fa06906ee02c709f670ae6361c5ac2008251ed825c43d321c06775718"
+                }
+            ]
+        },
+        {
+            "name": "pynetboot",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --prefix=/app . py7zr",
+                "install -d /app/share/fonts/customtkinter",
+                "find /app -type d -path '*/customtkinter/assets/fonts' -exec cp -r {}/. /app/share/fonts/customtkinter/ \\;",
+                "test -n \"$(find /app/share/fonts -name '*.ttf' -print -quit)\" || (echo 'FATAL: Roboto was not bundled into /app/share/fonts' >&2; exit 1)",
+                "fc-cache -f /app/share/fonts || true"
+            ],
+            "build-options": {
+                "build-args": [
+                    "--share=network"
+                ],
+                "env": {
+                    "PIP_NO_WARN_SCRIPT_LOCATION": "1"
+                }
+            },
+            "sources": [
+                {
+                    "type": "file",
+                    "path": "../../requirements.txt"
+                },
+                {
+                    "type": "dir",
+                    "path": "../../src",
+                    "dest": "src"
+                },
+                {
+                    "type": "file",
+                    "path": "../../setup.py"
+                }
+            ]
+        },
+        {
+            "name": "resources",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -Dm644 -t /app/share/pynetboot/resources/bootloader resources/bootloader/*",
+                "install -Dm644 -t /app/share/pynetboot/resources/icons resources/icons/*",
+                "install -Dm644 -t /app/share/pynetboot/resources/logos resources/logos/*"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "../../src/pynetboot/resources",
+                    "dest": "resources"
+                }
+            ]
+        },
+        {
+            "name": "desktop-integration",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -Dm644 com.pynetboot.PyNetboot.desktop /app/share/applications/com.pynetboot.PyNetboot.desktop",
+                "install -Dm644 com.pynetboot.PyNetboot.appdata.xml /app/share/metainfo/com.pynetboot.PyNetboot.appdata.xml",
+                "install -Dm644 resources/icons/unetbootin_256.png /app/share/icons/hicolor/256x256/apps/com.pynetboot.PyNetboot.png",
+                "install -Dm644 resources/icons/unetbootin_48.png /app/share/icons/hicolor/48x48/apps/com.pynetboot.PyNetboot.png",
+                "install -Dm644 resources/icons/unetbootin_32.png /app/share/icons/hicolor/32x32/apps/com.pynetboot.PyNetboot.png",
+                "install -Dm644 resources/icons/unetbootin_16.png /app/share/icons/hicolor/16x16/apps/com.pynetboot.PyNetboot.png"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "path": "com.pynetboot.PyNetboot.desktop"
+                },
+                {
+                    "type": "file",
+                    "path": "com.pynetboot.PyNetboot.appdata.xml"
+                },
+                {
+                    "type": "dir",
+                    "path": "../../src/pynetboot/resources/icons",
+                    "dest": "resources/icons"
+                }
+            ]
+        }
+    ]
+}

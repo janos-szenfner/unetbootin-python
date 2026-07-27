@@ -1,6 +1,6 @@
-# CI/CD Setup for UNetbootin
+# CI/CD Setup for PyNetboot
 
-This document describes the GitHub Actions CI/CD setup for automatically building and releasing UNetbootin for all platforms.
+This document describes the GitHub Actions CI/CD setup for automatically building and releasing PyNetboot for all platforms.
 
 ## Overview
 
@@ -50,7 +50,7 @@ The workflow will work without any secrets, but for full functionality on macOS,
 ## Build Artifacts
 
 ### Windows
-- **File**: `unetbootin.exe`
+- **File**: `pynetboot.exe`
 - **Features**: 
   - Single-file executable (--onefile)
   - Windowed mode (no console)
@@ -58,29 +58,29 @@ The workflow will work without any secrets, but for full functionality on macOS,
   - All resources bundled (icons, bootloaders, etc.)
 
 ### macOS
-- **File**: `unetbootin.dmg`
+- **File**: `pynetboot.dmg`
 - **Features**:
   - .app bundle
-  - DMG with volume name "UNetbootin"
+  - DMG with volume name "PyNetboot"
   - Optional code signing
   - Optional notarization
   - All resources bundled
 
 ### Linux
-- **AppImage**: `unetbootin.AppImage`
+- **AppImage**: `pynetboot.AppImage`
   - Single-file portable executable
   - Works on most modern Linux distributions
   - Includes all dependencies
   
-- **DEB**: `unetbootin.deb`
+- **DEB**: `pynetboot.deb`
   - For Debian/Ubuntu-based distributions
   - Dependencies: syslinux, syslinux-common, dosfstools, mtools
   
-- **RPM**: `unetbootin.rpm`
+- **RPM**: `pynetboot.rpm`
   - For Fedora/RHEL-based distributions
   - Dependencies: syslinux, dosfstools, mtools
 
-- **Flatpak**: `unetbootin.flatpak`
+- **Flatpak**: `pynetboot.flatpak`
   - Sandboxed application
   - Requires Flatpak runtime
   - Has access to all devices (--device=all)
@@ -110,7 +110,7 @@ The workflow will work without any secrets, but for full functionality on macOS,
 ## Customization
 
 ### Version Number
-The version is automatically extracted from `src/unetbootin/__init__.py` or from the git tag.
+The version is automatically extracted from `src/pynetboot/__init__.py` or from the git tag.
 
 ### Package Names
 Set the `APP_NAME` environment variable in the workflow file to change the output filename.
@@ -124,21 +124,21 @@ You can test the build process locally using the spec files:
 
 ### Windows
 ```bash
-pyinstaller unetbootin-windows.spec --onefile --windowed
+pyinstaller pynetboot-windows.spec --onefile --windowed
 # Then embed manifest
-mt.exe -manifest resources/windows/unetbootin.exe.manifest -outputresource:dist/unetbootin.exe;#1
+mt.exe -manifest resources/windows/unetbootin.exe.manifest -outputresource:dist/pynetboot.exe;#1
 ```
 
 ### macOS
 ```bash
-pyinstaller unetbootin-macos.spec --windowed
+pyinstaller pynetboot-macos.spec --windowed
 # Create DMG
-hdiutil create -volname "UNetbootin" -srcfolder dist/unetbootin.app -ov -format UDZO unetbootin.dmg
+hdiutil create -volname "PyNetboot" -srcfolder dist/pynetboot.app -ov -format UDZO pynetboot.dmg
 ```
 
 ### Linux
 ```bash
-pyinstaller unetbootin.spec --onefile
+pyinstaller pynetboot.spec --onefile
 # Then create packages as needed
 ```
 
@@ -164,7 +164,7 @@ pyinstaller unetbootin.spec --onefile
 
 ## License
 
-This CI/CD setup is provided as-is and is licensed under the same terms as UNetbootin (GPLv2+).
+This CI/CD setup is provided as-is and is licensed under the same terms as PyNetboot (GPLv2+).
 
 ## Contributing
 

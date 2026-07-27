@@ -1,5 +1,5 @@
 #!/bin/bash
-# Post-installation script for UNetbootin DEB package
+# Post-installation script for PyNetboot DEB package
 set -e
 
 # Update desktop database

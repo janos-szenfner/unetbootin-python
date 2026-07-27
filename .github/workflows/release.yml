@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.10'
-  APP_NAME: 'unetbootin-python'
+  APP_NAME: 'pynetboot'
   
 jobs:
   test:
@@ -46,7 +46,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG="${GITHUB_REF_NAME#v}"
-          VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+          VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           echo "tag=$TAG  __version__=$VER"
           if [ "$TAG" != "$VER" ]; then
             echo "::error::__version__ ($VER) does not match tag ($TAG)"
@@ -92,7 +92,7 @@ jobs:
         # spec-compatible flags may be passed. Single line = PowerShell-safe.
         # The UAC "requireAdministrator" manifest is embedded by the spec
         # (uac_admin=True), so no post-build mt.exe step is needed.
-        run: pyinstaller unetbootin-windows.spec --noconfirm --clean --distpath dist/windows
+        run: pyinstaller pynetboot-windows.spec --noconfirm --clean --distpath dist/windows
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -133,7 +133,7 @@ jobs:
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller (Universal 2 for Apple Silicon + Intel)
-        run: pyinstaller unetbootin-macos.spec --noconfirm --clean --distpath dist/macos
+        run: pyinstaller pynetboot-macos.spec --noconfirm --clean --distpath dist/macos
 
       - name: Create ZIP (Primary - No Gatekeeper issues)
         run: |
@@ -143,7 +143,7 @@ jobs:
       - name: Create DMG (with volume icon)
         run: |
           APP="dist/macos/${{ env.APP_NAME }}.app"
-          ICNS="src/unetbootin/resources/icons/unetbootin.icns"
+          ICNS="src/pynetboot/resources/icons/unetbootin.icns"
           DMG="dist/macos/${{ env.APP_NAME }}.dmg"
           # Build a styled DMG whose mounted volume carries the app icon and a
           # drag-to-Applications shortcut. Falls back to a plain compressed DMG
@@ -154,7 +154,7 @@ jobs:
             cp -R "$APP" dmg_stage/
             ln -s /Applications dmg_stage/Applications
             cp "$ICNS" dmg_stage/.VolumeIcon.icns
-            hdiutil create -volname "UNetbootin" -srcfolder dmg_stage \
+            hdiutil create -volname "PyNetboot" -srcfolder dmg_stage \
               -fs HFS+ -format UDRW -ov -o dist/macos/rw.dmg
             MOUNT="$(hdiutil attach -readwrite -noverify -noautoopen dist/macos/rw.dmg | grep -Eo '/Volumes/[^ ]+' | head -1)"
             SetFile -a C "$MOUNT"
@@ -163,7 +163,7 @@ jobs:
             rm -f dist/macos/rw.dmg
             rm -rf dmg_stage
           }
-          build_styled_dmg || hdiutil create -volname "UNetbootin" -srcfolder "$APP" -format UDZO -ov -o "$DMG"
+          build_styled_dmg || hdiutil create -volname "PyNetboot" -srcfolder "$APP" -format UDZO -ov -o "$DMG"
           ls -lh "$DMG"
 
       - name: Upload artifacts
@@ -218,7 +218,7 @@ jobs:
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
-        run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-appimage
+        run: pyinstaller pynetboot.spec --noconfirm --clean --distpath dist/linux-appimage
 
       - name: Create AppImage
         # The AppDir contains files reported as more than one architecture, so
@@ -226,7 +226,7 @@ jobs:
         env:
           ARCH: x86_64
           # Pin the output filename; otherwise the plugin derives it from the
-          # desktop-file Name ("UNetbootin"), which the mv glob below misses.
+          # desktop-file Name ("PyNetboot"), which the mv glob below misses.
           OUTPUT: ${{ env.APP_NAME }}.AppImage
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
@@ -235,10 +235,10 @@ jobs:
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           cp dist/linux-appimage/${{ env.APP_NAME }} AppDir/usr/bin/
-          cp resources/linux/unetbootin-appimage.desktop AppDir/usr/share/applications/${{ env.APP_NAME }}.desktop
-          cp src/unetbootin/resources/icons/unetbootin_256.png AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
+          cp resources/linux/pynetboot-appimage.desktop AppDir/usr/share/applications/${{ env.APP_NAME }}.desktop
+          cp src/pynetboot/resources/icons/unetbootin_256.png AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
           mkdir -p AppDir/usr/share/${{ env.APP_NAME }}/resources
-          cp -r src/unetbootin/resources/* AppDir/usr/share/${{ env.APP_NAME }}/resources/
+          cp -r src/pynetboot/resources/* AppDir/usr/share/${{ env.APP_NAME }}/resources/
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --executable AppDir/usr/bin/${{ env.APP_NAME }} \
@@ -310,7 +310,7 @@ jobs:
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
-        run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-deb
+        run: pyinstaller pynetboot.spec --noconfirm --clean --distpath dist/linux-deb
 
       - name: Create DEB package
         run: |
@@ -321,25 +321,25 @@ jobs:
           for s in 16 32 48 128 256; do mkdir -p package/usr/share/icons/hicolor/${s}x${s}/apps; done
           cp dist/linux-deb/${{ env.APP_NAME }} package/usr/bin/
           chmod +x package/usr/bin/${{ env.APP_NAME }}
-          cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
+          cp -r src/pynetboot/resources/* package/usr/share/${{ env.APP_NAME }}/
           # Ship the reverse-DNS desktop entry, matching AppStream metainfo and
           # themed icons so GNOME Software shows the name, icon, license and
           # description instead of "Unknown License" with a generic icon.
-          cp resources/linux/com.unetbootin.UNetbootin.desktop package/usr/share/applications/com.unetbootin.UNetbootin.desktop
-          cp resources/linux/com.unetbootin.UNetbootin.appdata.xml package/usr/share/metainfo/com.unetbootin.UNetbootin.appdata.xml
-          for s in 16 32 48 128 256; do cp src/unetbootin/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.unetbootin.UNetbootin.png; done
+          cp resources/linux/com.pynetboot.PyNetboot.desktop package/usr/share/applications/com.pynetboot.PyNetboot.desktop
+          cp resources/linux/com.pynetboot.PyNetboot.appdata.xml package/usr/share/metainfo/com.pynetboot.PyNetboot.appdata.xml
+          for s in 16 32 48 128 256; do cp src/pynetboot/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.pynetboot.PyNetboot.png; done
           # Version from tag (v1.0.6 -> 1.0.6); on non-tag (manual) builds fall
           # back to the packaged __version__ rather than 0.0.0.
           VER="${GITHUB_REF_NAME#v}"
           if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           fi
           VER="${VER:-1.0.1}"
           fpm -s dir -t deb \
             -n ${{ env.APP_NAME }} \
             -v "$VER" \
             --architecture amd64 \
-            --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
+            --maintainer "Janos Szenfner <szenfner@outlook.com>" \
             --description "Create bootable USB drives from ISO files" \
             --license "GPL-2.0-or-later" \
             --url https://github.com/${{ github.repository }} \
@@ -397,7 +397,7 @@ jobs:
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
-        run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-rpm
+        run: pyinstaller pynetboot.spec --noconfirm --clean --distpath dist/linux-rpm
 
       - name: Create RPM package
         run: |
@@ -408,25 +408,25 @@ jobs:
           for s in 16 32 48 128 256; do mkdir -p package/usr/share/icons/hicolor/${s}x${s}/apps; done
           cp dist/linux-rpm/${{ env.APP_NAME }} package/usr/bin/
           chmod +x package/usr/bin/${{ env.APP_NAME }}
-          cp -r src/unetbootin/resources/* package/usr/share/${{ env.APP_NAME }}/
+          cp -r src/pynetboot/resources/* package/usr/share/${{ env.APP_NAME }}/
           # Ship the reverse-DNS desktop entry, matching AppStream metainfo and
           # themed icons so GNOME Software shows the name, icon, license and
           # description instead of "Unknown License" with a generic icon.
-          cp resources/linux/com.unetbootin.UNetbootin.desktop package/usr/share/applications/com.unetbootin.UNetbootin.desktop
-          cp resources/linux/com.unetbootin.UNetbootin.appdata.xml package/usr/share/metainfo/com.unetbootin.UNetbootin.appdata.xml
-          for s in 16 32 48 128 256; do cp src/unetbootin/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.unetbootin.UNetbootin.png; done
+          cp resources/linux/com.pynetboot.PyNetboot.desktop package/usr/share/applications/com.pynetboot.PyNetboot.desktop
+          cp resources/linux/com.pynetboot.PyNetboot.appdata.xml package/usr/share/metainfo/com.pynetboot.PyNetboot.appdata.xml
+          for s in 16 32 48 128 256; do cp src/pynetboot/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.pynetboot.PyNetboot.png; done
           # Version from tag (v1.0.6 -> 1.0.6); on non-tag (manual) builds fall
           # back to the packaged __version__ rather than 0.0.0.
           VER="${GITHUB_REF_NAME#v}"
           if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           fi
           VER="${VER:-1.0.1}"
           fpm -s dir -t rpm \
             -n ${{ env.APP_NAME }} \
             -v "$VER" \
             --architecture x86_64 \
-            --maintainer "UNetbootin Team <geza0kovacs@gmail.com>" \
+            --maintainer "Janos Szenfner <szenfner@outlook.com>" \
             --description "Create bootable USB drives from ISO files" \
             --license "GPL-2.0-or-later" \
             --url https://github.com/${{ github.repository }} \
@@ -465,10 +465,10 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#v}"
           if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           fi
           VER="${VER:-1.0.1}"
-          APPDATA="resources/linux/com.unetbootin.UNetbootin.appdata.xml"
+          APPDATA="resources/linux/com.pynetboot.PyNetboot.appdata.xml"
           python3 - "$VER" "$APPDATA" <<'PY'
           import sys, datetime
           ver, path = sys.argv[1], sys.argv[2]
@@ -505,11 +505,11 @@ jobs:
             --force-clean \
             --repo=build-flatpak/repo \
             build-flatpak/build \
-            resources/linux/com.unetbootin.UNetbootin.json
+            resources/linux/com.pynetboot.PyNetboot.json
           flatpak build-bundle \
             build-flatpak/repo \
             dist/flatpak/${{ env.APP_NAME }}.flatpak \
-            com.unetbootin.UNetbootin
+            com.pynetboot.PyNetboot
           # `flatpak info` takes an installed app id, not a bundle path; just
           # confirm the bundle was written.
           ls -lh dist/flatpak/${{ env.APP_NAME }}.flatpak
@@ -605,21 +605,21 @@ jobs:
             ### macOS Installation Notes
             
             The macOS app is **unsigned** (no Apple Developer certificate). 
-            **First launch**: Right-click on UNetbootin in Applications → Open → Click Open in the security dialog.
+            **First launch**: Right-click on PyNetboot in Applications → Open → Click Open in the security dialog.
             
             See `README-macOS.md` in the macOS artifact for detailed instructions.
             
             ### Installation
             
-            **Windows**: Run `unetbootin-python.exe` (UAC elevation required)
+            **Windows**: Run `pynetboot.exe` (UAC elevation required)
             **macOS**: 
             - ZIP: Extract and drag to Applications, then right-click → Open
             - DMG: Mount, drag to Applications, then right-click → Open
             **Linux**: 
-            - AppImage: `chmod +x unetbootin-python.AppImage && ./unetbootin-python.AppImage`
-            - DEB: `sudo dpkg -i unetbootin-python.deb`
-            - RPM: `sudo rpm -i unetbootin-python.rpm`
-            - Flatpak: `flatpak install unetbootin-python.flatpak`
+            - AppImage: `chmod +x pynetboot.AppImage && ./pynetboot.AppImage`
+            - DEB: `sudo dpkg -i pynetboot.deb`
+            - RPM: `sudo rpm -i pynetboot.rpm`
+            - Flatpak: `flatpak install pynetboot.flatpak`
           files: |
             artifacts/${{ env.APP_NAME }}-windows/*
             artifacts/${{ env.APP_NAME }}-macos/*
