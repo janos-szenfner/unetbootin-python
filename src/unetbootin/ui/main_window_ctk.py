@@ -54,6 +54,11 @@ def check_toolkit() -> Optional[str]:
     return None
 
 
+# Must equal StartupWMClass in the desktop entries, or the task bar cannot
+# match the running window to the installed launcher and falls back to a
+# generic icon.
+WM_CLASS = "unetbootin-python"
+
 # The window background. Pinned light because the background is white: with
 # "system" a dark desktop would pair light text with a white background.
 BACKGROUND = "white"
@@ -332,7 +337,7 @@ class MainWindowCTk:
         """Build the window."""
         apply_theme()
 
-        self.root = ctk.CTk()
+        self.root = ctk.CTk(className=WM_CLASS)
         self.root.title(APP_TITLE)
         self.root.configure(fg_color=BACKGROUND)
         self.root.geometry("900x680")
@@ -676,12 +681,18 @@ class MainWindowCTk:
             logger.debug(f"Could not set image {filename}: {e}")
 
     def _apply_window_icon(self):
-        """Give the window the real app icon."""
+        """Give the window (and task bar) the real app icon.
+
+        The PhotoImage is stored on the instance: Tk keeps only a weak
+        reference, so an inline image is garbage-collected and the icon
+        quietly reverts to the generic one.
+        """
         icon = window_icon_path()
         if not icon:
             return
         try:
-            self.root.iconphoto(True, tkinter.PhotoImage(file=icon))
+            self._window_icon = tkinter.PhotoImage(file=icon)
+            self.root.iconphoto(True, self._window_icon)
         except Exception as e:  # noqa: BLE001 - cosmetic only
             logger.warning(f"Could not set the window icon: {e}")
 
@@ -750,6 +761,9 @@ class MainWindowCTk:
     def show(self):
         self.root.deiconify()
         self.root.lift()
+        # Re-assert after mapping: some window managers only pick the icon up
+        # once the window is visible.
+        self._apply_window_icon()
         return self.root
 
     def hide(self):

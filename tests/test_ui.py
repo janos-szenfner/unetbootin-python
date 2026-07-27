@@ -809,3 +809,52 @@ class TestDistroOrdering(unittest.TestCase):
             names = self._sorted_names(category)
             self.assertEqual(names, sorted(names, key=str.lower),
                              f"{category} list is not alphabetical")
+
+
+class TestCancelAndWindowIdentity(unittest.TestCase):
+    """Cancel must not quit, and the window must be matchable by the task bar."""
+
+    def test_cancel_does_not_stop_the_application(self):
+        """Only Exit closes the app; Cancel with nothing running is a no-op."""
+        import inspect
+        from unetbootin.app import UNetbootinAppPySG
+
+        src = inspect.getsource(UNetbootinAppPySG.run)
+        # Isolate the -CANCEL- branch (not -CANCEL_DOWNLOAD-).
+        idx = src.index("event == '-CANCEL-'")
+        branch = src[idx:idx + 400].split("elif event ==")[0]
+        self.assertNotIn("self.running = False", branch,
+                         "Cancel must not stop the event loop")
+        self.assertNotIn("break", branch, "Cancel must not exit the loop")
+
+    def test_exit_still_stops_the_application(self):
+        import inspect
+        from unetbootin.app import UNetbootinAppPySG
+        src = inspect.getsource(UNetbootinAppPySG.run)
+        self.assertIn("'-EXIT-'", src)
+        self.assertIn("self.running = False", src,
+                      "Exit must still be able to stop the loop")
+
+    def test_wm_class_matches_the_desktop_entries(self):
+        """The task bar matches a window to its launcher via WM_CLASS."""
+        import re, glob
+        from unetbootin.ui.main_window_ctk import WM_CLASS
+
+        entries = glob.glob(os.path.join(
+            os.path.dirname(__file__), '..', 'resources', 'linux', '*.desktop'))
+        self.assertTrue(entries, "no desktop entries found")
+        for path in entries:
+            text = open(path).read()
+            match = re.search(r'StartupWMClass=(\S+)', text)
+            self.assertIsNotNone(match, f"{path} has no StartupWMClass")
+            self.assertEqual(
+                match.group(1), WM_CLASS,
+                f"{os.path.basename(path)} StartupWMClass must equal WM_CLASS")
+
+    def test_window_icon_reference_is_retained(self):
+        """Tk holds only a weak reference; an inline image would be collected."""
+        import inspect
+        from unetbootin.ui.main_window_ctk import MainWindowCTk
+        src = inspect.getsource(MainWindowCTk._apply_window_icon)
+        self.assertIn("self._window_icon", src,
+                      "the PhotoImage must be stored, or the icon disappears")

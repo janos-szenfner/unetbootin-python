@@ -432,7 +432,7 @@ class UNetbootinAppPySG:
                     percent, text = values['-WORK_PROGRESS-']
                     self.ui.set_progress(percent=percent, text=text)
 
-                elif event == '-CANCEL_DOWNLOAD-' and cancellable:
+                elif event in ('-CANCEL_DOWNLOAD-', '-CANCEL-') and cancellable:
                     if not cancel_event.is_set():
                         logger.info("Cancel requested by user")
                         cancel_event.set()
@@ -956,9 +956,10 @@ class UNetbootinAppPySG:
                 break
 
             elif event == '-CANCEL-':
-                logger.info("Cancel requested")
-                self.running = False
-                break
+                # Cancel stops an operation in progress; it must never close
+                # the application - that is Exit's job. Reaching the main loop
+                # means nothing is running, so there is nothing to cancel.
+                logger.debug("Cancel pressed with no operation in progress")
 
             elif event == '-OK-':
                 self.on_ok_clicked()
