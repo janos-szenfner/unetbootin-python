@@ -543,8 +543,15 @@ def get_mount_point(device: str) -> Optional[str]:
                             and mount_point != 'None'):
                         return mount_point
 
-        # Try mount command
-        result = subprocess.run(['mount'], capture_output=True, text=True, timeout=10)
+    except _SUBPROCESS_ERRORS as e:
+        # Not fatal: fall through to the `mount` probe below.
+        logger.debug(f"diskutil could not report a mount point for {device}: {e}")
+
+    # Fall back to `mount`. Attempted separately so a failure of the probe
+    # above cannot skip it - both are alternatives, not sequential steps.
+    try:
+        result = subprocess.run(['mount'], capture_output=True, text=True,
+                                timeout=10)
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
                 if device in line:
@@ -552,10 +559,10 @@ def get_mount_point(device: str) -> Optional[str]:
                     for part in parts:
                         if part.startswith('/Volumes/'):
                             return part
-
     except _SUBPROCESS_ERRORS as e:
-        logger.error(f"Failed to get mount point for {device}: {e}")
+        logger.debug(f"mount could not report a mount point for {device}: {e}")
 
+    logger.debug(f"No mount point found for {device}")
     return None
 
 

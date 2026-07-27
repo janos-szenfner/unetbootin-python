@@ -26,6 +26,31 @@
     ],
     "modules": [
         {
+            "name": "dosfstools",
+            "buildsystem": "autotools",
+            "config-opts": [
+                "--enable-compat-symlinks"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/dosfstools/dosfstools/releases/download/v4.2/dosfstools-4.2.tar.gz",
+                    "sha256": "64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527"
+                }
+            ]
+        },
+        {
+            "name": "mtools",
+            "buildsystem": "autotools",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://ftp.gnu.org/gnu/mtools/mtools-4.0.43.tar.gz",
+                    "sha256": "8866666fa06906ee02c709f670ae6361c5ac2008251ed825c43d321c06775718"
+                }
+            ]
+        },
+        {
             "name": "unetbootin",
             "buildsystem": "simple",
             "build-commands": [

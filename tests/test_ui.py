@@ -916,8 +916,11 @@ class TestFontFallback(unittest.TestCase):
         args = ' '.join(manifest['finish-args'])
         self.assertIn('/usr/share/fonts', args)
         self.assertIn('fontconfig', args)
-        # And a font is shipped inside the bundle as a last resort.
-        commands = ' '.join(manifest['modules'][0]['build-commands'])
+        # And a font is shipped inside the bundle as a last resort. Find the
+        # module by name: dependency modules precede the application one.
+        app_module = next(m for m in manifest['modules']
+                          if m['name'] == 'unetbootin')
+        commands = ' '.join(app_module['build-commands'])
         self.assertIn('/app/share/fonts', commands)
 
 
@@ -982,3 +985,34 @@ class TestLogWindow(unittest.TestCase):
         from unetbootin.resources import icon_path
         for name in ('ui_log.png', 'ui_copy.png'):
             self.assertTrue(os.path.exists(icon_path(name)), f"missing {name}")
+
+
+class TestFlatpakTooling(unittest.TestCase):
+    """The sandbox must carry the tools the installer shells out to."""
+
+    def _manifest(self):
+        import json
+        return json.load(open(os.path.join(
+            os.path.dirname(__file__), '..', 'resources', 'linux',
+            'com.unetbootin.UNetbootin.json')))
+
+    def test_formatting_tools_are_built_into_the_flatpak(self):
+        """A Flatpak inherits no host utilities, so mkfs.vfat must be shipped."""
+        modules = {m['name'] for m in self._manifest()['modules']}
+        self.assertIn('dosfstools', modules,
+                      "mkfs.vfat is required to format the target drive")
+        self.assertIn('mtools', modules)
+
+    def test_tool_sources_are_pinned_by_checksum(self):
+        manifest = self._manifest()
+        for name in ('dosfstools', 'mtools'):
+            module = next(m for m in manifest['modules'] if m['name'] == name)
+            for source in module['sources']:
+                self.assertIn('sha256', source,
+                              f"{name} source must be checksum-pinned")
+                self.assertEqual(len(source['sha256']), 64)
+
+    def test_dependencies_are_built_before_the_application(self):
+        names = [m['name'] for m in self._manifest()['modules']]
+        self.assertLess(names.index('dosfstools'), names.index('unetbootin'))
+        self.assertLess(names.index('mtools'), names.index('unetbootin'))
