@@ -509,19 +509,18 @@ class TestMainWindowNewFeatures(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures.
 
-        Patch the UI module's already-bound ``sg`` (PySimpleGUI) reference with
-        a MagicMock so constructing the window creates NO real tkinter window.
-        Replacing ``sys.modules['PySimpleGUI']`` here is too late — the module
-        imported ``sg`` at load time — and would make a real window that fails
-        on a headless CI runner (no ``$DISPLAY``).
+        Patch the UI module's already-bound ``ctk`` reference with a MagicMock
+        so constructing the window creates NO real window. Patching
+        ``sys.modules`` here is too late — the module imported ``ctk`` at load
+        time — and a real window fails on a headless CI runner (no ``$DISPLAY``).
         """
-        import unetbootin.ui.main_window_pysg as mw
+        import unetbootin.ui.main_window_ctk as mw
 
-        self._sg_patcher = patch.object(mw, 'sg', MagicMock())
+        self._sg_patcher = patch.object(mw, 'ctk', MagicMock())
         self._sg_patcher.start()
         self.addCleanup(self._sg_patcher.stop)
 
-        self.window = mw.MainWindowPySG()
+        self.window = mw.MainWindowCTk()
 
         # Set up some test distributions with categories
         test_distros = [

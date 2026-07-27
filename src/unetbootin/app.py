@@ -15,15 +15,12 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-try:
-    import PySimpleGUI as sg
-    HAS_PYSIMPLEGUI = True
-except ImportError:
-    HAS_PYSIMPLEGUI = False
-    sg = None
+from unetbootin.ui import main_window_ctk as sg   # dialog helpers + WIN_CLOSED
+from unetbootin.ui.main_window_ctk import MainWindowCTk, HAS_CTK
+
+HAS_PYSIMPLEGUI = HAS_CTK  # kept: the app still guards on a usable toolkit
 
 from unetbootin import APP_NAME, APP_VERSION
-from unetbootin.ui.main_window_pysg import MainWindowPySG
 from unetbootin.models.distro import DistributionManager
 from unetbootin.core.extractor import ISOExtractor
 from unetbootin.core.downloader import (
@@ -59,10 +56,10 @@ class UNetbootinAppPySG:
 
     def __init__(self, parent=None, cli_args: Optional[Dict[str, Any]] = None):
         """Initialize the UNetbootin application."""
-        if not HAS_PYSIMPLEGUI:
+        if not HAS_CTK:
             raise ImportError(
-                "PySimpleGUI is required. "
-                "Please install it with: pip install PySimpleGUI"
+                "customtkinter is required. "
+                "Please install it with: pip install customtkinter"
             )
 
         logger.info("Initializing UNetbootinApp with PySimpleGUI")
@@ -99,7 +96,7 @@ class UNetbootinAppPySG:
         self.async_downloader = AsyncDownloader()
 
         # Initialize UI (window is finalized in __init__)
-        self.ui = MainWindowPySG(self)
+        self.ui = MainWindowCTk(self)
 
         # Hide the window while we load data
         self.ui.window.hide()

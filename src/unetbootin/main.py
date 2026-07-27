@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Main entry point for UNetbootin Python rewrite.
-Uses PySimpleGUI + Tkinter for a lightweight, no-Qt GUI.
+Uses CustomTkinter for a modern, lightweight, no-Qt GUI.
 """
 
 import sys
@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    import PySimpleGUI as sg
-    HAS_PYSIMPLEGUI = True
+    from unetbootin.ui import main_window_ctk as sg
+    HAS_GUI = sg.HAS_CTK
 except ImportError:
-    HAS_PYSIMPLEGUI = False
+    HAS_GUI = False
+    sg = None
 
 import locale as _locale
 
@@ -67,12 +68,12 @@ def load_translations(lang: Optional[str] = None):
 def main():
     """Main entry point."""
     logger = setup_logging()
-    logger.info(f"Starting {APP_NAME} v{APP_VERSION} with PySimpleGUI")
+    logger.info(f"Starting {APP_NAME} v{APP_VERSION} with CustomTkinter")
 
-    if not HAS_PYSIMPLEGUI:
+    if not HAS_GUI:
         error_msg = (
-            "PySimpleGUI is not installed. "
-            "Please install it with: pip install PySimpleGUI"
+            "customtkinter is not installed. "
+            "Please install it with: pip install customtkinter"
         )
         logger.error(error_msg)
         sys.exit(1)
@@ -92,11 +93,10 @@ def main():
     app_lang = load_translations(lang=cli_args.get('lang'))
     logger.info(f"Using language: {app_lang}")
 
-    # Set the app theme (white background, black text)
-    from unetbootin.ui.main_window_pysg import apply_theme
-    apply_theme()
+    # Appearance follows the system light/dark setting.
+    sg.apply_theme()
 
-    # Import here to avoid import errors if PySimpleGUI is not installed
+    # Import here to avoid import errors if the toolkit is not installed
     from unetbootin.app import UNetbootinAppPySG
 
     # Create and run main application

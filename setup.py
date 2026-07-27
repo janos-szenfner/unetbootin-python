@@ -41,7 +41,7 @@ if readme_path.exists():
 setup(
     name="unetbootin",
     version=version,
-    description="A lightweight cross-platform tool for creating bootable USB drives from ISO files (PySimpleGUI)",
+    description="A lightweight cross-platform tool for creating bootable USB drives from ISO files (CustomTkinter)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="UNetbootin Team",
@@ -56,9 +56,8 @@ setup(
 
     # Dependencies
     install_requires=[
-        # PySimpleGUI 6.2 is GPLv3 (free copyleft, compatible with GPLv2+).
-        # Pinned to avoid the withdrawn commercial 5.x line.
-        "PySimpleGUI==6.2",
+        "customtkinter>=5.2.0",
+        "Pillow>=10.0.0",
         "requests>=2.28.0",
         "psutil>=5.9.0",
     ],

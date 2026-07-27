@@ -3,7 +3,13 @@
 # Build:  pyinstaller unetbootin-windows.spec --noconfirm --clean --distpath dist/windows
 # Compatible with PyInstaller 6.x (no bytecode-cipher options).
 
-datas = [
+from PyInstaller.utils.hooks import collect_data_files
+
+# CustomTkinter ships its themes and fonts as package data; without these the
+# app cannot build any widget at runtime.
+datas = collect_data_files('customtkinter')
+
+datas += [
     ('src/unetbootin/resources/icons/*', 'unetbootin/resources/icons/'),
     ('src/unetbootin/resources/logos/*', 'unetbootin/resources/logos/'),
     ('src/unetbootin/resources/bootloader/*', 'unetbootin/resources/bootloader/'),
@@ -15,7 +21,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=datas,
-    hiddenimports=['PySimpleGUI'],
+    hiddenimports=['customtkinter', 'PIL', 'PIL._tkinter_finder'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

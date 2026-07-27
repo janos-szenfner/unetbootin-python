@@ -1,7 +1,7 @@
 """
 Unit tests for UI components.
 
-These tests verify the MainWindow UI functionality using PySimpleGUI.
+These tests verify the MainWindow UI functionality (CustomTkinter).
 """
 
 import unittest
@@ -14,17 +14,15 @@ from unittest.mock import patch, MagicMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Mock PySimpleGUI if not available
 try:
-    import PySimpleGUI as sg
-    HAS_PYSIMPLEGUI = True
+    import customtkinter
+    HAS_CTK = True
 except ImportError:
-    HAS_PYSIMPLEGUI = False
-    sys.modules['PySimpleGUI'] = MagicMock()
+    HAS_CTK = False
 
 # Now we can import without errors
 from unetbootin.models.distro import DistributionManager
-from unetbootin.ui.main_window_pysg import MainWindowPySG
+from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
 
 
 class TestMainWindowInitialization(unittest.TestCase):
@@ -327,8 +325,8 @@ class TestDriveRefresh(unittest.TestCase):
 
 # Note: Full UI tests with PySimpleGUI can be run directly
 # For testing with actual PySimpleGUI windows, use:
-#   from unetbootin.ui.main_window_pysg import MainWindowPySG
-#   window = MainWindowPySG()
+#   from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
+#   window = MainWindowCTk()
 #   # Test UI interactions here
 
 
@@ -596,7 +594,7 @@ class TestWindowIdentity(unittest.TestCase):
     """The window must carry the real app icon and the full title."""
 
     def test_window_icon_path_resolves_to_a_real_file(self):
-        from unetbootin.ui.main_window_pysg import window_icon_path
+        from unetbootin.ui.main_window_ctk import window_icon_path
         path = window_icon_path()
         self.assertIsNotNone(path, "a bundled window icon must be found")
         self.assertTrue(os.path.exists(path))
@@ -610,9 +608,9 @@ class TestWindowIdentity(unittest.TestCase):
     def test_window_is_not_created_with_the_placeholder_icon(self):
         """Guard against regressing to the 1x1 transparent GIF placeholder."""
         import inspect
-        from unetbootin.ui import main_window_pysg
-        src = inspect.getsource(main_window_pysg.MainWindowPySG.init_ui)
-        self.assertNotIn("icon=transparent_gif", src,
+        from unetbootin.ui import main_window_ctk
+        src = inspect.getsource(main_window_ctk.MainWindowCTk.init_ui)
+        self.assertNotIn("transparent_gif", src,
                          "the window must not use the blank placeholder icon")
 
 
@@ -741,7 +739,7 @@ class TestCategoryIcons(unittest.TestCase):
 
     def test_icon_files_exist_for_every_category(self):
         from unetbootin.resources import icon_path
-        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
         from unetbootin.models.distro import DistributionManager
 
         mapping = MainWindowPySG._CATEGORY_ICONS
@@ -757,7 +755,7 @@ class TestCategoryIcons(unittest.TestCase):
 
     def test_unknown_category_maps_to_no_icon(self):
         """'All' must not show a misleading icon."""
-        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
         mapping = MainWindowPySG._CATEGORY_ICONS
         self.assertIsNone(mapping.get('all'))
         self.assertIsNone(mapping.get(''))
@@ -768,7 +766,7 @@ class TestDistroOrdering(unittest.TestCase):
 
     def _sorted_names(self, category=None):
         from unittest.mock import MagicMock
-        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        from unetbootin.ui.main_window_ctk import MainWindowCTk as MainWindowPySG
         from unetbootin.models.distro import DistributionManager
 
         ui = MainWindowPySG.__new__(MainWindowPySG)
@@ -776,10 +774,23 @@ class TestDistroOrdering(unittest.TestCase):
             d['name']: d for d in DistributionManager().get_distributions()
         }
         captured = {}
-        combo = MagicMock()
-        combo.get.return_value = ''
-        combo.update.side_effect = lambda **kw: captured.update(kw)
-        ui.elements = {'distro_select': combo, 'category_select': MagicMock()}
+        distro = MagicMock()
+        distro.get.return_value = ''
+        distro.update.side_effect = lambda **kw: captured.update(kw)
+
+        def element():
+            el = MagicMock()
+            el.get.return_value = ''
+            return el
+
+        # update_distro_list selects the first entry, which cascades into the
+        # version list, so those elements must exist too.
+        ui.elements = {
+            'distro_select': distro,
+            'category_select': element(),
+            'version_select': element(),
+            'info_message': element(),
+        }
         ui.update_distro_list(category or 'All')
         return captured.get('values', [])
 

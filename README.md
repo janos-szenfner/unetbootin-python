@@ -25,12 +25,12 @@ python_unetbootin/
 │   └── unetbootin/
 │       ├── __init__.py               # Package init with version info
 │       ├── __main__.py               # Allow python -m unetbootin
-│       ├── main.py                   # Main entry point (PySimpleGUI)
-│       ├── app.py                    # Main application class (PySimpleGUI)
+│       ├── main.py                   # Main entry point (CustomTkinter)
+│       ├── app.py                    # Main application class
 │       │
 │       ├── ui/
 │       │   ├── __init__.py
-│       │   └── main_window_pysg.py   # PySimpleGUI UI implementation
+│       │   └── main_window_ctk.py    # CustomTkinter UI implementation
 │       │
 │       ├── models/
 │       │   ├── __init__.py
@@ -58,7 +58,7 @@ python_unetbootin/
     ├── test_platform.py            # Platform-specific functions
     ├── test_integration.py         # Cross-module (unit-level, mocked)
     ├── test_new_features.py        # Mirrors, resume, categories, UEFI/SB params
-    └── test_ui.py                  # PySimpleGUI window handling
+    └── test_ui.py                  # CustomTkinter window handling
 ```
 
 > Note: `resources/` also contains `icons/`, `logos/`, `bootloader/`, and `translations/` — see the ⚠️ notes in *Current Status* about which of these are actually used by the running app.
@@ -143,8 +143,9 @@ You are prompted for your password only when an install actually begins. On Linu
 
 ### Core Dependencies
 - **Python 3.10+**
-- **PySimpleGUI==6.2** - Lightweight GUI framework (Tkinter backend)
-  > ✅ **Licensing:** pinned to **PySimpleGUI 6.2, which is released under the GPLv3** — a free copyleft license, compatible with this project's GPLv2-or-later and fine to bundle into redistributable executables. (The pin also avoids the withdrawn commercial-license-key 5.x line.)
+- **customtkinter>=5.2.0** - Modern, HiDPI-aware widgets on the Tkinter backend
+  > ✅ **Licensing:** CustomTkinter is **MIT licensed**, compatible with this project's GPLv2-or-later and fine to bundle into redistributable executables. It replaced PySimpleGUI, whose licence terms changed across major versions.
+- **Pillow>=10.0.0** - Icon rendering (`CTkImage`)
 - **requests>=2.28.0** - HTTP downloads
 - **psutil>=5.9.0** - System information
 
@@ -166,7 +167,7 @@ You are prompted for your password only when an install actually begins. On Linu
 ## Features Implemented
 
 ### Application Framework
-- Main entry point with PySimpleGUI application setup
+- Main entry point with CustomTkinter application setup
 - Main window class coordinating all functionality
 - Event-based UI interactions
 - Root/admin privilege checking on startup
@@ -174,13 +175,13 @@ You are prompted for your password only when an install actually begins. On Linu
 - Logging to file and console
 
 ### User Interface
-- Complete recreation of the original UI using PySimpleGUI + Tkinter
+- Modern interface built with CustomTkinter: follows the system light/dark theme, HiDPI-aware, resizable
 - Distribution selection (radio button + combo boxes)
 - Installation type selection (Distribution, Disk Image, Custom/Manual)
 - Drive selection with refresh capability
 - Advanced options (persistence for live USB)
 - File selectors for ISO, kernel, initrd, and config files
-- Progress dialogs for long operations
+- Inline progress bar and Cancel button in the main window (no popups)
 
 ### Distribution Management
 - Built-in list of **21 distributions** across Linux (13), BSD (6), and Windows (2) — see the full list under *Next Steps → Distribution Statistics*
@@ -385,7 +386,7 @@ manager.load_from_directory('/path/to/distro/definitions')
 
 ## Architecture Decisions
 
-### Why PySimpleGUI?
+### Why CustomTkinter?
 - **Lightweight**: Small dependency footprint, uses the built-in Tkinter backend
 - **Compatibility**: Works with Python 3.10+
 - **Simplicity**: Simple, declarative layouts that are quick to maintain
@@ -453,10 +454,9 @@ See `src/unetbootin/core/utils.py:parse_command_line_args()` for full list.
 
 ### Common Issues
 
-**"No module named 'PySimpleGUI'"**
+**"No module named 'customtkinter'"**
 ```bash
-# PySimpleGUI 6.2 is GPLv3 (free, no license key):
-pip install "PySimpleGUI==6.2"
+pip install customtkinter
 ```
 
 **"Command not found: xorriso"**
@@ -550,7 +550,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] Implement ISO download functionality from distribution URLs - ✅ Complete
 
 ### 📦 Medium Priority
-- [x] Add translation support - ✅ **Done.** Added `core/i18n.py` which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` activates the catalog from CLI `--lang` / system locale, and the UI (`main_window_pysg.py`) wraps user-facing strings in `_()`. Supports 5 languages plus English fallback.
+- [x] Add translation support - ✅ **Done.** Added `core/i18n.py` which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` activates the catalog from CLI `--lang` / system locale, and the UI (`main_window_ctk.py`) wraps user-facing strings in `_()`. Supports 5 languages plus English fallback.
 - [ ] Implement auto-update checking
 - [x] Add ISO verification (checksum comparison) - ✅ **Done (dynamic).** Added `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` GNU/coreutils and `SHA256 (file) = <hex>` BSD/Fedora layouts). Currently wired for 6 distro versions (Ubuntu 24.04/22.04/20.04, Debian current, Fedora 44/43) — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
 - [x] Add support for more archive formats (zip, tar, etc.) - ✅ Complete
@@ -594,7 +594,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] **Wire real translations** - ✅ **Done.** Added `core/i18n.py`, which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` now activates the catalog from the CLI `--lang` / system locale, and the UI wraps its user-facing labels/buttons in `_()`. (Semantic combo *values* like "USB Drive" are deliberately left untranslated so installer logic still matches.)
 
 ### 🔧 Build & Distribution
-> **GUI dependency:** ✅ resolved — pinned to **`PySimpleGUI==6.2` (GPLv3)**, which is free to bundle into redistributable executables.
+> **GUI dependency:** ✅ **CustomTkinter** — modern, HiDPI-aware widgets on Tkinter, MIT licensed and free to bundle. Replaced PySimpleGUI, whose licence terms changed across major versions.
 - [x] **Fix packaging metadata first:** ✅ **Done.** `setup.py` `package_data` globs now match the real layout (`resources/bootloader/*`, `resources/icons/*`, `resources/logos/*`, `resources/translations/*.ts`), and `MANIFEST.in` was added to ensure resources are included in source distributions. Assets are now properly bundled in wheels, sdists and PyInstaller bundles.
 - [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `unetbootin/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
 - [x] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon. ✅ **Done.** Created `unetbootin.spec` with cross-platform support: uses `unetbootin.ico` for Windows, `unetbootin.icns` for macOS, and `unetbootin.xpm` for Linux. Includes all resources (icons, logos, bootloader, translations) in the bundle.
@@ -622,7 +622,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 |-----------|--------|
 | Project Structure | ✅ Complete |
 | Main Application | ✅ Complete |
-| UI Framework | ✅ Complete |
+| UI Framework | ✅ Complete — CustomTkinter (modern widgets, system light/dark, HiDPI) |
 | Distribution Models | ✅ Complete |
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
