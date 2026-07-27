@@ -138,8 +138,12 @@ class MainWindowPySG:
      tooltip="Manually specify a kernel and initrd to load"),
             ],
 
-            # Distribution selection
+            # Distribution selection. A ttk Combobox cannot draw images in its
+            # list, so the category icon sits beside the drop-down and follows
+            # the selection - the name and the icon are both visible.
             [
+                sg.Image(key='-CATEGORY_ICON-', size=(32, 32),
+                         pad=((0, 6), (0, 0))),
                 sg.Combo(
     [],
     key='-CATEGORY_SELECT-',
@@ -380,6 +384,7 @@ class MainWindowPySG:
         # Store references to elements for easier access
         self.elements = {
             'category_select': self.window['-CATEGORY_SELECT-'],
+            'category_icon': self.window['-CATEGORY_ICON-'],
             'distro_select': self.window['-DISTRO_SELECT-'],
             'version_select': self.window['-VERSION_SELECT-'],
             'floppy_file': self.window['-FLOPPY_FILE-'],
@@ -443,6 +448,37 @@ class MainWindowPySG:
 
         category_values = ['All'] + categories
         self.elements['category_select'].update(values=category_values, value='All')
+        self.set_category_icon('All')
+
+    # Category name -> bundled icon file.
+    _CATEGORY_ICONS = {
+        'linux': 'category_linux.png',
+        'bsd': 'category_bsd.png',
+        'windows': 'category_windows.png',
+    }
+
+    def set_category_icon(self, category: Optional[str]):
+        """Show the icon for the selected category beside the drop-down.
+
+        'All' (or anything unrecognised) hides the image rather than showing a
+        misleading one.
+        """
+        filename = self._CATEGORY_ICONS.get((category or '').strip().lower())
+        element = self.elements.get('category_icon')
+        if element is None:
+            return
+        try:
+            if not filename:
+                element.update(visible=False)
+                return
+            from unetbootin.resources import icon_path
+            path = icon_path(filename)
+            if os.path.exists(path):
+                element.update(filename=str(path), visible=True)
+            else:
+                element.update(visible=False)
+        except Exception as e:  # noqa: BLE001 - decorative only, never fatal
+            logger.warning(f"Could not set category icon: {e}")
 
     def update_distro_list(self, category_filter: str = None):
         """Update the distribution list based on category filter."""

@@ -993,6 +993,7 @@ class UNetbootinAppPySG:
 
             elif event == '-CATEGORY_SELECT-':
                 category = values.get('-CATEGORY_SELECT-')
+                self.ui.set_category_icon(category)
                 self.ui.update_distro_list(category)
 
             elif event == '-DISTRO_SELECT-':

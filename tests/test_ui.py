@@ -734,3 +734,30 @@ class TestVendorOnlyDownloads(unittest.TestCase):
         self.assertFalse(
             app._handle_manual_download('ubuntu', '26.04 LTS'),
             "a normal distribution must download as usual")
+
+
+class TestCategoryIcons(unittest.TestCase):
+    """Each main category must map to a bundled icon."""
+
+    def test_icon_files_exist_for_every_category(self):
+        from unetbootin.resources import icon_path
+        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        from unetbootin.models.distro import DistributionManager
+
+        mapping = MainWindowPySG._CATEGORY_ICONS
+        categories = DistributionManager().get_categories()
+
+        for category in categories:
+            key = category.strip().lower()
+            self.assertIn(key, mapping,
+                          f"category '{category}' has no icon mapped")
+            path = icon_path(mapping[key])
+            self.assertTrue(os.path.exists(path), f"missing icon: {path}")
+            self.assertGreater(os.path.getsize(path), 0)
+
+    def test_unknown_category_maps_to_no_icon(self):
+        """'All' must not show a misleading icon."""
+        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        mapping = MainWindowPySG._CATEGORY_ICONS
+        self.assertIsNone(mapping.get('all'))
+        self.assertIsNone(mapping.get(''))
