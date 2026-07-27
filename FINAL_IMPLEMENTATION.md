@@ -62,7 +62,7 @@ git push origin v1.0.0
 ```
 
 **That's it!** GitHub Actions will automatically:
-1. Run all 169 tests
+1. Run all 192 tests
 2. Build all platform packages in parallel
 3. Publish to PyPI (if PYPI_API_TOKEN secret is configured)
 4. Create GitHub Release with all artifacts + README-macOS.md
@@ -218,7 +218,7 @@ Uses `pypa/gh-action-pypi-publish` action:
 
 | Job | Estimated Time | Notes |
 |-----|---------------|-------|
-| test | ~2 minutes | 169 tests |
+| test | ~2 minutes | 192 tests |
 | build-windows | ~5-8 minutes | UAC manifest embedding |
 | build-macos | ~5-10 minutes | ZIP + DMG creation |
 | build-linux-appimage | ~5-8 minutes | linuxdeploy |

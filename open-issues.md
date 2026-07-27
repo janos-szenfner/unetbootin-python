@@ -1,8 +1,14 @@
 # Open Issues - UNetbootin Python Rewrite
 
-> **Last Updated**: 2026-07-24
+> **Last Updated**: 2026-07-27
 > **Status**: Code Audit Complete | ALL issues resolved — H-001..H-002, M-001..M-013, L-001..L-007 Fixed
 > **Auditor**: Mistral Vibe CLI Agent
+>
+> **Note (2026-07-27):** the GUI layer has since been rebuilt with
+> **CustomTkinter** (`src/unetbootin/ui/main_window_ctk.py`), replacing
+> PySimpleGUI. Entries below that mention PySimpleGUI describe the
+> implementation as it was when each issue was resolved and are kept as a
+> record; they are not a description of the current UI.
 
 This document tracks all identified issues, warnings, security concerns, and code quality problems in the UNetbootin Python rewrite codebase. Issues are categorized by priority and type.
 
@@ -16,7 +22,7 @@ This document tracks all identified issues, warnings, security concerns, and cod
 | High Priority | 0 | ✅ All Fixed |
 | Medium Priority | 13 | ✅ All Fixed |
 | Low Priority | 7 | ✅ All Fixed |
-| Test Suite | 166 tests | ✅ All passing (was 8 failing) |
+| Test Suite | 192 tests | ✅ All passing (was 8 failing) |
 
 **Fixed in this update**: M-002 (broad exception handling — 131 sites: 122 narrowed, 9 documented), M-013 (3 elevation.py handlers narrowed)
 **Previously fixed**: H-001, H-002, M-001, M-003, M-004, M-005, M-006, M-007, M-008, M-009, M-010, M-011, M-012, L-001..L-007, plus all pre-existing test failures

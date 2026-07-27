@@ -72,7 +72,7 @@ git push origin v1.0.0
 ```
 
 That's it! GitHub Actions will:
-1. Run all 169 tests
+1. Run all 192 tests
 2. Build all platform packages in parallel
 3. Create a GitHub Release with all artifacts
 4. Upload everything automatically
@@ -114,7 +114,7 @@ After the workflow completes:
 - Proper error handling
 
 ### ✅ Complete Test Coverage
-- All 169 tests run before any builds
+- All 192 tests run before any builds
 - Prevents releasing broken code
 - Fast feedback loop
 

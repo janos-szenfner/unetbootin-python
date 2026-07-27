@@ -387,10 +387,21 @@ manager.load_from_directory('/path/to/distro/definitions')
 ## Architecture Decisions
 
 ### Why CustomTkinter?
-- **Lightweight**: Small dependency footprint, uses the built-in Tkinter backend
-- **Compatibility**: Works with Python 3.10+
-- **Simplicity**: Simple, declarative layouts that are quick to maintain
-- **Cross-platform**: Runs on Linux, macOS and Windows without native Qt builds
+- **Modern look**: rounded, flat widgets instead of Tkinter's dated defaults,
+  and it follows the system light/dark setting
+- **HiDPI-aware**: scales correctly on high-resolution displays
+- **Lightweight**: builds on the Tkinter backend already in the standard
+  library, so bundles stay small — no Qt or bundled browser engine
+- **Cross-platform**: the same interface on Linux, macOS and Windows
+- **Licensing**: MIT, so it is safe to bundle into redistributable executables.
+  This replaced PySimpleGUI, whose licence terms changed across major versions
+  and required pinning to a specific release
+
+*Trade-off:* CustomTkinter is consistent rather than *native* — it looks the
+same on all three platforms rather than adopting each one's widget style.
+wxPython was considered for genuinely native widgets, but it has no Linux
+wheels on PyPI and ships separate arm64/x86_64 macOS wheels, which would cost
+the Universal 2 macOS build.
 
 ### Why This Structure?
 - **Separation of Concerns**: UI, business logic, data models, platform code are all separate
@@ -527,7 +538,7 @@ See [LICENSE](LICENSE) for the full license text.
 
 - **Original UNetbootin**: Geza Kovacs <geza0kovacs@gmail.com>
 - **Python Rewrite**: Started in 2026
-- **PySimpleGUI**: The PySimpleGUI project (Tkinter backend)
+- **CustomTkinter**: The CustomTkinter project (modern widgets on the Tkinter backend)
 - **All Linux distributions**: Their respective maintainers
 
 ## Next Steps
@@ -569,8 +580,8 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 🧪 Testing
 - [x] Add unit tests for core functionality - ✅ Complete
 - [x] Add unit tests for platform-specific code - ✅ Complete
-- [x] Add integration tests - ⚠️ **Unit-level only.** All 166 tests mock `subprocess`; **no test actually formats a drive or produces a bootable USB.** A loopback-image integration test is still needed.
-- [x] Add UI tests for PySimpleGUI - ✅ Complete
+- [x] Add integration tests - ⚠️ **Unit-level only.** All 192 tests mock `subprocess`; **no test actually formats a drive or produces a bootable USB.** A loopback-image integration test is still needed.
+- [x] Add UI tests for the window layer - ✅ Complete (ported to CustomTkinter)
 
 ### 📝 Documentation
 - [ ] Add user documentation
