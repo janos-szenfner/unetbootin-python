@@ -37,7 +37,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='unetbootin',
+    name='unetbootin-python',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -60,12 +60,12 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='unetbootin',
+    name='unetbootin-python',
 )
 
 app = BUNDLE(
     coll,
-    name='unetbootin.app',
+    name='unetbootin-python.app',
     icon='src/unetbootin/resources/icons/unetbootin.icns',
     bundle_identifier='com.unetbootin.UNetbootin',
 )

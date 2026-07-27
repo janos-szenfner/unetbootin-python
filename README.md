@@ -73,13 +73,13 @@ Download the one for your system — no Python or extra toolkit required.
 
 | Platform | Asset | Install / run |
 |---|---|---|
-| Windows | `unetbootin.exe` | Double-click (prompts for UAC elevation) |
-| macOS | `unetbootin.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
-| macOS | `unetbootin.zip` | Extract, then right-click → Open |
-| Linux | `unetbootin.AppImage` | `chmod +x unetbootin.AppImage && ./unetbootin.AppImage` |
-| Linux (Debian/Ubuntu) | `unetbootin-<version>.deb` | `sudo apt install ./unetbootin-<version>.deb` |
-| Linux (Fedora/RHEL) | `unetbootin-<version>.rpm` | `sudo dnf install ./unetbootin-<version>.rpm` |
-| Linux (Flatpak) | `unetbootin.flatpak` | `flatpak install --user unetbootin.flatpak` |
+| Windows | `unetbootin-python.exe` | Double-click (prompts for UAC elevation) |
+| macOS | `unetbootin-python.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
+| macOS | `unetbootin-python.zip` | Extract, then right-click → Open |
+| Linux | `unetbootin-python.AppImage` | `chmod +x unetbootin-python.AppImage && ./unetbootin-python.AppImage` |
+| Linux (Debian/Ubuntu) | `unetbootin-python-<version>.deb` | `sudo apt install ./unetbootin-python-<version>.deb` |
+| Linux (Fedora/RHEL) | `unetbootin-python-<version>.rpm` | `sudo dnf install ./unetbootin-python-<version>.rpm` |
+| Linux (Flatpak) | `unetbootin-python.flatpak` | `flatpak install --user unetbootin-python.flatpak` |
 
 After installing the DEB/RPM/Flatpak the app appears in the GNOME and KDE
 application menus (under **Utilities**) with its icon, and launches with a

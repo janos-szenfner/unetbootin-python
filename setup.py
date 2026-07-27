@@ -39,7 +39,7 @@ if readme_path.exists():
 
 
 setup(
-    name="unetbootin",
+    name="unetbootin-python",
     version=version,
     description="A lightweight cross-platform tool for creating bootable USB drives from ISO files (CustomTkinter)",
     long_description=long_description,
@@ -84,8 +84,8 @@ setup(
     # Entry points
     entry_points={
         "console_scripts": [
-            "unetbootin=unetbootin.main:main",
-            "unetbootin-cli=unetbootin.main:main",
+            "unetbootin-python=unetbootin.main:main",
+            "unetbootin-python-cli=unetbootin.main:main",
         ],
         "gui_scripts": [
             # For macOS app bundle support

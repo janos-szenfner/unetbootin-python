@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.10'
-  APP_NAME: 'unetbootin'
+  APP_NAME: 'unetbootin-python'
   
 jobs:
   test:
@@ -188,15 +188,15 @@ jobs:
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           cp dist/linux-appimage/${{ env.APP_NAME }} AppDir/usr/bin/
-          cp resources/linux/unetbootin-appimage.desktop AppDir/usr/share/applications/unetbootin.desktop
-          cp src/unetbootin/resources/icons/unetbootin_256.png AppDir/usr/share/icons/hicolor/256x256/apps/unetbootin.png
-          mkdir -p AppDir/usr/share/unetbootin/resources
-          cp -r src/unetbootin/resources/* AppDir/usr/share/unetbootin/resources/
+          cp resources/linux/unetbootin-appimage.desktop AppDir/usr/share/applications/${{ env.APP_NAME }}.desktop
+          cp src/unetbootin/resources/icons/unetbootin_256.png AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png
+          mkdir -p AppDir/usr/share/${{ env.APP_NAME }}/resources
+          cp -r src/unetbootin/resources/* AppDir/usr/share/${{ env.APP_NAME }}/resources/
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --executable AppDir/usr/bin/${{ env.APP_NAME }} \
-            --desktop-file AppDir/usr/share/applications/unetbootin.desktop \
-            --icon-filename AppDir/usr/share/icons/hicolor/256x256/apps/unetbootin.png \
+            --desktop-file AppDir/usr/share/applications/${{ env.APP_NAME }}.desktop \
+            --icon-filename AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png \
             --output appimage
           mv ${{ env.APP_NAME }}.AppImage dist/linux-appimage/${{ env.APP_NAME }}.AppImage
           chmod +x dist/linux-appimage/${{ env.APP_NAME }}.AppImage
@@ -522,15 +522,15 @@ jobs:
             
             ### Installation
             
-            **Windows**: Run `unetbootin.exe` (UAC elevation required)
+            **Windows**: Run `unetbootin-python.exe` (UAC elevation required)
             **macOS**: 
             - ZIP: Extract and drag to Applications, then right-click → Open
             - DMG: Mount, drag to Applications, then right-click → Open
             **Linux**: 
-            - AppImage: `chmod +x unetbootin.AppImage && ./unetbootin.AppImage`
-            - DEB: `sudo dpkg -i unetbootin.deb`
-            - RPM: `sudo rpm -i unetbootin.rpm`
-            - Flatpak: `flatpak install unetbootin.flatpak`
+            - AppImage: `chmod +x unetbootin-python.AppImage && ./unetbootin-python.AppImage`
+            - DEB: `sudo dpkg -i unetbootin-python.deb`
+            - RPM: `sudo rpm -i unetbootin-python.rpm`
+            - Flatpak: `flatpak install unetbootin-python.flatpak`
           files: |
             artifacts/${{ env.APP_NAME }}-windows/*
             artifacts/${{ env.APP_NAME }}-macos/*
