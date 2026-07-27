@@ -59,14 +59,6 @@ def check_toolkit() -> Optional[str]:
 BACKGROUND = "white"
 PANEL_BORDER = "#d4d4d4"
 
-# Secondary actions (Cancel/Exit). A transparent fill made these look
-# disabled next to the primary buttons.
-SECONDARY_BUTTON = {
-    "fg_color": "#7a828c",
-    "hover_color": "#626a73",
-    "text_color": "white",
-}
-
 
 def apply_theme(mode: str = "light"):
     """Set the appearance mode and colour theme."""
@@ -142,10 +134,9 @@ def _show_dialog(message: str, title: str, buttons=("OK",),
         win.destroy()
 
     for i, label in enumerate(buttons):
-        primary = (i == 0)
-        style = {} if primary else SECONDARY_BUTTON
-        if primary and accent:
-            style = {"fg_color": accent, "hover_color": accent}
+        # Every button uses the standard styling; only an error dialog's
+        # single button takes the warning colour.
+        style = {"fg_color": accent, "hover_color": accent} if (i == 0 and accent) else {}
         ctk.CTkButton(row, text=label, width=110,
                       command=lambda v=label: choose(v),
                       **style).pack(side="right", padx=(8, 0))
@@ -311,6 +302,7 @@ class MainWindowCTk:
 
         self._events: "queue.Queue" = queue.Queue()
         self._images: Dict[int, Any] = {}
+        self._icon_cache: Dict[tuple, Any] = {}
         self._geometry: Dict[int, Dict[str, Any]] = {}
         self._pre_busy_state: Dict[str, bool] = {}
 
@@ -348,7 +340,8 @@ class MainWindowCTk:
         ctk.CTkLabel(header, text=APP_TITLE,
                      font=ctk.CTkFont(size=22, weight="bold")).grid(
             row=0, column=0, sticky="w")
-        about = ctk.CTkButton(header, text=_("About"), width=90,
+        about = ctk.CTkButton(header, text=_("About"), width=100,
+                              image=self._icon('ui_info.png'), compound="left",
                               command=lambda: self.emit('-ABOUT-'))
         about.grid(row=0, column=2, sticky="e")
         self.elements['about'] = _Element(about, 'button', owner=self)
@@ -419,7 +412,8 @@ class MainWindowCTk:
             lbl.grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
             entry = ctk.CTkEntry(self._file_rows)
             entry.grid(row=row, column=1, sticky="ew", padx=(0, 8), pady=4)
-            btn = ctk.CTkButton(self._file_rows, text="...", width=48,
+            btn = ctk.CTkButton(self._file_rows, text="", width=48,
+                                image=self._icon('ui_folder.png'),
                                 command=lambda e=event: self.emit(e))
             btn.grid(row=row, column=2, sticky="e", pady=4)
             self.elements[key] = _Element(entry, 'entry', owner=self)
@@ -440,7 +434,9 @@ class MainWindowCTk:
             command=lambda v: self.emit('-DRIVE_SELECT-', v))
         self._drive.grid(row=0, column=1, sticky="ew", padx=6, pady=(12, 6))
         self.elements['drive_select'] = _Element(self._drive, 'option', owner=self)
-        refresh = ctk.CTkButton(target, text=_("Refresh"), width=100,
+        refresh = ctk.CTkButton(target, text=_("Refresh"), width=115,
+                                image=self._icon('ui_refresh.png'),
+                                compound="left",
                                 command=lambda: self.emit('-REFRESH_DRIVES-'))
         refresh.grid(row=0, column=2, padx=(6, 12), pady=(12, 6))
         self.elements['refresh'] = _Element(refresh, 'button', owner=self)
@@ -486,8 +482,10 @@ class MainWindowCTk:
         self.elements['progress_bar'] = _Element(self._progress, 'progress',
                                                  owner=self)
 
-        cancel = ctk.CTkButton(bar, text=_("Cancel download"), width=140,
+        cancel = ctk.CTkButton(bar, text=_("Cancel download"), width=155,
                                fg_color="#b23b3b", hover_color="#8f2f2f",
+                               image=self._icon('ui_cancel.png'),
+                               compound="left",
                                command=lambda: self.emit('-CANCEL_DOWNLOAD-'))
         cancel.grid(row=0, column=3, sticky="e")
         self.elements['cancel_download'] = _Element(cancel, 'button', owner=self)
@@ -503,13 +501,15 @@ class MainWindowCTk:
         actions.grid(row=5, column=0, sticky="ew", padx=16, pady=14)
         actions.grid_columnconfigure(0, weight=1)
 
-        for i, (label, key, event, kwargs) in enumerate((
-                (_("OK"), 'ok', '-OK-', {}),
-                (_("ISO Download"), 'iso_download', '-ISO_DOWNLOAD-', {}),
-                (_("Cancel"), 'cancel', '-CANCEL-', SECONDARY_BUTTON),
-                (_("Exit"), 'exit', '-EXIT-', SECONDARY_BUTTON))):
-            btn = ctk.CTkButton(actions, text=label, width=130,
-                                command=lambda e=event: self.emit(e), **kwargs)
+        for i, (label, key, event, icon) in enumerate((
+                (_("OK"), 'ok', '-OK-', 'ui_ok.png'),
+                (_("ISO Download"), 'iso_download', '-ISO_DOWNLOAD-',
+                 'ui_download.png'),
+                (_("Cancel"), 'cancel', '-CANCEL-', 'ui_cancel.png'),
+                (_("Exit"), 'exit', '-EXIT-', 'ui_exit.png'))):
+            btn = ctk.CTkButton(actions, text=label, width=145,
+                                image=self._icon(icon), compound="left",
+                                command=lambda e=event: self.emit(e))
             btn.grid(row=0, column=i + 1, padx=6)
             self.elements[key] = _Element(btn, 'button', owner=self)
 
@@ -576,8 +576,10 @@ class MainWindowCTk:
         iso_dir.grid(row=1, column=0, sticky="ew", padx=10)
         iso_location.grid_columnconfigure(0, weight=1)
         self.elements['iso_dir'] = _Element(iso_dir, 'entry', owner=self)
-        ctk.CTkButton(iso_location, text=_("Browse"), width=100,
-                      command=self._browse_iso_dir).grid(row=1, column=1, padx=10)
+        ctk.CTkButton(iso_location, text=_("Browse"), width=115,
+                      image=self._icon('ui_folder.png'), compound="left",
+                      command=self._browse_iso_dir).grid(row=1, column=1,
+                                                         padx=10)
         ctk.CTkLabel(
             iso_location, text_color="gray", justify="left", anchor="w",
             text=_("Leave empty to use your Downloads folder; the ISO is then "
@@ -585,6 +587,29 @@ class MainWindowCTk:
             row=2, column=0, columnspan=2, sticky="w", padx=10, pady=(6, 10))
 
     # ------------------------------------------------------------ utilities
+
+    def _icon(self, name: str, size: int = 18):
+        """A cached CTkImage for a bundled button icon, or None if missing.
+
+        Icons are decorative: any failure leaves the button text-only rather
+        than breaking the window.
+        """
+        key = (name, size)
+        if key in self._icon_cache:
+            return self._icon_cache[key]
+        image = None
+        try:
+            from PIL import Image
+            from unetbootin.resources import icon_path
+            path = icon_path(name)
+            if os.path.exists(path):
+                loaded = Image.open(path)
+                image = ctk.CTkImage(light_image=loaded, dark_image=loaded,
+                                     size=(size, size))
+        except Exception as e:  # noqa: BLE001 - decorative only
+            logger.debug(f"Button icon {name} unavailable: {e}")
+        self._icon_cache[key] = image
+        return image
 
     def _browse_iso_dir(self):
         """Pick the folder ISOs are downloaded into."""
