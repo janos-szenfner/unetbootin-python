@@ -26,17 +26,43 @@ logger = logging.getLogger(__name__)
 
 
 def setup_logging():
-    """Configure logging for the application."""
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    """Configure logging: console, a file, and an in-memory buffer.
+
+    The buffer backs the Log window, so the user can read the log without
+    hunting for the file. The file itself now goes to a predictable per-user
+    directory rather than whatever directory the app was launched from.
+    """
+    from unetbootin.core import log_buffer
+
+    handlers = [logging.StreamHandler(sys.stdout)]
+
+    log_path = None
+    try:
+        directory = log_buffer.default_log_directory()
+        os.makedirs(directory, exist_ok=True)
+        log_path = os.path.join(directory, "unetbootin-python.log")
+        handlers.append(logging.FileHandler(log_path))
+    except OSError:
+        # Fall back to the working directory rather than losing file logging.
+        try:
+            log_path = os.path.abspath("unetbootin-python.log")
+            handlers.append(logging.FileHandler(log_path))
+        except OSError:
+            log_path = None
+
     logging.basicConfig(
         level=logging.INFO,
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler("unetbootin.log"),
-        ],
+        format=log_buffer.LOG_FORMAT,
+        handlers=handlers,
     )
-    return logging.getLogger(__name__)
+    # Capture into memory as well, so the Log window has something to show.
+    log_buffer.install()
+    log_buffer.set_log_file(log_path)
+
+    logger = logging.getLogger(__name__)
+    if log_path:
+        logger.info(f"Log file: {log_path}")
+    return logger
 
 
 def load_translations(lang: Optional[str] = None):

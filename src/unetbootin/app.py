@@ -971,6 +971,9 @@ class UNetbootinAppPySG:
             elif event == '-ABOUT-':
                 self.ui.show_about()
 
+            elif event == '-LOG-':
+                self.ui.show_log()
+
             elif event == '-REFRESH_DRIVES-':
                 self.on_refresh_drive_list()
 

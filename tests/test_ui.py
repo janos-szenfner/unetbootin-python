@@ -919,3 +919,66 @@ class TestFontFallback(unittest.TestCase):
         # And a font is shipped inside the bundle as a last resort.
         commands = ' '.join(manifest['modules'][0]['build-commands'])
         self.assertIn('/app/share/fonts', commands)
+
+
+class TestLogWindow(unittest.TestCase):
+    """The Log button must expose the captured log."""
+
+    def setUp(self):
+        from unetbootin.core import log_buffer
+        log_buffer.install()
+        buf = log_buffer.get_buffer()
+        if buf is not None:
+            buf.clear()
+
+    def test_buffer_captures_records(self):
+        import logging
+        from unetbootin.core import log_buffer
+
+        log_buffer.install()
+        logging.getLogger('unetbootin.test').warning('a distinctive message')
+        self.assertIn('a distinctive message', log_buffer.get_text())
+
+    def test_buffer_is_bounded(self):
+        import logging
+        from unetbootin.core import log_buffer
+
+        buf = log_buffer.install(capacity=50)
+        # install() is idempotent, so use whatever capacity is in force.
+        cap = buf._records.maxlen
+        for i in range(cap + 120):
+            logging.getLogger('unetbootin.test').info(f'line {i}')
+        self.assertLessEqual(len(buf), cap, "the buffer must not grow forever")
+
+    def test_text_is_useful_before_any_logging(self):
+        from unetbootin.core import log_buffer
+        buf = log_buffer.get_buffer()
+        buf.clear()
+        self.assertTrue(log_buffer.get_text().strip(),
+                        "must explain itself rather than return nothing")
+
+    def test_log_button_is_wired_to_the_window(self):
+        import inspect
+        from unetbootin.app import UNetbootinAppPySG
+        from unetbootin.ui.main_window_ctk import MainWindowCTk
+
+        import ast, textwrap
+
+        self.assertIn("'-LOG-'", inspect.getsource(UNetbootinAppPySG.run))
+        self.assertTrue(hasattr(MainWindowCTk, 'show_log'))
+
+        # An ordinary window: minimisable and maximisable, so it must not be
+        # made modal or transient. Check real calls, not words in the prose.
+        tree = ast.parse(textwrap.dedent(
+            inspect.getsource(MainWindowCTk.show_log)))
+        called = {n.func.attr for n in ast.walk(tree)
+                  if isinstance(n, ast.Call)
+                  and isinstance(n.func, ast.Attribute)}
+        self.assertNotIn('grab_set', called, "the log window must not be modal")
+        self.assertNotIn('transient', called,
+                         "a transient window cannot be minimised separately")
+
+    def test_log_icons_exist(self):
+        from unetbootin.resources import icon_path
+        for name in ('ui_log.png', 'ui_copy.png'):
+            self.assertTrue(os.path.exists(icon_path(name)), f"missing {name}")

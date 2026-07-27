@@ -490,10 +490,16 @@ class MainWindowCTk:
                      if self._font_family else
                      ctk.CTkFont(size=22, weight="bold")).grid(
             row=0, column=0, sticky="w")
+        log_btn = ctk.CTkButton(header, text=_("Log"), width=95,
+                                image=self._icon('ui_log.png'), compound="left",
+                                command=lambda: self.emit('-LOG-'))
+        log_btn.grid(row=0, column=2, sticky="e", padx=(0, 8))
+        self.elements['log'] = _Element(log_btn, 'button', owner=self)
+
         about = ctk.CTkButton(header, text=_("About"), width=100,
                               image=self._icon('ui_info.png'), compound="left",
                               command=lambda: self.emit('-ABOUT-'))
-        about.grid(row=0, column=2, sticky="e")
+        about.grid(row=0, column=3, sticky="e")
         self.elements['about'] = _Element(about, 'button', owner=self)
 
         # ---- source selection --------------------------------------------
@@ -1188,6 +1194,96 @@ class MainWindowCTk:
         return params
 
     # ----------------------------------------------------------------- about
+
+    def show_log(self):
+        """Open the log in its own window: scrollable, selectable, copyable.
+
+        Deliberately not transient or modal, so the window manager treats it as
+        an ordinary window that can be minimised, maximised and left open while
+        the application is used.
+        """
+        from unetbootin.core import log_buffer
+
+        existing = getattr(self, '_log_window', None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    self._refresh_log_text()
+                    return
+            except tkinter.TclError:
+                pass
+
+        win = ctk.CTkToplevel(self.root)
+        self._log_window = win
+        win.title(f"{_('Log')} - {APP_TITLE}")
+        win.geometry("900x560")
+        win.minsize(520, 320)
+        win.configure(fg_color=BACKGROUND)
+        try:
+            win.iconphoto(True, self._window_icon)
+        except Exception as e:  # noqa: BLE001 - cosmetic only
+            logger.debug(f"Could not set the log window icon: {e}")
+
+        win.grid_columnconfigure(0, weight=1)
+        win.grid_rowconfigure(1, weight=1)
+
+        path = log_buffer.get_log_file()
+        header = ctk.CTkLabel(
+            win, anchor="w", text_color="gray",
+            text=(f"{_('Log file')}: {path}" if path
+                  else _("Log file unavailable; showing captured messages")))
+        header.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 6))
+
+        box = ctk.CTkTextbox(win, wrap="none", font=("monospace", 12))
+        box.grid(row=1, column=0, sticky="nsew", padx=16)
+        self._log_textbox = box
+
+        actions = ctk.CTkFrame(win, fg_color=BACKGROUND)
+        actions.grid(row=2, column=0, sticky="ew", padx=16, pady=14)
+        actions.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(actions, text=_("Copy all"), width=130,
+                      image=self._icon('ui_copy.png'), compound="left",
+                      command=self._copy_log).grid(row=0, column=1, padx=6)
+        ctk.CTkButton(actions, text=_("Refresh"), width=130,
+                      image=self._icon('ui_refresh.png'), compound="left",
+                      command=self._refresh_log_text).grid(row=0, column=2,
+                                                           padx=6)
+        ctk.CTkButton(actions, text=_("Close"), width=130,
+                      command=win.destroy,
+                      **SECONDARY_BUTTON).grid(row=0, column=3, padx=6)
+
+        self._refresh_log_text()
+
+    def _refresh_log_text(self):
+        """Reload the captured log and scroll to the newest line."""
+        from unetbootin.core import log_buffer
+
+        box = getattr(self, '_log_textbox', None)
+        if box is None:
+            return
+        try:
+            box.configure(state="normal")
+            box.delete("1.0", "end")
+            box.insert("1.0", log_buffer.get_text())
+            box.see("end")
+            # Read-only, but Tk still allows selecting and copying.
+            box.configure(state="disabled")
+        except tkinter.TclError as e:
+            logger.debug(f"Could not refresh the log view: {e}")
+
+    def _copy_log(self):
+        """Put the whole log on the clipboard."""
+        from unetbootin.core import log_buffer
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(log_buffer.get_text())
+            self.root.update()
+            logger.info("Log copied to the clipboard")
+        except tkinter.TclError as e:
+            logger.warning(f"Could not copy the log: {e}")
 
     def show_about(self):
         """Small modal About dialog."""
