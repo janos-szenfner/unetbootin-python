@@ -13,7 +13,7 @@ import os
 import queue
 import logging
 import tkinter
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 from typing import Optional, List, Dict, Any
 
 try:
@@ -54,12 +54,22 @@ def check_toolkit() -> Optional[str]:
     return None
 
 
-def apply_theme(mode: str = "system"):
-    """Set the appearance mode and colour theme.
+# The window background. Pinned light because the background is white: with
+# "system" a dark desktop would pair light text with a white background.
+BACKGROUND = "white"
+PANEL_BORDER = "#d4d4d4"
 
-    'system' follows the desktop's light/dark preference; the previous UI was
-    hard-coded to white.
-    """
+# Secondary actions (Cancel/Exit). A transparent fill made these look
+# disabled next to the primary buttons.
+SECONDARY_BUTTON = {
+    "fg_color": "#7a828c",
+    "hover_color": "#626a73",
+    "text_color": "white",
+}
+
+
+def apply_theme(mode: str = "light"):
+    """Set the appearance mode and colour theme."""
     if not HAS_CTK:
         return
     try:
@@ -87,29 +97,89 @@ def window_icon_path() -> Optional[str]:
 # Dialog helpers (replacing the PySimpleGUI popups)
 # --------------------------------------------------------------------------
 
+# The main window, so dialogs can centre on it and stay modal.
+_active_window = None
+
+
+def _show_dialog(message: str, title: str, buttons=("OK",),
+                 accent: str = None) -> str:
+    """A themed modal dialog.
+
+    Replaces tkinter's native messagebox, which rendered in the old system
+    style and broke long values (such as file paths) mid-word. Text wraps to
+    the dialog width instead.
+    """
+    parent = _active_window.root if _active_window is not None else None
+    try:
+        win = ctk.CTkToplevel(parent) if parent is not None else ctk.CTk()
+    except Exception as e:  # noqa: BLE001 - fall back to logging only
+        logger.error(f"{title}: {message} ({e})")
+        return buttons[0]
+
+    win.title(title)
+    win.configure(fg_color=BACKGROUND)
+    win.resizable(False, False)
+    if parent is not None:
+        win.transient(parent)
+
+    frame = ctk.CTkFrame(win, fg_color=BACKGROUND)
+    frame.pack(fill="both", expand=True, padx=22, pady=18)
+
+    ctk.CTkLabel(frame, text=title,
+                 font=ctk.CTkFont(size=15, weight="bold"),
+                 anchor="w").pack(fill="x", pady=(0, 8))
+
+    # wraplength keeps long paths inside the dialog instead of overflowing.
+    ctk.CTkLabel(frame, text=message, wraplength=430, justify="left",
+                 anchor="w").pack(fill="x", pady=(0, 16))
+
+    result = {'value': buttons[-1]}
+    row = ctk.CTkFrame(frame, fg_color=BACKGROUND)
+    row.pack(fill="x")
+
+    def choose(value):
+        result['value'] = value
+        win.destroy()
+
+    for i, label in enumerate(buttons):
+        primary = (i == 0)
+        style = {} if primary else SECONDARY_BUTTON
+        if primary and accent:
+            style = {"fg_color": accent, "hover_color": accent}
+        ctk.CTkButton(row, text=label, width=110,
+                      command=lambda v=label: choose(v),
+                      **style).pack(side="right", padx=(8, 0))
+
+    win.update_idletasks()
+    if parent is not None:
+        # Centre on the main window.
+        x = parent.winfo_rootx() + (parent.winfo_width() - win.winfo_width()) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - win.winfo_height()) // 3
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    try:
+        win.grab_set()
+    except tkinter.TclError:
+        pass
+    win.protocol("WM_DELETE_WINDOW", lambda: choose(buttons[-1]))
+    win.wait_window()
+    return result['value']
+
+
 def popup_error(message: str, title: str = "Error"):
     """Show an error dialog."""
-    try:
-        messagebox.showerror(title, message)
-    except tkinter.TclError as e:
-        logger.error(f"{title}: {message} ({e})")
+    logger.error(f"{title}: {message}")
+    _show_dialog(message, title, buttons=("OK",), accent="#b23b3b")
 
 
 def popup_ok(message: str, title: str = "Information"):
     """Show an informational dialog."""
-    try:
-        messagebox.showinfo(title, message)
-    except tkinter.TclError as e:
-        logger.info(f"{title}: {message} ({e})")
+    _show_dialog(message, title, buttons=("OK",))
 
 
 def popup_yes_no(message: str, title: str = "Confirm") -> str:
     """Ask a yes/no question. Returns 'Yes' or 'No' to match the old API."""
-    try:
-        return 'Yes' if messagebox.askyesno(title, message) else 'No'
-    except tkinter.TclError as e:
-        logger.warning(f"Could not ask '{title}': {e}")
-        return 'No'
+    return _show_dialog(message, title, buttons=("Yes", "No"))
 
 
 def popup_get_file(message: str, title: str = "Select file",
@@ -249,6 +319,9 @@ class MainWindowCTk:
 
         self.init_ui()
 
+        global _active_window
+        _active_window = self
+
     # ---------------------------------------------------------------- layout
 
     def init_ui(self):
@@ -257,6 +330,7 @@ class MainWindowCTk:
 
         self.root = ctk.CTk()
         self.root.title(APP_TITLE)
+        self.root.configure(fg_color=BACKGROUND)
         self.root.geometry("900x680")
         self.root.minsize(760, 560)
         self.root.protocol("WM_DELETE_WINDOW", lambda: self.emit(WIN_CLOSED, None))
@@ -280,7 +354,8 @@ class MainWindowCTk:
         self.elements['about'] = _Element(about, 'button', owner=self)
 
         # ---- source selection --------------------------------------------
-        source = ctk.CTkFrame(self.root)
+        source = ctk.CTkFrame(self.root, fg_color=BACKGROUND,
+                              border_width=1, border_color=PANEL_BORDER)
         source.grid(row=1, column=0, sticky="ew", **pad)
         source.grid_columnconfigure((1, 2, 3), weight=1)
 
@@ -352,7 +427,8 @@ class MainWindowCTk:
             self.elements[key + '_browse'] = _Element(btn, 'button', owner=self)
 
         # ---- target -------------------------------------------------------
-        target = ctk.CTkFrame(self.root)
+        target = ctk.CTkFrame(self.root, fg_color=BACKGROUND,
+                              border_width=1, border_color=PANEL_BORDER)
         target.grid(row=2, column=0, sticky="ew", **pad)
         target.grid_columnconfigure(1, weight=1)
 
@@ -430,10 +506,8 @@ class MainWindowCTk:
         for i, (label, key, event, kwargs) in enumerate((
                 (_("OK"), 'ok', '-OK-', {}),
                 (_("ISO Download"), 'iso_download', '-ISO_DOWNLOAD-', {}),
-                (_("Cancel"), 'cancel', '-CANCEL-', {'fg_color': 'transparent',
-                                                     'border_width': 1}),
-                (_("Exit"), 'exit', '-EXIT-', {'fg_color': 'transparent',
-                                               'border_width': 1}))):
+                (_("Cancel"), 'cancel', '-CANCEL-', SECONDARY_BUTTON),
+                (_("Exit"), 'exit', '-EXIT-', SECONDARY_BUTTON))):
             btn = ctk.CTkButton(actions, text=label, width=130,
                                 command=lambda e=event: self.emit(e), **kwargs)
             btn.grid(row=0, column=i + 1, padx=6)
