@@ -189,19 +189,60 @@ class TestLinuxPlatform(unittest.TestCase):
     def test_unmount_drive(self):
         """Test unmounting drive on Linux."""
         with patch('subprocess.run') as mock_run:
-            # First call: findmnt -J to find mount points
-            mock_findmnt = MagicMock()
-            mock_findmnt.stdout = '{"filesystems": [{"target": "/media/usb"}]}'
-            mock_findmnt.returncode = 0
-            
+            # First call: lsblk lists the mount points on the device.
+            mock_lsblk = MagicMock()
+            mock_lsblk.stdout = '/media/usb\n'
+            mock_lsblk.returncode = 0
+
             # Second call: sudo umount /media/usb
             mock_umount = MagicMock()
             mock_umount.returncode = 0
-            
-            mock_run.side_effect = [mock_findmnt, mock_umount]
+
+            mock_run.side_effect = [mock_lsblk, mock_umount]
 
             result = linux.unmount_drive('/dev/sdb1')
             self.assertTrue(result)
+
+    def test_unmount_drive_unmounts_partitions_of_a_whole_disk(self):
+        """Partitions of the target disk must be unmounted too.
+
+        Regression test: the old implementation asked findmnt about
+        /dev/sdb, which never reports /dev/sdb1. The auto-mounted partition
+        stayed mounted and mkfs then failed with EBUSY.
+        """
+        with patch('subprocess.run') as mock_run:
+            # lsblk walks the disk *and its children*.
+            mock_lsblk = MagicMock()
+            mock_lsblk.stdout = '\n/media/szefi/DATA\n/media/szefi/BOOT\n'
+            mock_lsblk.returncode = 0
+
+            ok = MagicMock()
+            ok.returncode = 0
+            mock_run.side_effect = [mock_lsblk, ok, ok]
+
+            self.assertTrue(linux.unmount_drive('/dev/sdb'))
+
+            unmounted = [c.args[0][-1] for c in mock_run.call_args_list[1:]]
+            self.assertEqual(
+                unmounted, ['/media/szefi/DATA', '/media/szefi/BOOT'])
+
+    def test_format_drive_refuses_when_a_partition_stays_mounted(self):
+        """A failed unmount must abort before mkfs runs."""
+        with patch('subprocess.run') as mock_run:
+            mock_lsblk = MagicMock()
+            mock_lsblk.stdout = '/media/szefi/DATA\n'
+            mock_lsblk.returncode = 0
+
+            failed_umount = MagicMock()
+            failed_umount.returncode = 1
+            failed_umount.stderr = 'umount: target is busy'
+
+            mock_run.side_effect = [mock_lsblk, failed_umount]
+
+            self.assertFalse(
+                linux.format_drive('/dev/sdb', 'vfat', 'PYNETBOOT'))
+            # Only lsblk and the umount attempt: mkfs must not be reached.
+            self.assertEqual(mock_run.call_count, 2)
 
     def test_mount_drive(self):
         """Test mounting drive on Linux."""
@@ -217,16 +258,16 @@ class TestLinuxPlatform(unittest.TestCase):
     def test_format_drive_vfat(self):
         """Test formatting drive as FAT32 on Linux."""
         with patch('subprocess.run') as mock_run:
-            # format_drive calls unmount_drive first, which calls findmnt -J
-            # Then it calls mkfs.vfat
-            mock_findmnt = MagicMock()
-            mock_findmnt.stdout = '{"filesystems": []}'
-            mock_findmnt.returncode = 0
-            
+            # format_drive unmounts first, which calls lsblk; nothing is
+            # mounted here, so mkfs.vfat runs next.
+            mock_lsblk = MagicMock()
+            mock_lsblk.stdout = '\n'
+            mock_lsblk.returncode = 0
+
             mock_mkfs = MagicMock()
             mock_mkfs.returncode = 0
-            
-            mock_run.side_effect = [mock_findmnt, mock_mkfs]
+
+            mock_run.side_effect = [mock_lsblk, mock_mkfs]
 
             result = linux.format_drive('/dev/sdb1', 'vfat', 'PYNETBOOT')
             self.assertTrue(result)

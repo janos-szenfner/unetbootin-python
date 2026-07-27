@@ -294,49 +294,65 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def unmount_drive(drive: str) -> bool:
-    """Unmount a drive on Linux."""
-    try:
-        if not drive.startswith('/dev/'):
-            drive = f"/dev/{drive}"
+def device_mountpoints(drive: str) -> List[str]:
+    """Return every mount point held by a device *and its partitions*.
 
-        # First, find mount points for the device
+    ``findmnt /dev/sdb`` only reports a filesystem mounted on that exact
+    node, so it misses ``/dev/sdb1`` — which is what a desktop auto-mounts.
+    Leaving the partition mounted keeps the whole disk busy, and mkfs opens
+    block devices with O_EXCL, so formatting then fails with EBUSY.
+    ``lsblk`` walks the disk and its children in one call.
+    """
+    if not drive.startswith('/dev/'):
+        drive = f"/dev/{drive}"
+
+    try:
         result = subprocess.run(
-            ['findmnt', '-J', drive],
+            ['lsblk', '-nro', 'MOUNTPOINT', drive],
             capture_output=True,
             text=True,
             timeout=5
         )
+    except _SUBPROCESS_ERRORS as e:
+        logger.warning(f"Could not list mount points for {drive}: {e}")
+        return []
 
-        if result.returncode == 0:
-            import json
-            data = json.loads(result.stdout)
+    if result.returncode != 0:
+        logger.warning(
+            f"lsblk failed for {drive}: {(result.stderr or '').strip()}")
+        return []
 
-            if 'filesystems' in data:
-                for fs in data['filesystems']:
-                    mount_point = fs.get('target', '')
-                    if mount_point:
-                        result = subprocess.run(
-                            ['sudo', 'umount', mount_point],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-                        if result.returncode != 0:
-                            logger.warning(
-                                f"Failed to unmount {mount_point}: {result.stderr}")
-                            return False
-                return True
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
-        # Alternative: try to unmount by device
-        result = subprocess.run(
-            ['sudo', 'umount', drive],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
 
-        return result.returncode == 0
+def unmount_drive(drive: str) -> bool:
+    """Unmount a drive, and every partition on it, on Linux."""
+    try:
+        if not drive.startswith('/dev/'):
+            drive = f"/dev/{drive}"
+
+        mount_points = device_mountpoints(drive)
+        if not mount_points:
+            logger.info(f"No mounted filesystems on {drive}")
+            return True
+
+        all_unmounted = True
+        for mount_point in mount_points:
+            result = subprocess.run(
+                ['sudo', 'umount', mount_point],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                logger.info(f"Unmounted {mount_point}")
+            else:
+                logger.warning(
+                    f"Failed to unmount {mount_point}: "
+                    f"{(result.stderr or '').strip()}")
+                all_unmounted = False
+
+        return all_unmounted
 
     except _SUBPROCESS_PARSE_ERRORS as e:
         logger.error(f"Failed to unmount {drive}: {e}")
@@ -374,6 +390,34 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
         return False
 
 
+def _run_mkfs(command: List[str], drive: str) -> bool:
+    """Run a mkfs command, logging why it failed rather than just False.
+
+    The timeout is generous because the elevation prompt happens inside this
+    call: the clock covers however long the user takes over the PolicyKit
+    password dialog, not just the format itself.
+    """
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+    except subprocess.TimeoutExpired:
+        logger.error(f"{command[1]} timed out formatting {drive}")
+        return False
+
+    if result.returncode == 0:
+        return True
+
+    detail = ((result.stderr or '') + (result.stdout or '')).strip()
+    logger.error(
+        f"{command[1]} failed on {drive} (exit {result.returncode}): "
+        f"{detail or 'no output'}")
+    return False
+
+
 def format_drive(drive: str, filesystem: str = "vfat",
                  label: str = "PYNETBOOT") -> bool:
     """Format a drive on Linux."""
@@ -381,50 +425,36 @@ def format_drive(drive: str, filesystem: str = "vfat",
         if not drive.startswith('/dev/'):
             drive = f"/dev/{drive}"
 
-        # First, unmount the drive
-        unmount_drive(drive)
+        # Every filesystem on the disk has to go first. mkfs opens the block
+        # device with O_EXCL, so a single still-mounted partition makes the
+        # format fail with "Device or resource busy".
+        if not unmount_drive(drive):
+            logger.error(
+                f"Could not unmount every filesystem on {drive}; formatting "
+                "would fail with 'Device or resource busy'. Close anything "
+                "using the drive and try again.")
+            return False
 
         # Determine partition or whole device
         # For whole device formatting, we might need to use parted or fdisk
         # This is a simplified version that assumes we're formatting a partition
 
         if filesystem.lower() in ['vfat', 'fat32', 'fat16']:
-            # Use mkfs.vfat
-            result = subprocess.run(
-                ['sudo', 'mkfs.vfat', '-F32', '-n', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+            return _run_mkfs(
+                ['sudo', 'mkfs.vfat', '-F32', '-n', label, drive], drive)
 
         elif filesystem.lower() in ['ext2', 'ext3', 'ext4']:
             fs_type = filesystem.lower()
-            result = subprocess.run(
-                ['sudo', f'mkfs.{fs_type}', '-L', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+            return _run_mkfs(
+                ['sudo', f'mkfs.{fs_type}', '-L', label, drive], drive)
 
         elif filesystem.lower() == 'ntfs':
-            result = subprocess.run(
-                ['sudo', 'mkfs.ntfs', '-f', '-L', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+            return _run_mkfs(
+                ['sudo', 'mkfs.ntfs', '-f', '-L', label, drive], drive)
 
         elif filesystem.lower() == 'exfat':
-            result = subprocess.run(
-                ['sudo', 'mkfs.exfat', '-n', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+            return _run_mkfs(
+                ['sudo', 'mkfs.exfat', '-n', label, drive], drive)
 
         logger.error(f"Unsupported filesystem type: {filesystem}")
         return False
