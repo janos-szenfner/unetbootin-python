@@ -7,7 +7,6 @@ Uses CustomTkinter for a modern, lightweight, no-Qt GUI.
 import sys
 import os
 import logging
-from pathlib import Path
 from typing import Optional
 
 try:

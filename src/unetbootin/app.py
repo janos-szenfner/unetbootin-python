@@ -12,7 +12,6 @@ import tempfile
 import shutil
 import threading
 import time
-from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 from unetbootin.ui import main_window_ctk as sg   # dialog helpers + WIN_CLOSED

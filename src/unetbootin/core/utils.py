@@ -11,7 +11,6 @@ import shlex
 import shutil
 import psutil
 from typing import Dict, Any, Optional, List, Tuple
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

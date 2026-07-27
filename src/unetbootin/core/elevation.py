@@ -22,7 +22,6 @@ import os
 import subprocess
 import logging
 from typing import List, Optional, Tuple, Any
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -474,20 +473,25 @@ def run_elevated_subprocess(
         return MockCompletedProcess(args, returncode, stdout, stderr)
 
     except (ElevationError, ElevationNotAvailableError) as e:
+        # Capture the text now: Python unbinds the exception variable at the
+        # end of the except block, so referencing `e` from the class body only
+        # works while we are still inside it.
+        error_text = str(e)
+
         # Return a failed CompletedProcess
         class MockCompletedProcess:
             def __init__(self, args, returncode, stdout, stderr):
                 self.args = args
                 self.returncode = -1
                 self.stdout = ''
-                self.stderr = str(e)
+                self.stderr = error_text
 
             def check_returncode(self):
                 raise subprocess.CalledProcessError(
                     self.returncode, self.args, self.stdout, self.stderr
                 )
 
-        return MockCompletedProcess(args, -1, '', str(e))
+        return MockCompletedProcess(args, -1, '', error_text)
 
 
 def ensure_elevated() -> None:

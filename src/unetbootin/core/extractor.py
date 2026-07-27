@@ -17,6 +17,30 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+
+def safe_archive_names(names, dest_dir: str) -> list:
+    """Filter archive member names that would escape `dest_dir`.
+
+    Archives can carry members with absolute paths or ``..`` segments, so a
+    plain extractall can write outside the destination (path traversal, often
+    called Zip Slip). The tar path already guards against this via
+    ``filter='data'``; this provides the same protection for formats whose
+    extractors have no such option.
+    """
+    safe = []
+    dest_real = os.path.realpath(dest_dir)
+    for name in names:
+        if os.path.isabs(name) or name.startswith(('/', '\\')):
+            logger.warning(f"Skipping absolute archive member: {name}")
+            continue
+        target = os.path.realpath(os.path.join(dest_dir, name))
+        if target != dest_real and not target.startswith(dest_real + os.sep):
+            logger.warning(f"Skipping archive member outside destination: {name}")
+            continue
+        safe.append(name)
+    return safe
+
+
 # Extraction shells out to external tools (xorriso/7z/tar/unzip/bsdtar);
 # subprocess failures and missing binaries surface as these.
 _SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
@@ -395,11 +419,14 @@ class ISOExtractor:
 
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 if files_to_extract:
-                    for file_name in files_to_extract:
-                        if file_name in zip_ref.namelist():
-                            zip_ref.extract(file_name, dest_dir)
+                    wanted = safe_archive_names(
+                        [n for n in zip_ref.namelist() if n in files_to_extract],
+                        dest_dir)
+                    zip_ref.extractall(dest_dir, members=wanted)
                 else:
-                    zip_ref.extractall(dest_dir)
+                    zip_ref.extractall(
+                        dest_dir,
+                        members=safe_archive_names(zip_ref.namelist(), dest_dir))
 
             if progress_callback:
                 progress_callback(100)
@@ -563,11 +590,15 @@ class ISOExtractor:
 
             with py7zr.SevenZipFile(archive_path, mode='r') as archive:
                 if files_to_extract:
-                    for file_info in archive.filelist:
-                        if file_info.filename in files_to_extract:
-                            archive.extract(file_info.filename, path=dest_dir)
+                    wanted = safe_archive_names(
+                        [f.filename for f in archive.filelist
+                         if f.filename in files_to_extract],
+                        dest_dir)
+                    archive.extract(path=dest_dir, targets=wanted)
                 else:
-                    archive.extractall(path=dest_dir)
+                    archive.extract(
+                        path=dest_dir,
+                        targets=safe_archive_names(archive.getnames(), dest_dir))
 
             if progress_callback:
                 progress_callback(100)
@@ -655,7 +686,10 @@ class ISOExtractor:
                 try:
                     import py7zr
                     with py7zr.SevenZipFile(archive_path, mode='r') as archive:
-                        archive.extractall(path=dest_dir)
+                        archive.extract(
+                            path=dest_dir,
+                            targets=safe_archive_names(archive.getnames(),
+                                                       dest_dir))
                     if progress_callback:
                         progress_callback(100)
                     return True

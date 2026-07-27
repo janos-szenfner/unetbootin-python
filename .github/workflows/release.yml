@@ -83,6 +83,9 @@ jobs:
         # binary that shows an empty window.
         run: |
           python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          # The TLS stack gets bundled into the artifact, so record which one
+          # and flag the combination urllib3 v2 does not support.
+          python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
         # A .spec file already encodes onefile/windowed/name, so only
@@ -125,6 +128,9 @@ jobs:
         # binary that shows an empty window.
         run: |
           python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          # The TLS stack gets bundled into the artifact, so record which one
+          # and flag the combination urllib3 v2 does not support.
+          python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller (Universal 2 for Apple Silicon + Intel)
         run: pyinstaller unetbootin-macos.spec --noconfirm --clean --distpath dist/macos
@@ -207,6 +213,9 @@ jobs:
         # binary that shows an empty window.
         run: |
           python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          # The TLS stack gets bundled into the artifact, so record which one
+          # and flag the combination urllib3 v2 does not support.
+          python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
         run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-appimage
@@ -296,6 +305,9 @@ jobs:
         # binary that shows an empty window.
         run: |
           python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          # The TLS stack gets bundled into the artifact, so record which one
+          # and flag the combination urllib3 v2 does not support.
+          python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
         run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-deb
@@ -380,6 +392,9 @@ jobs:
         # binary that shows an empty window.
         run: |
           python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          # The TLS stack gets bundled into the artifact, so record which one
+          # and flag the combination urllib3 v2 does not support.
+          python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
       - name: Build with PyInstaller
         run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-rpm

@@ -391,3 +391,40 @@ class TestAsyncInstaller(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestArchiveExtractionSafety(unittest.TestCase):
+    """Archive members must never be written outside the destination."""
+
+    def test_traversal_and_absolute_members_are_rejected(self):
+        import tempfile
+        from unetbootin.core.extractor import safe_archive_names
+
+        dest = tempfile.mkdtemp()
+        names = ['boot/grub.cfg', '../../etc/passwd', '/etc/shadow',
+                 '../outside.txt', 'nested/dir/file.bin', 'a/../b.txt']
+        safe = safe_archive_names(names, dest)
+
+        for bad in ('../../etc/passwd', '/etc/shadow', '../outside.txt'):
+            self.assertNotIn(bad, safe, f"{bad} must be rejected")
+        for good in ('boot/grub.cfg', 'nested/dir/file.bin', 'a/../b.txt'):
+            self.assertIn(good, safe, f"{good} must be kept")
+
+    def test_no_unguarded_extractall_remains(self):
+        """Every extractall must restrict members, as the tar path does."""
+        import ast, inspect
+        from unetbootin.core import extractor
+
+        tree = ast.parse(inspect.getsource(extractor))
+        unguarded = []
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ('extractall', 'extract')):
+                kwargs = {kw.arg for kw in node.keywords}
+                # tar: filter='data'; others must pass validated members/targets
+                if not kwargs & {'filter', 'members', 'targets'}:
+                    unguarded.append(node.lineno)
+        self.assertEqual(
+            unguarded, [],
+            f"extraction without member validation at lines {unguarded}")

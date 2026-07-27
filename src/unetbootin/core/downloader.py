@@ -11,7 +11,6 @@ import logging
 import asyncio
 import requests
 import hashlib
-from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
 from urllib.parse import urljoin, urlparse
 from dataclasses import dataclass
