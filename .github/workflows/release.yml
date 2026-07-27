@@ -63,6 +63,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.0.0
 
+      - name: Verify GUI toolkit is bundled and usable
+        # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
+        # window opens but stays blank. Fail the build here rather than ship a
+        # binary that shows an empty window.
+        run: |
+          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+
       - name: Build with PyInstaller
         # A .spec file already encodes onefile/windowed/name, so only
         # spec-compatible flags may be passed. Single line = PowerShell-safe.
@@ -97,6 +104,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller==6.0.0
+
+      - name: Verify GUI toolkit is bundled and usable
+        # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
+        # window opens but stays blank. Fail the build here rather than ship a
+        # binary that shows an empty window.
+        run: |
+          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
 
       - name: Build with PyInstaller (Universal 2 for Apple Silicon + Intel)
         run: pyinstaller unetbootin-macos.spec --noconfirm --clean --distpath dist/macos
@@ -165,10 +179,20 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.0.0
           sudo apt-get update
-          sudo apt-get install -y patchelf wget
+          # Tk itself must be present so tkinter imports and PyInstaller can
+          # bundle libtcl/libtk into the artifact (no runtime dependency on
+          # the user's machine).
+          sudo apt-get install -y python3-tk tk8.6 patchelf wget
           # AppImage tooling needs libfuse2 at runtime. Ubuntu 24.04 renamed
           # the package to libfuse2t64; fall back to libfuse2 on older runners.
           sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
+
+      - name: Verify GUI toolkit is bundled and usable
+        # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
+        # window opens but stays blank. Fail the build here rather than ship a
+        # binary that shows an empty window.
+        run: |
+          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
 
       - name: Build with PyInstaller
         run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-appimage
@@ -201,6 +225,24 @@ jobs:
           mv ${{ env.APP_NAME }}.AppImage dist/linux-appimage/${{ env.APP_NAME }}.AppImage
           chmod +x dist/linux-appimage/${{ env.APP_NAME }}.AppImage
 
+      - name: Smoke-test the AppImage (must run self-contained)
+        # Proves the bundle carries its own Python, Tcl/Tk and CustomTkinter:
+        # the runner has no venv active here, so anything missing would crash.
+        # A timeout means the GUI came up and stayed up, which is success.
+        run: |
+          sudo apt-get install -y xvfb
+          set +e
+          xvfb-run -a timeout 25 dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+          code=$?
+          set -e
+          # 124 = timeout: still running after 25s, i.e. the window stayed open.
+          if [ "$code" -eq 124 ]; then
+            echo "AppImage started and kept running - bundle is self-contained."
+          else
+            echo "AppImage exited early with code $code"
+            exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
@@ -229,8 +271,17 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.0.0
           sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+          # Tk must be present so tkinter imports and PyInstaller can bundle
+          # libtcl/libtk into the package (no runtime dependency on the user).
+          sudo apt-get install -y python3-tk tk8.6 ruby ruby-dev rubygems build-essential rpm
           sudo gem install fpm -v 1.15.1
+
+      - name: Verify GUI toolkit is bundled and usable
+        # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
+        # window opens but stays blank. Fail the build here rather than ship a
+        # binary that shows an empty window.
+        run: |
+          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
 
       - name: Build with PyInstaller
         run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-deb
@@ -304,8 +355,17 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.0.0
           sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+          # Tk must be present so tkinter imports and PyInstaller can bundle
+          # libtcl/libtk into the package (no runtime dependency on the user).
+          sudo apt-get install -y python3-tk tk8.6 ruby ruby-dev rubygems build-essential rpm
           sudo gem install fpm -v 1.15.1
+
+      - name: Verify GUI toolkit is bundled and usable
+        # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
+        # window opens but stays blank. Fail the build here rather than ship a
+        # binary that shows an empty window.
+        run: |
+          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
 
       - name: Build with PyInstaller
         run: pyinstaller unetbootin.spec --noconfirm --clean --distpath dist/linux-rpm
