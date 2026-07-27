@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.2.1" date="2026-07-27">
+      <description>
+        <p>Fixes formatting a USB drive on Linux.</p>
+        <ul>
+          <li>Partitions on the target disk are now unmounted before formatting, which previously failed with "Device or resource busy"</li>
+          <li>Formatting errors now report the underlying cause</li>
+          <li>The software centre now shows the application name, icon and license</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-07-27">
       <description>
         <p>Renamed the project from UNetbootin to PyNetboot.</p>
