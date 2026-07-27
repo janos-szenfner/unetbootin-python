@@ -1,3 +1,4 @@
+include LICENSE
 recursive-include src/pynetboot/resources/bootloader *
 recursive-include src/pynetboot/resources/icons *
 recursive-include src/pynetboot/resources/logos *

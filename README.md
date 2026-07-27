@@ -537,7 +537,7 @@ See [LICENSE](LICENSE) for the full license text.
 ## Credits
 
 - **Original UNetbootin**: Geza Kovacs <geza0kovacs@gmail.com>
-- **Python Rewrite**: Started in 2026
+- **Python Rewrite**: Janos Szenfner <szenfner@outlook.com>, started in 2026
 - **CustomTkinter**: The CustomTkinter project (modern widgets on the Tkinter backend)
 - **Icon**: derived from the original UNetbootin icon (GPLv2-or-later, as is
   this project) and recoloured in Python's palette to distinguish this
