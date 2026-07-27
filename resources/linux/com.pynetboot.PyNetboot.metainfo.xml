@@ -5,7 +5,12 @@
   <project_license>GPL-2.0-or-later</project_license>
   <name>PyNetboot</name>
   <summary>Create bootable USB drives from ISO files</summary>
+  <!-- developer_name is deprecated in AppStream 1.0 but is still what older
+       software centres read; ship both so either generation resolves it. -->
   <developer_name>Janos Szenfner</developer_name>
+  <developer id="com.pynetboot">
+    <name>Janos Szenfner</name>
+  </developer>
   <description>
     <p>PyNetboot is a cross-platform tool for creating bootable USB drives from ISO files.</p>
     <p>It allows you to create bootable Live USB drives for a variety of Linux distributions,
@@ -17,6 +22,7 @@
       <li>Supports Windows, macOS, and Linux</li>
       <li>Persistent storage support for Live USB drives</li>
     </ul>
+    <p>PyNetboot is a Python rewrite of UNetbootin, originally created by Geza Kovacs.</p>
   </description>
   <launchable type="desktop-id">com.pynetboot.PyNetboot.desktop</launchable>
   <provides>
@@ -30,4 +36,19 @@
   <content_rating type="oars-1.1"/>
   <update_contact>szenfner@outlook.com</update_contact>
   <url type="homepage">https://github.com/janos-szenfner/unetbootin-python</url>
+  <url type="bugtracker">https://github.com/janos-szenfner/unetbootin-python/issues</url>
+  <!-- Kept in the source tree rather than injected at build time so the deb
+       and rpm ship release notes too, not just the Flatpak. The build stamps
+       the tag version in if it is not already listed here. -->
+  <releases>
+    <release version="1.2.0" date="2026-07-27">
+      <description>
+        <p>Renamed the project from UNetbootin to PyNetboot.</p>
+        <ul>
+          <li>New application ID, command name and package name</li>
+          <li>Existing settings are preserved</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
 </component>

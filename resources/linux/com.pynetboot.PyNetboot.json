@@ -105,7 +105,7 @@
             "buildsystem": "simple",
             "build-commands": [
                 "install -Dm644 com.pynetboot.PyNetboot.desktop /app/share/applications/com.pynetboot.PyNetboot.desktop",
-                "install -Dm644 com.pynetboot.PyNetboot.appdata.xml /app/share/metainfo/com.pynetboot.PyNetboot.appdata.xml",
+                "install -Dm644 com.pynetboot.PyNetboot.metainfo.xml /app/share/metainfo/com.pynetboot.PyNetboot.metainfo.xml",
                 "install -Dm644 resources/icons/unetbootin_256.png /app/share/icons/hicolor/256x256/apps/com.pynetboot.PyNetboot.png",
                 "install -Dm644 resources/icons/unetbootin_48.png /app/share/icons/hicolor/48x48/apps/com.pynetboot.PyNetboot.png",
                 "install -Dm644 resources/icons/unetbootin_32.png /app/share/icons/hicolor/32x32/apps/com.pynetboot.PyNetboot.png",
@@ -118,7 +118,7 @@
                 },
                 {
                     "type": "file",
-                    "path": "com.pynetboot.PyNetboot.appdata.xml"
+                    "path": "com.pynetboot.PyNetboot.metainfo.xml"
                 },
                 {
                     "type": "dir",

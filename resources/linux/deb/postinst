@@ -12,4 +12,15 @@ if [ -x "$(command -v gtk-update-icon-cache)" ]; then
     gtk-update-icon-cache -f -q /usr/share/icons/hicolor || true
 fi
 
+# Re-index AppStream metadata. Without this the software centre keeps
+# showing the bare dpkg entry -- package name, generic icon, "Unknown
+# License" -- because it never picks up the metainfo this package just
+# installed. The subcommand was renamed across AppStream versions, so try
+# both; failure here must never break the install.
+if [ -x "$(command -v appstreamcli)" ]; then
+    appstreamcli refresh --force >/dev/null 2>&1 \
+        || appstreamcli refresh-cache --force >/dev/null 2>&1 \
+        || true
+fi
+
 exit 0

@@ -318,16 +318,11 @@ jobs:
           mkdir -p package/usr/share/${{ env.APP_NAME }}
           mkdir -p package/usr/share/applications
           mkdir -p package/usr/share/metainfo
+          mkdir -p package/usr/share/doc/${{ env.APP_NAME }}
           for s in 16 32 48 128 256; do mkdir -p package/usr/share/icons/hicolor/${s}x${s}/apps; done
           cp dist/linux-deb/${{ env.APP_NAME }} package/usr/bin/
           chmod +x package/usr/bin/${{ env.APP_NAME }}
           cp -r src/pynetboot/resources/* package/usr/share/${{ env.APP_NAME }}/
-          # Ship the reverse-DNS desktop entry, matching AppStream metainfo and
-          # themed icons so GNOME Software shows the name, icon, license and
-          # description instead of "Unknown License" with a generic icon.
-          cp resources/linux/com.pynetboot.PyNetboot.desktop package/usr/share/applications/com.pynetboot.PyNetboot.desktop
-          cp resources/linux/com.pynetboot.PyNetboot.appdata.xml package/usr/share/metainfo/com.pynetboot.PyNetboot.appdata.xml
-          for s in 16 32 48 128 256; do cp src/pynetboot/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.pynetboot.PyNetboot.png; done
           # Version from tag (v1.0.6 -> 1.0.6); on non-tag (manual) builds fall
           # back to the packaged __version__ rather than 0.0.0.
           VER="${GITHUB_REF_NAME#v}"
@@ -335,6 +330,18 @@ jobs:
             VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           fi
           VER="${VER:-1.0.1}"
+          # Ship the reverse-DNS desktop entry, matching AppStream metainfo and
+          # themed icons so GNOME Software shows the name, icon, license and
+          # description instead of "Unknown License" with a generic icon.
+          cp resources/linux/com.pynetboot.PyNetboot.desktop package/usr/share/applications/com.pynetboot.PyNetboot.desktop
+          cp resources/linux/com.pynetboot.PyNetboot.metainfo.xml package/usr/share/metainfo/com.pynetboot.PyNetboot.metainfo.xml
+          # Make sure the built version is listed in <releases>, otherwise the
+          # store shows "No details for this release".
+          python3 resources/linux/stamp-release.py "$VER" package/usr/share/metainfo/com.pynetboot.PyNetboot.metainfo.xml
+          # dpkg-based tools read licensing from the copyright file, not from
+          # fpm's --license field.
+          cp resources/linux/deb/copyright package/usr/share/doc/${{ env.APP_NAME }}/copyright
+          for s in 16 32 48 128 256; do cp src/pynetboot/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.pynetboot.PyNetboot.png; done
           fpm -s dir -t deb \
             -n ${{ env.APP_NAME }} \
             -v "$VER" \
@@ -413,15 +420,19 @@ jobs:
           # themed icons so GNOME Software shows the name, icon, license and
           # description instead of "Unknown License" with a generic icon.
           cp resources/linux/com.pynetboot.PyNetboot.desktop package/usr/share/applications/com.pynetboot.PyNetboot.desktop
-          cp resources/linux/com.pynetboot.PyNetboot.appdata.xml package/usr/share/metainfo/com.pynetboot.PyNetboot.appdata.xml
+          cp resources/linux/com.pynetboot.PyNetboot.metainfo.xml package/usr/share/metainfo/com.pynetboot.PyNetboot.metainfo.xml
           for s in 16 32 48 128 256; do cp src/pynetboot/resources/icons/unetbootin_${s}.png package/usr/share/icons/hicolor/${s}x${s}/apps/com.pynetboot.PyNetboot.png; done
           # Version from tag (v1.0.6 -> 1.0.6); on non-tag (manual) builds fall
           # back to the packaged __version__ rather than 0.0.0.
           VER="${GITHUB_REF_NAME#v}"
+          STAMP_METAINFO=package/usr/share/metainfo/com.pynetboot.PyNetboot.metainfo.xml
           if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           fi
           VER="${VER:-1.0.1}"
+          # Make sure the built version is listed in <releases>, otherwise the
+          # store shows "No details for this release".
+          python3 resources/linux/stamp-release.py "$VER" "$STAMP_METAINFO"
           fpm -s dir -t rpm \
             -n ${{ env.APP_NAME }} \
             -v "$VER" \
@@ -459,32 +470,22 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Stamp version into AppStream metadata
-        # GNOME Software reads a Flatpak's version from the AppStream
-        # <releases> element. Without it the store shows no version, so inject
-        # the release version before flatpak-builder composes the app-info.
+        # GNOME Software reads the version and release notes from the
+        # AppStream <releases> element. The metainfo in the source tree
+        # carries notes for the current release; this only adds an entry when
+        # a tag is built that is not listed there yet.
         run: |
           VER="${GITHUB_REF_NAME#v}"
           if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
           fi
           VER="${VER:-1.0.1}"
-          APPDATA="resources/linux/com.pynetboot.PyNetboot.appdata.xml"
-          python3 - "$VER" "$APPDATA" <<'PY'
-          import sys, datetime
-          ver, path = sys.argv[1], sys.argv[2]
-          s = open(path).read()
-          if "<releases>" not in s:
-              block = ('  <releases>\n'
-                       f'    <release version="{ver}" date="{datetime.date.today().isoformat()}"/>\n'
-                       '  </releases>\n')
-              s = s.replace("</component>", block + "</component>")
-              open(path, "w").write(s)
-          print("AppStream release stamped:", ver)
-          PY
+          METAINFO="resources/linux/com.pynetboot.PyNetboot.metainfo.xml"
+          python3 resources/linux/stamp-release.py "$VER" "$METAINFO"
           # Validate the metadata (non-fatal) so any issue that would stop
           # appstream-compose from embedding the license/description is visible.
           sudo apt-get update && sudo apt-get install -y appstream
-          appstreamcli validate --no-net "$APPDATA" || true
+          appstreamcli validate --no-net "$METAINFO" || true
 
       - name: Set up Flatpak
         run: |
