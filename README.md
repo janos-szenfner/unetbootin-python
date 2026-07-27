@@ -539,6 +539,10 @@ See [LICENSE](LICENSE) for the full license text.
 - **Original UNetbootin**: Geza Kovacs <geza0kovacs@gmail.com>
 - **Python Rewrite**: Started in 2026
 - **CustomTkinter**: The CustomTkinter project (modern widgets on the Tkinter backend)
+- **Icon**: derived from the original UNetbootin icon (GPLv2-or-later, as is
+  this project) and recoloured in Python's palette to distinguish this
+  rewrite. Only Python's colours are used — not the PSF's Python logo, which
+  is a trademark with its own usage terms.
 - **All Linux distributions**: Their respective maintainers
 
 ## Next Steps
