@@ -170,54 +170,51 @@ def get_drive_list() -> List[Dict[str, Any]]:
 
 
 def get_drive_serial(device: str) -> Optional[str]:
-    """Get serial number for a device on Linux."""
-    try:
-        if not device.startswith('/dev/'):
-            device = f"/dev/{device}"
+    """Serial number for a device, or None when it cannot be determined.
 
-        # Method 1: Use udevadm
-        result = subprocess.run(
-            ['udevadm', 'info', '--query=property', '--name=' + device],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+    Tries udevadm, then sg_vpd, then hdparm. Each is attempted independently:
+    previously one shared try block meant the first missing tool skipped the
+    remaining fallbacks entirely. A tool that is absent is also not an error -
+    the serial is optional metadata, and inside a Flatpak sandbox none of these
+    host utilities are present.
+    """
+    import shutil
 
-        if result.returncode == 0:
-            for line in result.stdout.split('\n'):
-                if line.startswith('ID_SERIAL='):
-                    return line.split('=', 1)[1].strip()
+    if not device.startswith('/dev/'):
+        device = f"/dev/{device}"
 
-        # Method 2: Use sg_vpd
-        result = subprocess.run(
-            ['sg_vpd', '--page=0x80', device],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+    def _run(command):
+        """Run a probe, returning its output or None if it cannot be used."""
+        if shutil.which(command[0]) is None:
+            logger.debug(f"{command[0]} not available; skipping serial probe")
+            return None
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=5)
+        except _SUBPROCESS_ERRORS as e:
+            logger.debug(f"{command[0]} failed for {device}: {e}")
+            return None
+        return result.stdout if result.returncode == 0 else None
 
-        if result.returncode == 0:
-            # Parse VPD page 0x80 (Unit Serial Number)
-            for line in result.stdout.split('\n'):
-                if 'Unit serial number' in line:
-                    return line.split(':')[1].strip()
+    output = _run(['udevadm', 'info', '--query=property', '--name=' + device])
+    if output:
+        for line in output.split('\n'):
+            if line.startswith('ID_SERIAL='):
+                return line.split('=', 1)[1].strip()
 
-        # Method 3: Use hdparm
-        result = subprocess.run(
-            ['hdparm', '-I', device],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+    output = _run(['sg_vpd', '--page=0x80', device])
+    if output:
+        for line in output.split('\n'):
+            if 'Unit serial number' in line:
+                return line.split(':')[1].strip()
 
-        if result.returncode == 0:
-            for line in result.stdout.split('\n'):
-                if 'Serial number' in line:
-                    return line.split(':')[1].strip()
+    output = _run(['hdparm', '-I', device])
+    if output:
+        for line in output.split('\n'):
+            if 'Serial number' in line:
+                return line.split(':')[1].strip()
 
-    except _SUBPROCESS_ERRORS as e:
-        logger.error(f"Failed to get serial for {device}: {e}")
-
+    logger.debug(f"No serial number available for {device}")
     return None
 
 

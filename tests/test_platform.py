@@ -697,3 +697,41 @@ class TestPlatformDetection(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestDriveSerialToolFallback(unittest.TestCase):
+    """A missing probe tool must not be fatal, noisy, or skip the fallbacks."""
+
+    @unittest.skipIf(sys.platform != 'linux', "Linux-only")
+    def test_missing_tool_falls_through_to_the_next_probe(self):
+        from unetbootin.platform import linux as linux_mod
+
+        def only_hdparm(name):
+            return '/usr/sbin/hdparm' if name == 'hdparm' else None
+
+        completed = MagicMock()
+        completed.returncode = 0
+        completed.stdout = "Serial number: ABC123\n"
+
+        with patch('shutil.which', side_effect=only_hdparm), \
+             patch('subprocess.run', return_value=completed) as run:
+            serial = linux_mod.get_drive_serial('/dev/sdb')
+
+        self.assertEqual(serial, 'ABC123',
+                         "must reach hdparm even though udevadm is absent")
+        # Only the available tool should have been executed.
+        self.assertEqual(run.call_count, 1)
+
+    @unittest.skipIf(sys.platform != 'linux', "Linux-only")
+    def test_absent_tools_are_not_logged_as_errors(self):
+        """Inside a sandbox none of these exist; that is expected, not an error."""
+        from unetbootin.platform import linux as linux_mod
+
+        with patch('shutil.which', return_value=None):
+            with self.assertLogs('unetbootin.platform.linux',
+                                 level='DEBUG') as captured:
+                result = linux_mod.get_drive_serial('/dev/sdb')
+
+        self.assertIsNone(result)
+        self.assertFalse([m for m in captured.output if m.startswith('ERROR')],
+                         "a missing optional tool must not log an error")
