@@ -28,7 +28,7 @@ from pynetboot.core.downloader import (
 from pynetboot.core.installer import USBInstaller
 from pynetboot.core.utils import (
     check_root, check_admin, get_platform_info,
-    format_size, normalize_language_code
+    format_size, normalize_language_code, directory_stats
 )
 from pynetboot.platform import get_drive_list, is_safe_target
 
@@ -860,6 +860,7 @@ class PyNetbootApp:
                     cancel_check=cancelled
                 )
 
+            download_started = time.monotonic()
             success, message = self.run_in_background(
                 do_download, status=f"Downloading {iso_filename}...",
                 cancellable=True)
@@ -869,7 +870,17 @@ class PyNetbootApp:
                     raise InstallationCancelled("Cancelled by user")
                 raise ValueError(f"Failed to download ISO: {message}")
 
-            logger.info(f"ISO downloaded successfully: {iso_path}")
+            download_seconds = time.monotonic() - download_started
+            try:
+                iso_size = os.path.getsize(iso_path)
+            except OSError as e:
+                logger.warning(f"Could not stat downloaded ISO: {e}")
+                iso_size = 0
+            rate = iso_size / download_seconds if download_seconds > 0 else 0
+            logger.info(
+                f"ISO downloaded successfully: {iso_path} "
+                f"({format_size(iso_size)} in {download_seconds:.1f}s, "
+                f"{format_size(int(rate))}/s)")
 
             # Verify checksum (hashing a large ISO blocks too).
             checksum = self.get_distribution_checksum(
@@ -907,12 +918,27 @@ class PyNetbootApp:
                     progress_callback=extract_progress
                 )
 
+            logger.info(f"Extracting {iso_path} to {self.tmp_dir}")
+            extract_started = time.monotonic()
             success, message = self.run_in_background(
                 do_extract, status="Extracting ISO...", cancellable=False)
             if not success:
                 raise RuntimeError(f"Extraction failed: {message}")
 
-            logger.info("ISO extracted successfully")
+            extract_seconds = time.monotonic() - extract_started
+            extracted_files, extracted_bytes = directory_stats(self.tmp_dir)
+            logger.info(
+                f"ISO extracted successfully: {extracted_files} files, "
+                f"{format_size(extracted_bytes)} in {extract_seconds:.1f}s")
+            # A quick extraction is normal when the ISO is still in the page
+            # cache, so the counts above are what tell you it did real work.
+            if extracted_bytes < iso_size // 2:
+                logger.warning(
+                    f"Extracted data ({format_size(extracted_bytes)}) is far "
+                    f"smaller than the ISO ({format_size(iso_size)}); the "
+                    f"image may not have unpacked completely")
+            top_level = sorted(os.listdir(self.tmp_dir))[:20]
+            logger.info(f"Extracted top-level entries: {top_level}")
 
             # Write to the device (80-100%). Never cancellable.
             def do_install(report, cancelled):
@@ -926,11 +952,19 @@ class PyNetbootApp:
                     progress_callback=install_progress
                 )
 
+            logger.info(
+                f"Writing {self.tmp_dir} to {params['target_drive']} "
+                f"({format_size(extracted_bytes)} across "
+                f"{extracted_files} files)")
+            install_started = time.monotonic()
             success, message = self.run_in_background(
                 do_install, status="Installing to USB...", cancellable=False)
             if not success:
                 raise RuntimeError(f"Installation failed: {message}")
 
+            logger.info(
+                f"Installation completed in "
+                f"{time.monotonic() - install_started:.1f}s")
             self.show_completion_message()
 
         except InstallationCancelled:

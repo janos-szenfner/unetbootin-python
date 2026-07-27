@@ -192,6 +192,26 @@ def format_size(size_bytes: int) -> str:
     return f"{size:.1f} PB"
 
 
+def directory_stats(path: str) -> Tuple[int, int]:
+    """Return (file count, total bytes) for everything under `path`.
+
+    Used to record in the log what a step actually produced, so an
+    extraction or copy that quietly did nothing is visible afterwards.
+    """
+    files = 0
+    total = 0
+    for root, _dirs, names in os.walk(path):
+        for name in names:
+            full = os.path.join(root, name)
+            try:
+                if not os.path.islink(full):
+                    total += os.path.getsize(full)
+                files += 1
+            except OSError:
+                files += 1
+    return files, total
+
+
 def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
     """Parse command line arguments.
 

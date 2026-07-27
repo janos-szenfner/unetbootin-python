@@ -18,6 +18,7 @@ from pynetboot.resources import (
     bootloader_path, ensure_executable,
     find_bundled_syslinux, find_bundled_extlinux,
 )
+from pynetboot.core.utils import directory_stats, format_size
 
 logger = logging.getLogger(__name__)
 
@@ -101,31 +102,53 @@ class USBInstaller:
                 if progress_callback:
                     progress_callback(min(total_progress, 99))
 
+            logger.info(
+                f"Install starting: source={source_dir} target={target_device} "
+                f"type={install_type} drive={drive_type} "
+                f"uefi_only={params.get('enable_uefi_only', False)} "
+                f"secure_boot={params.get('enable_secure_boot', False)} "
+                f"persistence={params.get('persistence_enabled', False)}")
+
+            def finished(stage: str, started: float) -> None:
+                logger.info(f"Stage '{stage}' finished in "
+                            f"{time.monotonic() - started:.1f}s")
+
             # Stage 1: Prepare
             update_progress(0)
+            started = time.monotonic()
             if not self._prepare_installation(source_dir, target_device, params):
+                logger.error("Stage 'Preparing' failed")
                 return False, "Preparation failed"
+            finished('Preparing', started)
             update_progress(100)
             current_stage += 1
 
             # Stage 2: Copy files
             update_progress(0)
+            started = time.monotonic()
             if not self._copy_files_to_device(
                 source_dir, target_device, params, update_progress):
+                logger.error("Stage 'Copying files' failed")
                 return False, "File copying failed"
+            finished('Copying files', started)
             update_progress(100)
             current_stage += 1
 
             # Stage 3: Install bootloader
             update_progress(0)
+            started = time.monotonic()
             if not self._install_bootloader(target_device, params, update_progress):
+                logger.error("Stage 'Installing bootloader' failed")
                 return False, "Bootloader installation failed"
+            finished('Installing bootloader', started)
             update_progress(100)
             current_stage += 1
 
             # Stage 4: Clean up
             update_progress(0)
+            started = time.monotonic()
             self._cleanup_installation(source_dir, target_device, params)
+            finished('Cleaning up', started)
             update_progress(100)
 
             if progress_callback:
@@ -140,7 +163,8 @@ class USBInstaller:
     def _prepare_installation(self, source_dir: str, target_device: str,
                               params: Dict[str, Any]) -> bool:
         """Prepare for installation."""
-        logger.info("Preparing installation")
+        logger.info(f"Preparing installation on {target_device}")
+        self._log_device_details(target_device)
 
         try:
             # HARD SAFETY GATE (last line of defense): refuse to touch anything
@@ -219,6 +243,17 @@ class USBInstaller:
             copied_files = 0
             failed_files = []
 
+            source_files, source_bytes = directory_stats(source_dir)
+            logger.info(
+                f"Copying {total_files} top-level entries "
+                f"({source_files} files, {format_size(source_bytes)}) "
+                f"to {actual_target}")
+            if total_files == 0:
+                logger.error(
+                    f"Nothing to copy from {source_dir}: the extracted image "
+                    f"is empty, so the target would be left unbootable")
+                return False
+
             for file_path in files_to_copy:
                 src_path = os.path.join(source_dir, file_path)
                 dest_path = os.path.join(actual_target, file_path)
@@ -251,6 +286,10 @@ class USBInstaller:
                 )
                 return False
 
+            written_files, written_bytes = directory_stats(actual_target)
+            logger.info(
+                f"Copied {copied_files}/{total_files} entries; target now "
+                f"holds {written_files} files, {format_size(written_bytes)}")
             return True
 
         except _FILE_COPY_ERRORS as e:
@@ -484,6 +523,30 @@ class USBInstaller:
         except (ValueError, KeyError, TypeError):
             pass
         return None
+
+    def _log_device_details(self, device: str) -> None:
+        """Record what the target actually is before anything destructive.
+
+        A log that says only "/dev/sdb" leaves you guessing about size,
+        model and which partitions were mounted at the time.
+        """
+        if self.platform != 'linux':
+            return
+        try:
+            result = subprocess.run(
+                ['lsblk', '-o', 'NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL',
+                 device],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().splitlines():
+                    logger.info(f"  {line}")
+            else:
+                logger.warning(
+                    f"Could not describe {device}: "
+                    f"{(result.stderr or '').strip()}")
+        except _SUBPROCESS_ERRORS as e:
+            logger.warning(f"Could not describe {device}: {e}")
 
     def _partition_target(self, target_device: str) -> Optional[str]:
         """Return the partition to format and mount for `target_device`.
@@ -875,6 +938,11 @@ class USBInstaller:
                 #    binary, fall back to a system syslinux only if missing.
                 bundled = find_bundled_syslinux()
                 syslinux_bin = str(bundled) if bundled else self._find_executable('syslinux')
+                logger.info(
+                    f"Bootloader targets: MBR -> {whole_disk}, "
+                    f"syslinux -> {partition}; using "
+                    f"{syslinux_bin or 'no syslinux binary'} "
+                    f"({'bundled' if bundled else 'system'})")
                 if syslinux_bin:
                     # syslinux -i patches the boot sector and writes
                     # ldlinux.sys; on a mounted filesystem the kernel's cache
@@ -899,6 +967,9 @@ class USBInstaller:
                 extlinux_bin = str(bundled_ext) if bundled_ext else self._find_executable('extlinux')
                 mount_point = params.get('mount_point')
                 if extlinux_bin and mount_point:
+                    logger.info(
+                        f"Falling back to extlinux ({extlinux_bin}) "
+                        f"on {mount_point}")
                     result = subprocess.run(
                         ['sudo', extlinux_bin, '--install', mount_point],
                         capture_output=True, text=True, timeout=60

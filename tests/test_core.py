@@ -337,6 +337,22 @@ class TestInstaller(unittest.TestCase):
             result = self.installer._validate_target_device('/nonexistent/device')
             self.assertFalse(result)
 
+    def test_copying_an_empty_source_is_a_failure(self):
+        """An empty extraction must not be reported as a successful copy.
+
+        It previously returned True: no files meant no failures, so the
+        install continued and produced an empty, unbootable drive. It also
+        divided by zero when computing progress.
+        """
+        source = os.path.join(self.temp_dir, 'empty-source')
+        target = os.path.join(self.temp_dir, 'target')
+        os.makedirs(source, exist_ok=True)
+        os.makedirs(target, exist_ok=True)
+
+        self.assertFalse(
+            self.installer._copy_files_to_device(
+                source, '/dev/sdb', {'mount_point': target}))
+
     def test_partition_target_partitions_a_whole_disk(self):
         """A whole disk is given a partition table, and that partition used.
 

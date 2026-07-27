@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.2.4" date="2026-07-27">
+      <description>
+        <p>Records much more detail in the log, making a failed write easier to diagnose.</p>
+        <ul>
+          <li>The download, extraction, copy and bootloader steps each report their size, duration and outcome</li>
+          <li>The target drive's size, model and mounted partitions are recorded before anything is written to it</li>
+          <li>Copying an empty image is now reported as a failure instead of quietly producing an unbootable drive</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.3" date="2026-07-27">
       <description>
         <p>Makes a silently empty extraction impossible.</p>
