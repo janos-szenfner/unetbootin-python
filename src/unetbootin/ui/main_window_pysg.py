@@ -493,16 +493,17 @@ class MainWindowPySG:
         else:
             filtered_distros = list(self.distributions.values())
 
+        # Sort case-insensitively: a plain sort puts lowercase-initial names
+        # (openSUSE) after every capitalised one, which does not look
+        # alphabetical to a reader.
+        def sort_key(distro):
+            display = distro.get('display_name', distro['name'])
+            return (display.lower(), distro['name'].lower())
+
         distro_names = [
-    d.get(
-        'display_name',
-        d['name']) for d in sorted(
-            filtered_distros,
-            key=lambda x: (
-                x.get(
-                    'display_name',
-                    x['name']),
-                     x['name']))]
+            d.get('display_name', d['name'])
+            for d in sorted(filtered_distros, key=sort_key)
+        ]
         current_value = self.elements['distro_select'].get()
         self.elements['distro_select'].update(values=distro_names)
 

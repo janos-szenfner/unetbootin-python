@@ -761,3 +761,40 @@ class TestCategoryIcons(unittest.TestCase):
         mapping = MainWindowPySG._CATEGORY_ICONS
         self.assertIsNone(mapping.get('all'))
         self.assertIsNone(mapping.get(''))
+
+
+class TestDistroOrdering(unittest.TestCase):
+    """The distribution drop-down must read alphabetically."""
+
+    def _sorted_names(self, category=None):
+        from unittest.mock import MagicMock
+        from unetbootin.ui.main_window_pysg import MainWindowPySG
+        from unetbootin.models.distro import DistributionManager
+
+        ui = MainWindowPySG.__new__(MainWindowPySG)
+        ui.distributions = {
+            d['name']: d for d in DistributionManager().get_distributions()
+        }
+        captured = {}
+        combo = MagicMock()
+        combo.get.return_value = ''
+        combo.update.side_effect = lambda **kw: captured.update(kw)
+        ui.elements = {'distro_select': combo, 'category_select': MagicMock()}
+        ui.update_distro_list(category or 'All')
+        return captured.get('values', [])
+
+    def test_list_is_alphabetical_ignoring_case(self):
+        names = self._sorted_names()
+        self.assertEqual(names, sorted(names, key=str.lower))
+
+    def test_lowercase_initial_name_is_not_pushed_to_the_end(self):
+        """openSUSE must sit between OpenMandriva and Rocky, not after Zorin."""
+        names = self._sorted_names()
+        self.assertIn('openSUSE', names)
+        self.assertLess(names.index('openSUSE'), names.index('Zorin OS'))
+
+    def test_each_category_is_alphabetical(self):
+        for category in ('Linux', 'BSD', 'Windows'):
+            names = self._sorted_names(category)
+            self.assertEqual(names, sorted(names, key=str.lower),
+                             f"{category} list is not alphabetical")
