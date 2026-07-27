@@ -280,6 +280,73 @@ class TestInstaller(unittest.TestCase):
             result = self.installer._validate_target_device('/nonexistent/device')
             self.assertFalse(result)
 
+    def test_partition_target_partitions_a_whole_disk(self):
+        """A whole disk is given a partition table, and that partition used.
+
+        Regression test: the installer used to format the whole disk as a
+        partitionless "superfloppy", then write the syslinux MBR over
+        sector 0 -- destroying the FAT boot sector it had just created.
+        """
+        self.installer.platform = 'linux'
+        with patch('pynetboot.platform.linux.is_whole_disk', return_value=True), \
+                patch('pynetboot.platform.linux.partition_device',
+                      return_value='/dev/sdb1') as mock_partition:
+            self.assertEqual(
+                self.installer._partition_target('/dev/sdb'), '/dev/sdb1')
+            mock_partition.assert_called_once_with('/dev/sdb')
+
+    def test_partition_target_leaves_an_existing_partition_alone(self):
+        """A caller that already passed a partition must not be repartitioned."""
+        self.installer.platform = 'linux'
+        with patch('pynetboot.platform.linux.is_whole_disk', return_value=False), \
+                patch('pynetboot.platform.linux.partition_device') as mock_partition:
+            self.assertEqual(
+                self.installer._partition_target('/dev/sdb1'), '/dev/sdb1')
+            mock_partition.assert_not_called()
+
+    def test_partition_target_reports_failure(self):
+        """A failed partitioning aborts preparation rather than formatting."""
+        self.installer.platform = 'linux'
+        with patch('pynetboot.platform.linux.is_whole_disk', return_value=True), \
+                patch('pynetboot.platform.linux.partition_device',
+                      return_value=None):
+            self.assertIsNone(self.installer._partition_target('/dev/sdb'))
+
+    def test_bootloader_writes_mbr_to_disk_and_syslinux_to_partition(self):
+        """The two halves of the bootloader must go to different places.
+
+        The MBR belongs in sector 0 of the disk; syslinux belongs in the
+        boot sector of the partition. Sending both to the same device is
+        what corrupted the filesystem.
+        """
+        self.installer.platform = 'linux'
+        params = {'drive_type': 'USB Drive',
+                  'target_partition': '/dev/sdb1',
+                  'mount_point': None}
+
+        with patch.object(self.installer, '_linux_parent_disk',
+                          return_value='/dev/sdb'), \
+                patch.object(self.installer, '_write_syslinux_mbr',
+                             return_value=True) as mock_mbr, \
+                patch.object(self.installer, '_copy_syslinux_modules'), \
+                patch.object(self.installer, '_release_mount'), \
+                patch('pynetboot.core.installer.find_bundled_syslinux',
+                      return_value=None), \
+                patch.object(self.installer, '_find_executable',
+                             side_effect=lambda n: '/usr/bin/syslinux'
+                             if n == 'syslinux' else None), \
+                patch('subprocess.run') as mock_run:
+            ok = MagicMock()
+            ok.returncode = 0
+            ok.stderr = ''
+            mock_run.return_value = ok
+
+            self.installer._install_bootloader_linux('/dev/sdb', params)
+
+            mock_mbr.assert_called_once_with('/dev/sdb')
+            syslinux_argv = mock_run.call_args_list[0].args[0]
+            self.assertEqual(syslinux_argv[-1], '/dev/sdb1')
+
     def test_get_files_to_copy(self):
         """Test getting files to copy."""
         # Create a source directory with test files

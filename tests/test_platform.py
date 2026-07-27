@@ -289,6 +289,71 @@ class TestLinuxPlatform(unittest.TestCase):
             result = linux.set_volume_label('/dev/sdb1', 'MYUSB')
             self.assertTrue(result)
 
+    def test_is_whole_disk(self):
+        """A disk and one of its partitions must be told apart."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout='disk\n')
+            self.assertTrue(linux.is_whole_disk('/dev/sdb'))
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout='part\n')
+            self.assertFalse(linux.is_whole_disk('/dev/sdb1'))
+
+    def test_first_partition_does_not_guess_at_naming(self):
+        """Partition names differ: sdb1 but nvme0n1p1, so ask lsblk."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout='nvme0n1 disk\nnvme0n1p1 part\n')
+            self.assertEqual(
+                linux.first_partition('/dev/nvme0n1'), '/dev/nvme0n1p1')
+
+    def test_partition_device_creates_a_bootable_fat32_partition(self):
+        """The disk needs a DOS table with one bootable FAT32 partition.
+
+        Without it there is nowhere for the syslinux MBR to live: writing it
+        to sector 0 would overwrite the filesystem's own boot sector.
+        """
+        with patch('shutil.which', return_value='/sbin/parted'), \
+                patch('os.path.exists', return_value=True), \
+                patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout='\n'),      # lsblk: unmount
+                MagicMock(returncode=0, stdout=''),        # wipefs
+                MagicMock(returncode=0, stdout='', stderr=''),   # parted
+                MagicMock(returncode=0, stdout=''),        # partprobe
+                MagicMock(returncode=0, stdout=''),        # udevadm settle
+                MagicMock(returncode=0, stdout='sdb disk\nsdb1 part\n'),
+            ]
+
+            self.assertEqual(linux.partition_device('/dev/sdb'), '/dev/sdb1')
+
+            parted_argv = next(
+                call.args[0] for call in mock_run.call_args_list
+                if 'parted' in ' '.join(call.args[0]))
+            for expected in ('mklabel', 'msdos', 'fat32', 'boot', 'on'):
+                self.assertIn(expected, parted_argv)
+
+    def test_partition_device_without_parted_is_not_destructive(self):
+        """If parted is missing, fail before touching the drive."""
+        with patch('shutil.which', return_value=None), \
+                patch('os.path.exists', return_value=False), \
+                patch('subprocess.run') as mock_run:
+            self.assertIsNone(linux.partition_device('/dev/sdb'))
+            mock_run.assert_not_called()
+
+    def test_partition_device_reports_parted_failure(self):
+        """A parted failure returns None rather than a bogus partition."""
+        with patch('shutil.which', return_value='/sbin/parted'), \
+                patch('os.path.exists', return_value=True), \
+                patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout='\n'),   # lsblk: unmount
+                MagicMock(returncode=0, stdout=''),     # wipefs
+                MagicMock(returncode=1, stdout='',
+                          stderr='parted: unable to open /dev/sdb'),
+            ]
+            self.assertIsNone(linux.partition_device('/dev/sdb'))
+
     def test_get_volume_label(self):
         """Test getting volume label on Linux."""
         with patch('subprocess.run') as mock_run:
