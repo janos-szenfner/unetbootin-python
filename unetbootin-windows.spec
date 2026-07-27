@@ -25,7 +25,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # setuptools/pkg_resources are build-time only - nothing in this app
+    # imports them at runtime. Bundling them makes PyInstaller add its
+    # pkg_resources runtime hook, which imports setuptools' vendored jaraco
+    # modules; those are not collected, so the frozen app died at startup with
+    # "No module named 'jaraco'" before showing a window.
+    excludes=['setuptools', 'pkg_resources', 'pip', 'wheel'],
     noarchive=False,
 )
 
