@@ -102,6 +102,11 @@ def resolve_font_family() -> Optional[str]:
     Must be called after a Tk root exists, since querying the font list needs
     an interpreter.
     """
+    # Never let tkinter create a root implicitly: font.families() will spawn
+    # one if none exists, which would open a stray window.
+    if getattr(tkinter, '_default_root', None) is None:
+        logger.debug("No Tk root yet; keeping the toolkit's default font")
+        return None
     try:
         import tkinter.font as tkfont
         available = {f.strip() for f in tkfont.families()}
@@ -139,6 +144,39 @@ def apply_font_family(family: Optional[str] = None) -> Optional[str]:
     except Exception as e:  # noqa: BLE001 - cosmetic only
         logger.warning(f"Could not set the font family: {e}")
     return family
+
+
+def log_render_environment(root) -> Dict[str, Any]:
+    """Log what actually decides how the interface looks.
+
+    Widget sizes come from CustomTkinter's DPI scaling and text from the
+    resolved font, both of which can differ between a host install and a
+    Flatpak sandbox. Logging them makes a visual difference diagnosable by
+    comparing two runs instead of guessing.
+    """
+    # Only meaningful against a real Tk widget; a stand-in would send the
+    # scaling tracker into calls it cannot service.
+    if not isinstance(root, tkinter.Misc):
+        return {}
+
+    info: Dict[str, Any] = {}
+    try:
+        info['tk'] = tkinter.TkVersion
+        info['tk_scaling'] = round(float(root.tk.call('tk', 'scaling')), 3)
+        info['screen_dpi'] = round(root.winfo_fpixels('1i'), 1)
+        info['screen'] = f"{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
+    except Exception as e:  # noqa: BLE001 - diagnostics only
+        logger.debug(f"Could not read Tk metrics: {e}")
+    try:
+        from customtkinter.windows.widgets.scaling.scaling_tracker import (
+            ScalingTracker)
+        info['widget_scaling'] = ScalingTracker.get_widget_scaling(root)
+        info['window_scaling'] = ScalingTracker.get_window_scaling(root)
+    except Exception as e:  # noqa: BLE001 - diagnostics only
+        logger.debug(f"Could not read CustomTkinter scaling: {e}")
+    logger.info("Render environment: "
+                + ", ".join(f"{k}={v}" for k, v in info.items()))
+    return info
 
 
 def window_icon_path() -> Optional[str]:
@@ -431,6 +469,7 @@ class MainWindowCTk:
         self.root.configure(fg_color=BACKGROUND)
         # Do this before building widgets: they pick the family up at creation.
         self._font_family = apply_font_family()
+        log_render_environment(self.root)
         self.root.geometry("900x680")
         self.root.minsize(760, 560)
         self.root.protocol("WM_DELETE_WINDOW", lambda: self.emit(WIN_CLOSED, None))

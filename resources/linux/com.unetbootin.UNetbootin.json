@@ -16,7 +16,9 @@
         "--filesystem=/var/cache/fontconfig:ro",
         "--filesystem=xdg-config/fontconfig:ro",
         "--filesystem=xdg-data/fonts:ro",
-        "--filesystem=~/.fonts:ro"
+        "--filesystem=~/.fonts:ro",
+        "--filesystem=/etc/fonts:ro",
+        "--filesystem=xdg-cache/fontconfig:ro"
     ],
     "cleanup": [
         "/.local/share",
@@ -29,7 +31,9 @@
             "build-commands": [
                 "pip3 install --prefix=/app . py7zr",
                 "install -d /app/share/fonts/customtkinter",
-                "cp -r /app/lib/python3*/site-packages/customtkinter/assets/fonts/. /app/share/fonts/customtkinter/ || true"
+                "find /app -type d -path '*/customtkinter/assets/fonts' -exec cp -r {}/. /app/share/fonts/customtkinter/ \\;",
+                "test -n \"$(find /app/share/fonts -name '*.ttf' -print -quit)\" || (echo 'FATAL: Roboto was not bundled into /app/share/fonts' >&2; exit 1)",
+                "fc-cache -f /app/share/fonts || true"
             ],
             "build-options": {
                 "build-args": [
