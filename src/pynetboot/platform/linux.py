@@ -5,11 +5,17 @@ Linux-specific functionality for PyNetboot.
 import os
 import re
 import sys
+import time
+import shutil
 import logging
 import subprocess
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+# How long to wait for udev to create the partition node after the table is
+# written. Slow USB bridges can take several seconds to re-enumerate.
+_PARTITION_SETTLE_SECONDS = 15
 
 # Linux drivers shell out to lsblk/findmnt/blkid/etc. and parse their JSON or
 # text output. json.JSONDecodeError is a ValueError subclass, so ValueError
@@ -388,6 +394,122 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to mount {drive}: {e}")
         return False
+
+
+def is_whole_disk(device: str) -> bool:
+    """True if `device` is a whole disk rather than one of its partitions."""
+    if not device.startswith('/dev/'):
+        device = f"/dev/{device}"
+    try:
+        result = subprocess.run(
+            ['lsblk', '-ndo', 'TYPE', device],
+            capture_output=True, text=True, timeout=5
+        )
+    except _SUBPROCESS_ERRORS as e:
+        logger.debug(f"lsblk TYPE lookup failed for {device}: {e}")
+        return False
+    return result.returncode == 0 and result.stdout.strip() == 'disk'
+
+
+def first_partition(disk: str) -> Optional[str]:
+    """Return a disk's first partition, or None if it has none.
+
+    Asks lsblk instead of appending "1", because the naming differs between
+    /dev/sdb1 and /dev/nvme0n1p1 or /dev/mmcblk0p1.
+    """
+    if not disk.startswith('/dev/'):
+        disk = f"/dev/{disk}"
+    try:
+        result = subprocess.run(
+            ['lsblk', '-nro', 'NAME,TYPE', disk],
+            capture_output=True, text=True, timeout=5
+        )
+    except _SUBPROCESS_ERRORS as e:
+        logger.debug(f"lsblk partition lookup failed for {disk}: {e}")
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[1] == 'part':
+            return f"/dev/{fields[0]}"
+    return None
+
+
+def partition_device(disk: str) -> Optional[str]:
+    """Put a DOS partition table with one bootable FAT32 partition on `disk`.
+
+    A BIOS-bootable USB stick needs a partition table: the syslinux MBR goes
+    to the disk's sector 0 while syslinux itself goes to the *partition's*
+    boot sector. Formatting the whole disk instead (a "superfloppy") puts a
+    FAT boot sector at sector 0, so writing the MBR over it destroys the
+    filesystem's BPB and the stick does not boot.
+
+    Returns the new partition (e.g. /dev/sdb1), or None on failure.
+    """
+    if not disk.startswith('/dev/'):
+        disk = f"/dev/{disk}"
+
+    parted = shutil.which('parted') or '/sbin/parted'
+    if not os.path.exists(parted):
+        logger.error(
+            "parted is required to partition the target drive but was not "
+            "found. Install the 'parted' package and try again.")
+        return None
+
+    if not unmount_drive(disk):
+        logger.error(f"Could not unmount every filesystem on {disk} before "
+                     "partitioning it")
+        return None
+
+    # Clear stale filesystem and partition-table signatures, otherwise the
+    # old superfloppy FAT signature can still be detected afterwards.
+    try:
+        subprocess.run(['sudo', 'wipefs', '-a', disk],
+                       capture_output=True, text=True, timeout=120)
+    except _SUBPROCESS_ERRORS as e:
+        logger.warning(f"wipefs on {disk} failed (continuing): {e}")
+
+    try:
+        result = subprocess.run(
+            ['sudo', parted, '-s', '--align', 'optimal', disk,
+             'mklabel', 'msdos',
+             'mkpart', 'primary', 'fat32', '1MiB', '100%',
+             'set', '1', 'boot', 'on'],
+            capture_output=True, text=True, timeout=300
+        )
+    except _SUBPROCESS_ERRORS as e:
+        logger.error(f"Partitioning {disk} failed: {e}")
+        return None
+
+    if result.returncode != 0:
+        detail = ((result.stderr or '') + (result.stdout or '')).strip()
+        logger.error(
+            f"parted failed on {disk} (exit {result.returncode}): "
+            f"{detail or 'no output'}")
+        return None
+
+    # Let the kernel and udev catch up before the new node is used.
+    for cmd in (['sudo', 'partprobe', disk], ['udevadm', 'settle']):
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        except _SUBPROCESS_ERRORS as e:
+            logger.debug(f"{cmd[-1]} failed (continuing): {e}")
+
+    deadline = time.monotonic() + _PARTITION_SETTLE_SECONDS
+    while time.monotonic() < deadline:
+        partition = first_partition(disk)
+        if partition and os.path.exists(partition):
+            logger.info(f"Created {partition} on {disk}")
+            return partition
+        time.sleep(0.5)
+
+    logger.error(
+        f"Partition table written to {disk} but no partition device appeared "
+        f"within {_PARTITION_SETTLE_SECONDS}s")
+    return None
 
 
 def _run_mkfs(command: List[str], drive: str) -> bool:

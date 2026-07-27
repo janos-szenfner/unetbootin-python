@@ -352,6 +352,7 @@ jobs:
             --url https://github.com/${{ github.repository }} \
             --depends syslinux \
             --depends syslinux-common \
+            --depends parted \
             --depends dosfstools \
             --depends mtools \
             --depends sudo \
@@ -442,6 +443,7 @@ jobs:
             --license "GPL-2.0-or-later" \
             --url https://github.com/${{ github.repository }} \
             --depends syslinux \
+            --depends parted \
             --depends dosfstools \
             --depends mtools \
             --depends sudo \

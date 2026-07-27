@@ -165,10 +165,20 @@ class USBInstaller:
                     logger.error(f"Failed to unmount {target_device}")
                     return False
 
-            # Format the device with FAT32 filesystem
-            logger.info(f"Formatting {target_device} with FAT32")
-            if not self._format_device(target_device):
-                logger.error(f"Failed to format {target_device}")
+            # Give the disk a partition table before formatting anything.
+            # syslinux goes into the partition's boot sector and the syslinux
+            # MBR goes to sector 0 of the disk; formatting the whole disk
+            # instead would put the filesystem at sector 0, where writing the
+            # MBR later destroys it.
+            target_partition = self._partition_target(target_device)
+            if target_partition is None:
+                return False
+            params['target_partition'] = target_partition
+
+            # Format the partition with FAT32 filesystem
+            logger.info(f"Formatting {target_partition} with FAT32")
+            if not self._format_device(target_partition):
+                logger.error(f"Failed to format {target_partition}")
                 return False
 
             # Create temporary working directory
@@ -176,9 +186,9 @@ class USBInstaller:
 
             # Create and mount the device to a temporary mount point
             mount_point = tempfile.mkdtemp(prefix='pynetboot_mount_')
-            logger.info(f"Mounting {target_device} to {mount_point}")
-            if not self._mount_device(target_device, mount_point):
-                logger.error(f"Failed to mount {target_device}")
+            logger.info(f"Mounting {target_partition} to {mount_point}")
+            if not self._mount_device(target_partition, mount_point):
+                logger.error(f"Failed to mount {target_partition}")
                 # Clean up temp dir
                 shutil.rmtree(params['temp_dir'], ignore_errors=True)
                 shutil.rmtree(mount_point, ignore_errors=True)
@@ -475,6 +485,32 @@ class USBInstaller:
             pass
         return None
 
+    def _partition_target(self, target_device: str) -> Optional[str]:
+        """Return the partition to format and mount for `target_device`.
+
+        On Linux a whole disk is given a fresh DOS table with a single
+        bootable FAT32 partition, and that partition is returned. If the
+        caller already passed a partition it is used as-is. Other platforms
+        keep their existing behaviour.
+
+        Returns None if partitioning was needed but failed.
+        """
+        if self.platform in ('win32', 'darwin'):
+            return target_device
+
+        from pynetboot.platform.linux import is_whole_disk, partition_device
+
+        if not is_whole_disk(target_device):
+            logger.info(f"{target_device} is a partition; using it as-is")
+            return target_device
+
+        logger.info(f"Creating partition table on {target_device}")
+        partition = partition_device(target_device)
+        if not partition:
+            logger.error(f"Failed to partition {target_device}")
+            return None
+        return partition
+
     def _format_device(self, device: str) -> bool:
         """Format the target device with FAT32 filesystem.
 
@@ -765,9 +801,10 @@ class USBInstaller:
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
 
-                # Try to find EFI partition (usually partition 1)
-                efi_partition = device
-                if not device.endswith('1') and not device.endswith('p1'):
+                # Prefer the partition _prepare_installation created; only
+                # guess at naming if that is somehow unavailable.
+                efi_partition = params.get('target_partition') or device
+                if efi_partition == device and not device.endswith(('1', 'p1')):
                     # Try common EFI partition naming
                     for suffix in ['1', 'p1']:
                         test_partition = f"{device}{suffix}"
@@ -819,10 +856,16 @@ class USBInstaller:
                 if not device.startswith('/dev/'):
                     device = f"/dev/{device}"
 
-                # Resolve the whole disk (for the MBR) without string surgery.
+                # The bootloader spans two places: the MBR lives in sector 0
+                # of the disk, syslinux in the boot sector of the partition.
+                # _prepare_installation created that partition; fall back to
+                # the passed device if a caller skipped that step.
                 whole_disk = self._linux_parent_disk(device)
+                partition = params.get('target_partition') or device
 
-                # 1) Write the syslinux MBR from the BUNDLED mbr.bin.
+                # 1) Write the syslinux MBR from the BUNDLED mbr.bin. Only
+                #    the first 440 bytes are touched, so the partition table
+                #    at offset 446 survives.
                 self._write_syslinux_mbr(whole_disk)
 
                 # 2) Copy bundled menu modules onto the target filesystem.
@@ -833,13 +876,22 @@ class USBInstaller:
                 bundled = find_bundled_syslinux()
                 syslinux_bin = str(bundled) if bundled else self._find_executable('syslinux')
                 if syslinux_bin:
+                    # syslinux -i patches the boot sector and writes
+                    # ldlinux.sys; on a mounted filesystem the kernel's cache
+                    # can write back over it, so flush and unmount first.
+                    self._release_mount(params)
                     result = subprocess.run(
-                        ['sudo', syslinux_bin, '-i', device],
+                        ['sudo', syslinux_bin, '-i', partition],
                         capture_output=True, text=True, timeout=60
                     )
                     if result.returncode == 0:
+                        logger.info(f"Installed syslinux to {partition}")
                         return True
-                    logger.warning(f"syslinux install failed: {result.stderr}")
+                    logger.warning(
+                        f"syslinux install failed on {partition}: "
+                        f"{(result.stderr or '').strip()}")
+                    # extlinux works on a mounted directory, so put it back.
+                    self._remount(params, partition)
 
                 # extlinux fallback (bundled first, then system). extlinux
                 # installs into a mounted directory, not the raw partition.
@@ -926,6 +978,38 @@ class USBInstaller:
     # These use the binaries shipped in resources/bootloader/ so the tool
     # does not depend on a system-installed syslinux. They fall back to
     # system tools only if a bundled binary is missing.
+
+    def _release_mount(self, params: Dict[str, Any]) -> None:
+        """Flush and unmount the target so raw writes are not overwritten.
+
+        The mount point directory is kept so _cleanup_installation can still
+        remove it, and remains recorded so _remount can restore it.
+        """
+        mount_point = params.get('mount_point')
+        if not mount_point or not os.path.isdir(mount_point):
+            return
+        try:
+            subprocess.run(['sync'], capture_output=True, timeout=60)
+            result = subprocess.run(
+                ['sudo', 'umount', mount_point],
+                capture_output=True, text=True, timeout=60
+            )
+            if result.returncode == 0:
+                logger.info(f"Unmounted {mount_point} before raw write")
+            else:
+                logger.warning(
+                    f"Could not unmount {mount_point} before raw write: "
+                    f"{(result.stderr or '').strip()}")
+        except _SUBPROCESS_ERRORS as e:
+            logger.warning(f"Could not unmount {mount_point}: {e}")
+
+    def _remount(self, params: Dict[str, Any], device: str) -> None:
+        """Re-mount the target after a raw write, for tools that need a path."""
+        mount_point = params.get('mount_point')
+        if not mount_point or not os.path.isdir(mount_point):
+            return
+        if not self._mount_device(device, mount_point):
+            logger.warning(f"Could not re-mount {device} at {mount_point}")
 
     def _linux_parent_disk(self, device: str) -> str:
         """Resolve the whole disk that owns `device` via ``lsblk -no pkname``.
