@@ -29,7 +29,8 @@
             "name": "dosfstools",
             "buildsystem": "autotools",
             "config-opts": [
-                "--enable-compat-symlinks"
+                "--enable-compat-symlinks",
+                "--sbindir=/app/bin"
             ],
             "sources": [
                 {
@@ -47,6 +48,24 @@
                     "type": "archive",
                     "url": "https://ftp.gnu.org/gnu/mtools/mtools-4.0.43.tar.gz",
                     "sha256": "8866666fa06906ee02c709f670ae6361c5ac2008251ed825c43d321c06775718"
+                }
+            ]
+        },
+        {
+            "name": "parted",
+            "buildsystem": "autotools",
+            "config-opts": [
+                "--sbindir=/app/bin",
+                "--disable-device-mapper",
+                "--disable-nls",
+                "--disable-static",
+                "--without-readline"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://ftp.gnu.org/gnu/parted/parted-3.7.tar.xz",
+                    "sha256": "008de57561a4f3c25a0648e66ed11e7b30be493889b64334a6d70f2c1951ef7b"
                 }
             ]
         },

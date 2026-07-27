@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.2.2" date="2026-07-27">
+      <description>
+        <p>Fixes creating a bootable USB drive.</p>
+        <ul>
+          <li>The target drive is now given a partition table before formatting. Previously the whole disk was formatted and the boot record was then written over the filesystem's own boot sector, so the drive did not boot</li>
+          <li>The bootloader is installed to the partition and the boot record to the disk, as they require</li>
+          <li>The Flatpak now ships parted, and the disk tools are reachable at runtime</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.1" date="2026-07-27">
       <description>
         <p>Fixes formatting a USB drive on Linux.</p>

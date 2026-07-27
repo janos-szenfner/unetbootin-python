@@ -1005,7 +1005,7 @@ class TestFlatpakTooling(unittest.TestCase):
 
     def test_tool_sources_are_pinned_by_checksum(self):
         manifest = self._manifest()
-        for name in ('dosfstools', 'mtools'):
+        for name in ('dosfstools', 'mtools', 'parted'):
             module = next(m for m in manifest['modules'] if m['name'] == name)
             for source in module['sources']:
                 self.assertIn('sha256', source,
@@ -1014,5 +1014,18 @@ class TestFlatpakTooling(unittest.TestCase):
 
     def test_dependencies_are_built_before_the_application(self):
         names = [m['name'] for m in self._manifest()['modules']]
-        self.assertLess(names.index('dosfstools'), names.index('pynetboot'))
-        self.assertLess(names.index('mtools'), names.index('pynetboot'))
+        for tool in ('dosfstools', 'mtools', 'parted'):
+            self.assertLess(names.index(tool), names.index('pynetboot'))
+
+    def test_disk_tools_are_installed_somewhere_on_path(self):
+        """mkfs.vfat and parted must land in /app/bin.
+
+        Both are sbin programs, and autotools puts them in /app/sbin under
+        --prefix=/app. Flatpak's PATH is /app/bin:/usr/bin, so anything left
+        in /app/sbin is invisible to shutil.which at runtime.
+        """
+        manifest = self._manifest()
+        for name in ('dosfstools', 'parted'):
+            module = next(m for m in manifest['modules'] if m['name'] == name)
+            self.assertIn('--sbindir=/app/bin', module.get('config-opts', []),
+                          f"{name} would install outside the Flatpak PATH")
