@@ -59,6 +59,15 @@ def check_toolkit() -> Optional[str]:
 BACKGROUND = "white"
 PANEL_BORDER = "#d4d4d4"
 
+# Secondary actions (Cancel/Exit, and the dismissive choice in a dialog):
+# solid grey with white text, so they read as clearly enabled but stay
+# distinct from the primary blue actions.
+SECONDARY_BUTTON = {
+    "fg_color": "#7a828c",
+    "hover_color": "#626a73",
+    "text_color": "white",
+}
+
 
 def apply_theme(mode: str = "light"):
     """Set the appearance mode and colour theme."""
@@ -134,9 +143,12 @@ def _show_dialog(message: str, title: str, buttons=("OK",),
         win.destroy()
 
     for i, label in enumerate(buttons):
-        # Every button uses the standard styling; only an error dialog's
-        # single button takes the warning colour.
-        style = {"fg_color": accent, "hover_color": accent} if (i == 0 and accent) else {}
+        # First button is the primary action; any later one (e.g. "No") is
+        # secondary, matching Cancel/Exit in the main window.
+        if i == 0:
+            style = {"fg_color": accent, "hover_color": accent} if accent else {}
+        else:
+            style = SECONDARY_BUTTON
         ctk.CTkButton(row, text=label, width=110,
                       command=lambda v=label: choose(v),
                       **style).pack(side="right", padx=(8, 0))
@@ -501,15 +513,17 @@ class MainWindowCTk:
         actions.grid(row=5, column=0, sticky="ew", padx=16, pady=14)
         actions.grid_columnconfigure(0, weight=1)
 
-        for i, (label, key, event, icon) in enumerate((
-                (_("OK"), 'ok', '-OK-', 'ui_ok.png'),
+        for i, (label, key, event, icon, style) in enumerate((
+                (_("OK"), 'ok', '-OK-', 'ui_ok.png', {}),
                 (_("ISO Download"), 'iso_download', '-ISO_DOWNLOAD-',
-                 'ui_download.png'),
-                (_("Cancel"), 'cancel', '-CANCEL-', 'ui_cancel.png'),
-                (_("Exit"), 'exit', '-EXIT-', 'ui_exit.png'))):
+                 'ui_download.png', {}),
+                (_("Cancel"), 'cancel', '-CANCEL-', 'ui_cancel.png',
+                 SECONDARY_BUTTON),
+                (_("Exit"), 'exit', '-EXIT-', 'ui_exit.png',
+                 SECONDARY_BUTTON))):
             btn = ctk.CTkButton(actions, text=label, width=145,
                                 image=self._icon(icon), compound="left",
-                                command=lambda e=event: self.emit(e))
+                                command=lambda e=event: self.emit(e), **style)
             btn.grid(row=0, column=i + 1, padx=6)
             self.elements[key] = _Element(btn, 'button', owner=self)
 
