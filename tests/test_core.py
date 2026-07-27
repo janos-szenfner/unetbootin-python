@@ -198,6 +198,63 @@ class TestExtractor(unittest.TestCase):
         )
         self.assertFalse(result[0])  # success should be False
 
+    def test_extraction_reporting_success_without_output_is_a_failure(self):
+        """A backend that exits 0 but unpacks nothing must not count.
+
+        Regression test: the backends report success from the exit code
+        alone. Trusting that would copy an empty tree to the target drive
+        and install a bootloader over it, reporting a completed install for
+        a drive that cannot boot.
+        """
+        empty_dest = os.path.join(self.temp_dir, 'empty')
+        os.makedirs(empty_dest, exist_ok=True)
+
+        with patch.object(ISOExtractor, '_try_xorriso', return_value=True), \
+                patch.object(ISOExtractor, '_try_7z', return_value=False), \
+                patch.object(ISOExtractor, '_try_bsdtar', return_value=False), \
+                patch.object(ISOExtractor, '_try_python_libs', return_value=False):
+            success, message = self.extractor._extract_iso(
+                '/some/file.iso', empty_dest, None, None)
+
+        self.assertFalse(success)
+        self.assertIn('xorriso', message)
+
+    def test_extraction_falls_through_to_the_next_backend(self):
+        """A backend that writes nothing must not end the chain."""
+        dest = os.path.join(self.temp_dir, 'dest')
+        os.makedirs(dest, exist_ok=True)
+
+        def writes_a_file(archive, dest_dir, files, cb):
+            with open(os.path.join(dest_dir, 'vmlinuz'), 'w') as handle:
+                handle.write('kernel')
+            return True
+
+        with patch.object(ISOExtractor, '_try_xorriso', return_value=True), \
+                patch.object(ISOExtractor, '_try_7z', side_effect=writes_a_file), \
+                patch.object(ISOExtractor, '_try_bsdtar', return_value=False):
+            success, _ = self.extractor._extract_iso(
+                '/some/file.iso', dest, None, None)
+
+        self.assertTrue(success)
+        self.assertIn('vmlinuz', os.listdir(dest))
+
+    def test_extraction_succeeds_when_files_are_written(self):
+        """The ordinary case still passes."""
+        dest = os.path.join(self.temp_dir, 'ok')
+        os.makedirs(dest, exist_ok=True)
+
+        def writes_a_file(archive, dest_dir, files, cb):
+            with open(os.path.join(dest_dir, 'boot.cat'), 'w') as handle:
+                handle.write('x')
+            return True
+
+        with patch.object(ISOExtractor, '_try_xorriso', side_effect=writes_a_file):
+            success, message = self.extractor._extract_iso(
+                '/some/file.iso', dest, None, None)
+
+        self.assertTrue(success)
+        self.assertEqual(message, "Extraction completed successfully")
+
     def test_get_files_to_copy(self):
         """Test getting list of files to copy."""
         # Create a test directory structure

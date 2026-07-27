@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.2.3" date="2026-07-27">
+      <description>
+        <p>Makes a silently empty extraction impossible.</p>
+        <ul>
+          <li>Unpacking an image is now confirmed to have produced files. An extraction tool that exited successfully without unpacking anything used to be taken at its word, producing a drive that could not boot but reported a completed install</li>
+          <li>If one extraction method produces nothing, the next one is tried instead of giving up</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.2" date="2026-07-27">
       <description>
         <p>Fixes creating a bootable USB drive.</p>

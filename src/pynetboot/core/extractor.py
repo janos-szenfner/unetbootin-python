@@ -173,35 +173,58 @@ class ISOExtractor:
             logger.error(f"Extraction failed: {e}")
             return False, str(e)
 
+    @staticmethod
+    def _wrote_anything(dest_dir: str) -> bool:
+        """True if an extraction actually put something in `dest_dir`."""
+        try:
+            with os.scandir(dest_dir) as entries:
+                return any(True for _ in entries)
+        except OSError as e:
+            logger.warning(f"Could not inspect {dest_dir}: {e}")
+            return False
+
+    def _run_extraction_chain(self, kind: str, methods, archive_path: str,
+                              dest_dir: str,
+                              files_to_extract: Optional[List[str]],
+                              progress_callback: Optional[Callable[[int], None]]) -> tuple:
+        """Try each extraction backend until one produces output.
+
+        The backends report success from their exit code alone, so a tool
+        that exits 0 without unpacking anything would be taken at its word.
+        The caller would then copy an empty tree to the target drive and
+        install a bootloader over it, reporting a successful install for a
+        drive that cannot boot. Requiring output also means a backend that
+        silently does nothing falls through to the next one instead of
+        ending the chain.
+        """
+        methods_tried = []
+
+        for name, method in methods:
+            methods_tried.append(name)
+            if not method(archive_path, dest_dir, files_to_extract,
+                          progress_callback):
+                continue
+            if self._wrote_anything(dest_dir):
+                logger.info(f"Extracted {archive_path} with {name}")
+                return True, "Extraction completed successfully"
+            logger.warning(
+                f"{name} reported success but wrote nothing to {dest_dir}; "
+                f"trying the next method")
+
+        return False, (f"All {kind} extraction methods failed. "
+                       f"Tried: {', '.join(methods_tried)}")
+
     def _extract_iso(self, iso_path: str, dest_dir: str,
                      files_to_extract: Optional[List[str]],
                      progress_callback: Optional[Callable[[int], None]]) -> tuple:
         """Extract ISO using various methods."""
-        methods_tried = []
-
-        # Try method 1: xorriso (most reliable for ISO)
-        if self._try_xorriso(iso_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("xorriso")
-
-        # Try method 2: 7z
-        if self._try_7z(iso_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("7z")
-
-        # Try method 3: bsdtar
-        if self._try_bsdtar(iso_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("bsdtar")
-
-        # Try method 4: Python libraries
-        if self._try_python_libs(
-            iso_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("python libs")
-
-        return False, ("All extraction methods failed. "
-                       f"Tried: {', '.join(methods_tried)}")
+        return self._run_extraction_chain(
+            'ISO',
+            (('xorriso', self._try_xorriso),
+             ('7z', self._try_7z),
+             ('bsdtar', self._try_bsdtar),
+             ('python libs', self._try_python_libs)),
+            iso_path, dest_dir, files_to_extract, progress_callback)
 
     def _extract_raw(self, img_path: str, dest_dir: str,
                     progress_callback: Optional[Callable[[int], None]]) -> tuple:
@@ -244,60 +267,31 @@ class ISOExtractor:
                    files_to_extract: Optional[List[str]],
                    progress_callback: Optional[Callable[[int], None]]) -> tuple:
         """Extract ZIP file using various methods."""
-        methods_tried = []
-
-        # Try method 1: unzip command
-        if self._try_unzip(zip_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("unzip")
-
-        # Try method 2: Python zipfile module
-        if self._try_zipfile(zip_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("zipfile")
-
-        return False, ("All ZIP extraction methods failed. "
-                       f"Tried: {', '.join(methods_tried)}")
+        return self._run_extraction_chain(
+            'ZIP',
+            (('unzip', self._try_unzip),
+             ('zipfile', self._try_zipfile)),
+            zip_path, dest_dir, files_to_extract, progress_callback)
 
     def _extract_tar(self, tar_path: str, dest_dir: str,
                    files_to_extract: Optional[List[str]],
                    progress_callback: Optional[Callable[[int], None]]) -> tuple:
         """Extract TAR file using various methods."""
-        methods_tried = []
-
-        # Try method 1: tar command
-        if self._try_tar_command(
-            tar_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("tar command")
-
-        # Try method 2: Python tarfile module
-        if self._try_tarfile(tar_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("tarfile")
-
-        return False, ("All TAR extraction methods failed. "
-                       f"Tried: {', '.join(methods_tried)}")
+        return self._run_extraction_chain(
+            'TAR',
+            (('tar command', self._try_tar_command),
+             ('tarfile', self._try_tarfile)),
+            tar_path, dest_dir, files_to_extract, progress_callback)
 
     def _extract_7z_file(self, archive_path: str, dest_dir: str,
                         files_to_extract: Optional[List[str]],
                         progress_callback: Optional[Callable[[int], None]]) -> tuple:
         """Extract 7z file using various methods."""
-        methods_tried = []
-
-        # Try method 1: 7z command
-        if self._try_7z_command(archive_path, dest_dir,
-                                files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("7z command")
-
-        # Try method 2: Python py7zr library
-        if self._try_py7zr(archive_path, dest_dir, files_to_extract, progress_callback):
-            return True, "Extraction completed successfully"
-        methods_tried.append("py7zr")
-
-        return False, ("All 7z extraction methods failed. "
-                       f"Tried: {', '.join(methods_tried)}")
+        return self._run_extraction_chain(
+            '7z',
+            (('7z command', self._try_7z_command),
+             ('py7zr', self._try_py7zr)),
+            archive_path, dest_dir, files_to_extract, progress_callback)
 
     def _try_xorriso(self, iso_path: str, dest_dir: str,
                     files_to_extract: Optional[List[str]],
