@@ -106,9 +106,31 @@ def window_icon_path() -> Optional[str]:
 # The main window, so dialogs can centre on it and stay modal.
 _active_window = None
 
+# Keeps dialog icons alive: CTkImage must outlive the widget showing it.
+_dialog_icons: Dict[str, Any] = {}
+
+
+def _dialog_icon(name: str, size: int = 40):
+    """A cached CTkImage for a dialog icon, or None when unavailable."""
+    if name in _dialog_icons:
+        return _dialog_icons[name]
+    image = None
+    try:
+        from PIL import Image
+        from unetbootin.resources import icon_path
+        path = icon_path(name)
+        if os.path.exists(path):
+            loaded = Image.open(path)
+            image = ctk.CTkImage(light_image=loaded, dark_image=loaded,
+                                 size=(size, size))
+    except Exception as e:  # noqa: BLE001 - decorative only
+        logger.debug(f"Dialog icon {name} unavailable: {e}")
+    _dialog_icons[name] = image
+    return image
+
 
 def _show_dialog(message: str, title: str, buttons=("OK",),
-                 accent: str = None) -> str:
+                 accent: str = None, icon: str = None) -> str:
     """A themed modal dialog.
 
     Replaces tkinter's native messagebox, which rendered in the old system
@@ -131,9 +153,14 @@ def _show_dialog(message: str, title: str, buttons=("OK",),
     frame = ctk.CTkFrame(win, fg_color=BACKGROUND)
     frame.pack(fill="both", expand=True, padx=22, pady=18)
 
-    ctk.CTkLabel(frame, text=title,
+    head = ctk.CTkFrame(frame, fg_color=BACKGROUND)
+    head.pack(fill="x", pady=(0, 10))
+    art = _dialog_icon(icon) if icon else None
+    if art is not None:
+        ctk.CTkLabel(head, image=art, text="").pack(side="left", padx=(0, 12))
+    ctk.CTkLabel(head, text=title,
                  font=ctk.CTkFont(size=15, weight="bold"),
-                 anchor="w").pack(fill="x", pady=(0, 8))
+                 anchor="w").pack(side="left", fill="x", expand=True)
 
     # wraplength keeps long paths inside the dialog instead of overflowing.
     ctk.CTkLabel(frame, text=message, wraplength=430, justify="left",
@@ -177,17 +204,23 @@ def _show_dialog(message: str, title: str, buttons=("OK",),
 def popup_error(message: str, title: str = "Error"):
     """Show an error dialog."""
     logger.error(f"{title}: {message}")
-    _show_dialog(message, title, buttons=("OK",), accent="#b23b3b")
+    _show_dialog(message, title, buttons=("OK",), accent="#b23b3b",
+                 icon='dlg_error.png')
 
 
 def popup_ok(message: str, title: str = "Information"):
-    """Show an informational dialog."""
-    _show_dialog(message, title, buttons=("OK",))
+    """Show a success/information dialog."""
+    _show_dialog(message, title, buttons=("OK",), icon='dlg_success.png')
 
 
 def popup_yes_no(message: str, title: str = "Confirm") -> str:
-    """Ask a yes/no question. Returns 'Yes' or 'No' to match the old API."""
-    return _show_dialog(message, title, buttons=("Yes", "No"))
+    """Ask a yes/no question. Returns 'Yes' or 'No' to match the old API.
+
+    Carries the warning mark: every yes/no here is a caution - erasing a
+    drive, or being told an image must be fetched from the vendor.
+    """
+    return _show_dialog(message, title, buttons=("Yes", "No"),
+                        icon='dlg_warning.png')
 
 
 def popup_get_file(message: str, title: str = "Select file",

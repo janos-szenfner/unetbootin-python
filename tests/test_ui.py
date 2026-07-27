@@ -858,3 +858,31 @@ class TestCancelAndWindowIdentity(unittest.TestCase):
         src = inspect.getsource(MainWindowCTk._apply_window_icon)
         self.assertIn("self._window_icon", src,
                       "the PhotoImage must be stored, or the icon disappears")
+
+
+class TestDialogIcons(unittest.TestCase):
+    """Dialogs must carry the right status mark."""
+
+    def test_dialog_icon_files_exist(self):
+        from unetbootin.resources import icon_path
+        for name in ('dlg_success.png', 'dlg_error.png', 'dlg_warning.png'):
+            path = icon_path(name)
+            self.assertTrue(os.path.exists(path), f"missing {name}")
+            self.assertGreater(os.path.getsize(path), 0)
+
+    def test_each_dialog_kind_uses_its_own_icon(self):
+        import inspect
+        from unetbootin.ui import main_window_ctk as ui
+        self.assertIn("dlg_success.png", inspect.getsource(ui.popup_ok))
+        self.assertIn("dlg_error.png", inspect.getsource(ui.popup_error))
+        self.assertIn("dlg_warning.png", inspect.getsource(ui.popup_yes_no))
+
+    def test_version_is_current(self):
+        """About shows __version__, so it must not drift behind the tags."""
+        from unetbootin import __version__, APP_VERSION
+        self.assertEqual(APP_VERSION, __version__)
+        parts = __version__.split('.')
+        self.assertEqual(len(parts), 3, "expected a three-part version")
+        self.assertTrue(all(p.isdigit() for p in parts))
+        self.assertGreaterEqual(tuple(int(p) for p in parts), (1, 1, 6),
+                                "version is behind the released tags")

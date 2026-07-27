@@ -39,6 +39,20 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
+      - name: Check __version__ matches the tag
+        # The About dialog and the frozen app read __version__ from source, so
+        # a drifting constant would display the wrong version. The DEB/RPM take
+        # their version from the tag, so these must agree.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/unetbootin/__init__.py)"
+          echo "tag=$TAG  __version__=$VER"
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::__version__ ($VER) does not match tag ($TAG)"
+            exit 1
+          fi
+
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
 
