@@ -184,7 +184,7 @@ class TestDistributionMirrors(unittest.TestCase):
         linux_names = [d['name'] for d in linux_distros]
         expected_linux = ['ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux',
                          'opensuse', 'zorin', 'kali', 'slackware',
-                         'openmandriva', 'tinycore']
+                         'openmandriva', 'rocky', 'centos_stream', 'tinycore']
         self.assertEqual(sorted(linux_names), sorted(expected_linux))
 
         # Test BSD category

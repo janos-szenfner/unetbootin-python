@@ -31,6 +31,10 @@ class DistributionVersion:
             and matched against the ISO filename — this keeps verification
             working across point releases without hardcoding hashes that rot.
         mirrors: List of mirror URLs for this version
+        download_page: Official page to obtain the image from when no direct
+            URL exists (e.g. Windows, whose ISOs are served through
+            session-based pages). Such a version has an empty `url` and is
+            offered for writing a locally supplied image instead.
     """
     name: str
     url: str
@@ -41,6 +45,7 @@ class DistributionVersion:
     sha1: Optional[str] = None
     md5: Optional[str] = None
     sha256_url: Optional[str] = None
+    download_page: Optional[str] = None
     mirrors: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -60,6 +65,8 @@ class DistributionVersion:
             result['md5'] = self.md5
         if self.sha256_url:
             result['sha256_url'] = self.sha256_url
+        if self.download_page:
+            result['download_page'] = self.download_page
         if self.mirrors:
             result['mirrors'] = self.mirrors
         return result
@@ -350,6 +357,48 @@ class DistributionManager:
                 'icon': 'openmandriva',
             },
             {
+                # Rocky Linux ships stable point releases only - there is no
+                # rolling variant; CentOS Stream (below) fills that role for
+                # the RHEL family.
+                'name': 'rocky',
+                'display_name': 'Rocky Linux',
+                'description': 'Rocky Linux - Enterprise (RHEL-compatible) distribution',
+                'category': 'Linux',
+                'homepage': 'https://rockylinux.org',
+                'versions': [
+                    {
+    'name': '10.2 (Stable)',
+    'url': 'https://download.rockylinux.org/pub/rocky/10.2/isos/x86_64/Rocky-10.2-x86_64-minimal.iso',
+     'size': 2072444928},
+                    {
+    'name': '9.8 (Stable)',
+    'url': 'https://download.rockylinux.org/pub/rocky/9.8/isos/x86_64/Rocky-9.8-x86_64-minimal.iso',
+     'size': 2755067904},
+                ],
+                'icon': 'rocky',
+            },
+            {
+                # CentOS Stream is the continuously delivered (rolling)
+                # upstream of Red Hat Enterprise Linux, and unlike RHEL itself
+                # it is freely downloadable without a subscription.
+                'name': 'centos_stream',
+                'display_name': 'CentOS Stream',
+                'description': 'CentOS Stream - Rolling upstream of Red Hat Enterprise Linux',
+                'category': 'Linux',
+                'homepage': 'https://www.centos.org/centos-stream/',
+                'versions': [
+                    {
+    'name': '10 (Rolling)',
+    'url': 'https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-dvd1.iso',
+     'size': 10379788288},
+                    {
+    'name': '9 (Rolling)',
+    'url': 'https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso',
+     'size': 15567552512},
+                ],
+                'icon': 'centos',
+            },
+            {
                 'name': 'tinycore',
                 'display_name': 'Tiny Core Linux',
                 'description': 'Tiny Core Linux - Minimal Linux desktop',
@@ -468,19 +517,16 @@ class DistributionManager:
                 'description': 'Windows 11 installation media',
                 'category': 'Windows',
                 'homepage': 'https://www.microsoft.com/software-download/windows11',
+                # Microsoft serves Windows ISOs through session-based pages,
+                # so no stable direct link exists and the old download.microsoft
+                # .com URLs are dead. Only the current release is listed, with
+                # the official page to obtain it from; write the downloaded
+                # image with the "Disk image" option.
                 'versions': [
                     {
-    'name': '24H2',
-    'url': 'https://download.microsoft.com/download/5/6/3/563ed5c9-354f-4d24-a30b-c26d4b965057/Win11_24H2_English_x64.iso',
-     'size': 5800000000},
-                    {
-    'name': '23H2',
-    'url': 'https://download.microsoft.com/download/8/8/1/881f6949-78c6-4b02-8c2a-5ca1d8b8069d/Win11_23H2_English_x64.iso',
-     'size': 5500000000},
-                    {
-    'name': '22H2',
-    'url': 'https://download.microsoft.com/download/6/7/d/67d659af-0b5d-4e48-8888-59627791019d/Win11_22H2_English_x64.iso',
-     'size': 5200000000},
+    'name': '25H2 (download from Microsoft)',
+    'url': '',
+    'download_page': 'https://www.microsoft.com/software-download/windows11'},
                 ],
                 'icon': 'windows',
             },
@@ -490,15 +536,13 @@ class DistributionManager:
                 'description': 'Windows 10 installation media',
                 'category': 'Windows',
                 'homepage': 'https://www.microsoft.com/software-download/windows10',
+                # 22H2 is the final Windows 10 release. As with Windows 11 the
+                # ISO must be obtained from Microsoft's own page.
                 'versions': [
                     {
-    'name': '22H2',
-    'url': 'https://download.microsoft.com/download/9/7/N/97NDMP3FVML3P/Win10_22H2_English_x64.iso',
-     'size': 5500000000},
-                    {
-    'name': '21H2',
-    'url': 'https://download.microsoft.com/download/1/7/D/17D422A7-A94D-4C89-96F8-927085F74E15/Win10_21H2_English_x64.iso',
-     'size': 5200000000},
+    'name': '22H2 (download from Microsoft)',
+    'url': '',
+    'download_page': 'https://www.microsoft.com/software-download/windows10'},
                 ],
                 'icon': 'windows',
             },

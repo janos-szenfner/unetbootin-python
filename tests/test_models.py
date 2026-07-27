@@ -235,7 +235,7 @@ class TestDistributionManager(unittest.TestCase):
         # List of distributions requested by user
         requested_distros = [
             'ubuntu', 'debian', 'fedora', 'linuxmint', 'archlinux',
-            'zorin', 'kali', 'slackware', 'openmandriva', 'tinycore',
+            'zorin', 'kali', 'slackware', 'openmandriva', 'rocky', 'centos_stream', 'tinycore',
             'freebsd', 'netbsd', 'midnightbsd', 'ghostbsd', 'dragonflybsd', 'truenas',
             'windows11', 'windows10',
             'opensuse'

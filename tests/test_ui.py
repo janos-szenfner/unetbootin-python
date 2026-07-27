@@ -686,3 +686,51 @@ class TestProgressThrottling(unittest.TestCase):
         self.assertEqual(
             app.run_in_background(work, cancellable=True), "stopped",
             "Cancel must reach the worker instead of queueing behind progress")
+
+
+class TestVendorOnlyDownloads(unittest.TestCase):
+    """Images with no direct URL must guide the user, not fail."""
+
+    def test_windows_versions_have_a_download_page_and_no_url(self):
+        from unetbootin.models.distro import DistributionManager
+        m = DistributionManager()
+        for key in ('windows11', 'windows10'):
+            distro = m.get_distribution(key)
+            self.assertIsNotNone(distro, f"{key} must exist")
+            self.assertEqual(len(distro.versions), 1,
+                             f"{key} should list only the latest release")
+            version = distro.versions[0]
+            self.assertEqual(version.url, "",
+                             "no direct URL exists for Windows images")
+            self.assertTrue(version.download_page.startswith('https://'),
+                            "a vendor download page must be provided")
+
+    def test_manual_download_is_detected_and_reported(self):
+        from unittest.mock import patch, MagicMock
+        from unetbootin.app import UNetbootinAppPySG
+        from unetbootin.models.distro import DistributionManager
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app.distro_manager = DistributionManager()
+
+        with patch('unetbootin.app.sg') as mock_sg:
+            mock_sg.popup_yes_no.return_value = 'No'
+            handled = app._handle_manual_download(
+                'windows11', app.distro_manager.get_distribution(
+                    'windows11').versions[0].name)
+
+        self.assertTrue(handled, "a vendor-only image must be handled")
+        mock_sg.popup_yes_no.assert_called_once()
+        shown = mock_sg.popup_yes_no.call_args[0][0]
+        self.assertIn("microsoft.com", shown.lower())
+        self.assertIn("Disk image", shown)
+
+    def test_normal_distro_is_not_treated_as_manual(self):
+        from unetbootin.app import UNetbootinAppPySG
+        from unetbootin.models.distro import DistributionManager
+
+        app = UNetbootinAppPySG.__new__(UNetbootinAppPySG)
+        app.distro_manager = DistributionManager()
+        self.assertFalse(
+            app._handle_manual_download('ubuntu', '26.04 LTS'),
+            "a normal distribution must download as usual")

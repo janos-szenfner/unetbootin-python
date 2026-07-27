@@ -563,6 +563,9 @@ class UNetbootinAppPySG:
                 self.show_error("Please select a distribution and version.")
                 return
 
+            if self._handle_manual_download(distro, version):
+                return
+
             iso_url = self.get_distribution_iso_url(distro, version)
             if not iso_url:
                 self.show_error(
@@ -671,6 +674,47 @@ class UNetbootinAppPySG:
 
         return None
 
+    def get_download_page(self, distro_name: str,
+                          version_name: str) -> Optional[str]:
+        """Official page for versions that have no direct download URL.
+
+        Windows ISOs are served through session-based pages, so there is no
+        stable link to fetch. Such versions carry a `download_page` instead.
+        """
+        distro = self.distro_manager.get_distribution(distro_name)
+        if not distro:
+            return None
+        for version in distro.versions:
+            if version.name == version_name:
+                return getattr(version, 'download_page', None)
+        return None
+
+    def _handle_manual_download(self, distro: str, version: str) -> bool:
+        """Explain how to obtain an image that cannot be downloaded directly.
+
+        Returns True when the version is vendor-only and has been handled.
+        """
+        page = self.get_download_page(distro, version)
+        if not page:
+            return False
+
+        message = (
+            f"{distro} {version} cannot be downloaded automatically.\n\n"
+            "Microsoft provides these images through its own download page, "
+            "so there is no direct link to fetch.\n\n"
+            f"Download the ISO from:\n{page}\n\n"
+            "Then select \"Disk image\" in this window and choose the "
+            "downloaded file to write it to your drive."
+        )
+        if sg.popup_yes_no(message + "\n\nOpen that page now?",
+                           title="Download from the vendor") == 'Yes':
+            try:
+                import webbrowser
+                webbrowser.open(page)
+            except (ImportError, OSError) as e:
+                logger.warning(f"Could not open {page}: {e}")
+        return True
+
     def get_distribution_iso_url(self, distro_name: str,
                                  version_name: str) -> Optional[str]:
         """Get the ISO URL for a specific distribution and version."""
@@ -766,6 +810,11 @@ class UNetbootinAppPySG:
         logger.info(
             f"Downloading distribution: {params.get('distro')}, "
             f"version: {params.get('version')}")
+
+        # Some images (Windows) are only offered through a vendor page.
+        if self._handle_manual_download(params.get('distro'),
+                                        params.get('version')):
+            raise InstallationCancelled("Image must be downloaded manually")
 
         # Get the ISO URL
         iso_url = self.get_distribution_iso_url(
