@@ -886,3 +886,36 @@ class TestDialogIcons(unittest.TestCase):
         self.assertTrue(all(p.isdigit() for p in parts))
         self.assertGreaterEqual(tuple(int(p) for p in parts), (1, 1, 6),
                                 "version is behind the released tags")
+
+
+class TestFontFallback(unittest.TestCase):
+    """The UI must not depend on a font it has to install at runtime."""
+
+    def test_candidates_include_fonts_common_on_linux(self):
+        from unetbootin.ui.main_window_ctk import FONT_CANDIDATES
+        # Roboto is CustomTkinter's default but is not installable inside a
+        # Flatpak sandbox, so widely-shipped fallbacks must follow it.
+        for family in ("DejaVu Sans", "Noto Sans", "Liberation Sans"):
+            self.assertIn(family, FONT_CANDIDATES)
+        self.assertEqual(FONT_CANDIDATES[0], "Roboto",
+                         "Roboto stays first so the intended look wins if present")
+
+    def test_resolution_is_safe_without_a_tk_root(self):
+        """Called with no interpreter available it must return None, not raise."""
+        from unetbootin.ui.main_window_ctk import resolve_font_family
+        from unittest.mock import patch
+        with patch('tkinter.font.families', side_effect=RuntimeError('no root')):
+            self.assertIsNone(resolve_font_family())
+
+    def test_flatpak_grants_font_access(self):
+        """The sandbox must be able to read fonts, or Tk renders a bitmap font."""
+        import json
+        path = os.path.join(os.path.dirname(__file__), '..', 'resources',
+                            'linux', 'com.unetbootin.UNetbootin.json')
+        manifest = json.load(open(path))
+        args = ' '.join(manifest['finish-args'])
+        self.assertIn('/usr/share/fonts', args)
+        self.assertIn('fontconfig', args)
+        # And a font is shipped inside the bundle as a last resort.
+        commands = ' '.join(manifest['modules'][0]['build-commands'])
+        self.assertIn('/app/share/fonts', commands)

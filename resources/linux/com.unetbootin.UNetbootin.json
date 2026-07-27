@@ -10,7 +10,13 @@
         "--share=network",
         "--socket=wayland",
         "--socket=x11",
-        "--filesystem=host"
+        "--filesystem=host",
+        "--filesystem=/usr/share/fonts:ro",
+        "--filesystem=/usr/local/share/fonts:ro",
+        "--filesystem=/var/cache/fontconfig:ro",
+        "--filesystem=xdg-config/fontconfig:ro",
+        "--filesystem=xdg-data/fonts:ro",
+        "--filesystem=~/.fonts:ro"
     ],
     "cleanup": [
         "/.local/share",
@@ -21,7 +27,9 @@
             "name": "unetbootin",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --prefix=/app . py7zr"
+                "pip3 install --prefix=/app . py7zr",
+                "install -d /app/share/fonts/customtkinter",
+                "cp -r /app/lib/python3*/site-packages/customtkinter/assets/fonts/. /app/share/fonts/customtkinter/ || true"
             ],
             "build-options": {
                 "build-args": [

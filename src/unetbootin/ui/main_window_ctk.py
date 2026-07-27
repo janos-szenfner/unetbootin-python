@@ -85,6 +85,62 @@ def apply_theme(mode: str = "light"):
         logger.warning(f"Could not apply theme: {e}")
 
 
+# Scalable families to try, best first. CustomTkinter defaults to Roboto,
+# which it installs into ~/.fonts and expects fontconfig to pick up; inside a
+# Flatpak sandbox that fails, Tk falls back to a core bitmap font and the whole
+# interface renders pixelated. Choosing a family that actually exists avoids
+# depending on a font being installable at runtime.
+FONT_CANDIDATES = (
+    "Roboto", "DejaVu Sans", "Noto Sans", "Cantarell", "Liberation Sans",
+    "Ubuntu", "Segoe UI", "Helvetica Neue", "Helvetica", "Arial",
+)
+
+
+def resolve_font_family() -> Optional[str]:
+    """First scalable family actually available to Tk, or None.
+
+    Must be called after a Tk root exists, since querying the font list needs
+    an interpreter.
+    """
+    try:
+        import tkinter.font as tkfont
+        available = {f.strip() for f in tkfont.families()}
+    except Exception as e:  # noqa: BLE001 - fall back to the toolkit default
+        logger.debug(f"Could not enumerate fonts: {e}")
+        return None
+    for family in FONT_CANDIDATES:
+        if family in available:
+            return family
+    # Anything scalable beats Tk's bitmap fallback.
+    for family in sorted(available):
+        if not family.startswith("@") and family.lower() not in ("fixed",):
+            return family
+    return None
+
+
+def apply_font_family(family: Optional[str] = None) -> Optional[str]:
+    """Point CustomTkinter's default font at a family that exists."""
+    if not HAS_CTK:
+        return None
+    family = family or resolve_font_family()
+    if not family:
+        return None
+    try:
+        theme = ctk.ThemeManager.theme
+        for key in ("CTkFont",):
+            if key in theme and isinstance(theme[key], dict):
+                for platform_key in theme[key]:
+                    entry = theme[key][platform_key]
+                    if isinstance(entry, dict) and "family" in entry:
+                        entry["family"] = family
+                if "family" in theme[key]:
+                    theme[key]["family"] = family
+        logger.info(f"UI font family: {family}")
+    except Exception as e:  # noqa: BLE001 - cosmetic only
+        logger.warning(f"Could not set the font family: {e}")
+    return family
+
+
 def window_icon_path() -> Optional[str]:
     """Path to the bundled app icon used for the window/task-bar icon."""
     try:
@@ -373,6 +429,8 @@ class MainWindowCTk:
         self.root = ctk.CTk(className=WM_CLASS)
         self.root.title(APP_TITLE)
         self.root.configure(fg_color=BACKGROUND)
+        # Do this before building widgets: they pick the family up at creation.
+        self._font_family = apply_font_family()
         self.root.geometry("900x680")
         self.root.minsize(760, 560)
         self.root.protocol("WM_DELETE_WINDOW", lambda: self.emit(WIN_CLOSED, None))
@@ -388,7 +446,10 @@ class MainWindowCTk:
         header.grid(row=0, column=0, sticky="ew", **pad)
         header.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(header, text=APP_TITLE,
-                     font=ctk.CTkFont(size=22, weight="bold")).grid(
+                     font=ctk.CTkFont(family=self._font_family, size=22,
+                                      weight="bold")
+                     if self._font_family else
+                     ctk.CTkFont(size=22, weight="bold")).grid(
             row=0, column=0, sticky="w")
         about = ctk.CTkButton(header, text=_("About"), width=100,
                               image=self._icon('ui_info.png'), compound="left",
