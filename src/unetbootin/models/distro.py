@@ -170,6 +170,10 @@ class DistributionManager:
                 # LTS first so it stays the default selection; the interim
                 # (non-LTS) release follows it.
                 'versions': [
+                    {'name': '26.04 LTS',
+                     'url': 'https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso',
+                     'sha256_url': 'https://releases.ubuntu.com/26.04/SHA256SUMS',
+                     'size': 6518974464},
                     {'name': '24.04 LTS',
                      'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso',
                      'sha256_url': 'https://releases.ubuntu.com/24.04/SHA256SUMS',
@@ -265,6 +269,10 @@ class DistributionManager:
                 'homepage': 'https://get.opensuse.org',
                 'versions': [
                     {
+    'name': 'Leap 16.1 (Stable)',
+    'url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64.install.iso',
+     'size': 4552916992},
+                    {
     'name': 'Leap 16.0 (Stable)',
     'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64.install.iso',
      'size': 4538236928},
@@ -283,9 +291,11 @@ class DistributionManager:
                 'homepage': 'https://zorin.com/os',
                 'versions': [
                     {
-    'name': 'Latest Free (18.1)',
-    'url': 'https://cdn.zorincdn.com/zorin/os/18.1/zorin-os-18.1-core-64-bit.iso',
-     'size': 3800000000},
+    # cdn.zorincdn.com no longer resolves, and there is no "18.1" release —
+    # Zorin ships revisions of 18 (r1, r2, r3). Served from a public mirror.
+    'name': 'Core 18 (r3)',
+    'url': 'https://mirrors.dotsrc.org/zorinos/18/Zorin-OS-18-Core-64-bit-r3.iso',
+     'size': 3787948032},
                 ],
                 'icon': 'zorin',
             },
@@ -298,7 +308,7 @@ class DistributionManager:
                 'versions': [
                     {
     'name': 'Latest (2026.2)',
-    'url': 'https://cdimage.kali.org/kali-images/kali-linux-2026.2-installer-amd64.iso',
+    'url': 'https://cdimage.kali.org/kali-2026.2/kali-linux-2026.2-installer-amd64.iso',
      'size': 3800000000},
                 ],
                 'icon': 'kali',
@@ -312,7 +322,7 @@ class DistributionManager:
                 'versions': [
                     {
     'name': 'Latest (15.0)',
-    'url': 'https://mirrors.slackware.com/slackware/slackware64-15.0/iso/slackware64-15.0-install-dvd.iso',
+    'url': 'https://mirrors.slackware.com/slackware/slackware-iso/slackware64-15.0-iso/slackware64-15.0-install-dvd.iso',
      'size': 4800000000},
                 ],
                 'icon': 'slackware',
@@ -386,7 +396,7 @@ class DistributionManager:
                 'homepage': 'https://www.netbsd.org',
                 'versions': [
                     {'name': 'Latest (10.1)',
-    'url': 'https://cdn.netbsd.org/pub/NetBSD/NetBSD-10.1/amd64cd.iso',
+    'url': 'https://cdn.netbsd.org/pub/NetBSD/images/10.1/NetBSD-10.1-amd64.iso',
      'size': 360000000},
                 ],
                 'icon': 'netbsd',
@@ -399,9 +409,10 @@ class DistributionManager:
                 'homepage': 'https://www.midnightbsd.org',
                 'versions': [
                     {
-    'name': 'Latest (3.2.3)',
-    'url': 'https://mirror.midnightbsd.org/pub/MidnightBSD/ISO/3.2.3/amd64/MIDNIGHT323.iso',
-     'size': 1200000000},
+    # mirror.midnightbsd.org no longer resolves; 3.2.3 is also long superseded.
+    'name': 'Latest (4.0.6)',
+    'url': 'https://discovery.midnightbsd.org/ftp/releases/amd64/ISO-IMAGES/4.0.6/MidnightBSD-4.0.6--amd64-disc1.iso',
+     'size': 1062742016},
                 ],
                 'icon': 'midnightbsd',
             },
@@ -414,7 +425,7 @@ class DistributionManager:
                 'versions': [
                     {
     'name': 'Latest (26.1-R15.0p2)',
-    'url': 'https://ghostbsd.org/releases/26.1-R15.0p2/iso/GhostBSD-26.1-R15.0p2-RELEASE-amd64.iso',
+    'url': 'https://download.ghostbsd.org/releases/amd64/26.1-R15.0p2/GhostBSD-26.1-R15.0p2.iso',
      'size': 1900000000},
                 ],
                 'icon': 'ghostbsd',
@@ -441,8 +452,8 @@ class DistributionManager:
                 'homepage': 'https://www.truenas.com',
                 'versions': [
                     {
-    'name': 'Latest (SCALE Goldeye 25.10.4)',
-    'url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/TrueNAS-SCALE-25.10.4.iso',
+    'name': 'Latest (SCALE Goldeye 25.10.5)',
+    'url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/25.10.5/TrueNAS-SCALE-25.10.5.iso',
      'size': 1600000000},
                 ],
                 'icon': 'truenas',
