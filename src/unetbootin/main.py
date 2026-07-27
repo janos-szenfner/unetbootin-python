@@ -93,6 +93,14 @@ def main():
     app_lang = load_translations(lang=cli_args.get('lang'))
     logger.info(f"Using language: {app_lang}")
 
+    # Fail loudly on a Tk too old to paint the widgets, instead of showing an
+    # empty window.
+    toolkit_problem = sg.check_toolkit()
+    if toolkit_problem:
+        logger.error(toolkit_problem)
+        print(f"ERROR: {toolkit_problem}", file=sys.stderr)
+        sys.exit(1)
+
     # Appearance follows the system light/dark setting.
     sg.apply_theme()
 

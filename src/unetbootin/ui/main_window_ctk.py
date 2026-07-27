@@ -35,6 +35,24 @@ WIN_CLOSED = None
 # Emitted when a read times out with nothing queued.
 TIMEOUT_EVENT = '__TIMEOUT__'
 
+# CustomTkinter draws its widgets on canvases that need Tk 8.6. On Tk 8.5 the
+# window opens correctly sized and laid out but nothing is painted, which looks
+# like an empty window rather than an error.
+MIN_TK_VERSION = 8.6
+
+
+def check_toolkit() -> Optional[str]:
+    """Return a message describing an unusable Tk, or None when it is fine."""
+    try:
+        version = float(tkinter.TkVersion)
+    except (TypeError, ValueError):
+        return None
+    if version < MIN_TK_VERSION:
+        return (f"Tk {version} is too old for this interface (Tk "
+                f"{MIN_TK_VERSION}+ is required). The window would open but "
+                "stay blank. Please run with a Python built against Tk 8.6.")
+    return None
+
 
 def apply_theme(mode: str = "system"):
     """Set the appearance mode and colour theme.
