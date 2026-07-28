@@ -41,6 +41,14 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.7.3" date="2026-07-28">
+      <description>
+        <p>CentOS Stream downloads are now checked against their published checksum.</p>
+        <ul>
+          <li>Both CentOS Stream versions now download from a mirror that publishes a checksum for the image offered. 35 of 37 downloads are now checked</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.2" date="2026-07-28">
       <description>
         <p>MidnightBSD downloads are now checked against their published checksum.</p>

@@ -454,11 +454,19 @@ class DistributionManager:
                 'versions': [
                     {
     'name': '10 (Rolling)',
-    'url': 'https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-dvd1.iso',
-     'size': 10379788288},
+    'url': 'https://centos-stream.mirrorservice.org/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-dvd1.iso',
+                     # This mirror publishes a per-image checksum
+                     # naming the -latest- alias, which the
+                     # upstream SHA256SUM does not.
+                     'sha256_url': 'https://centos-stream.mirrorservice.org/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-dvd1.iso.SHA256SUM',
+     'size': 10572398592},
                     {
     'name': '9 (Rolling)',
-    'url': 'https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso',
+    'url': 'https://centos-stream.mirrorservice.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso',
+                     # This mirror publishes a per-image checksum
+                     # naming the -latest- alias, which the
+                     # upstream SHA256SUM does not.
+                     'sha256_url': 'https://centos-stream.mirrorservice.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso.SHA256SUM',
      'size': 15567552512},
                 ],
                 'icon': 'centos',
