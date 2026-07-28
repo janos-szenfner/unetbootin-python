@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - exercised only without the dependency
 
 from pynetboot import APP_TITLE
 from pynetboot.core.i18n import _
+from pynetboot.ui import native_dialogs
 
 logger = logging.getLogger(__name__)
 
@@ -385,7 +386,7 @@ def popup_get_file(message: str, title: str = "Select file",
                    file_types=None, **_kwargs) -> Optional[str]:
     """Ask for a file path. Returns None when cancelled."""
     try:
-        return filedialog.askopenfilename(title=title or message) or None
+        return native_dialogs.ask_open_filename(title or message)
     except tkinter.TclError as e:
         logger.warning(f"Could not open file dialog: {e}")
         return None
@@ -836,7 +837,11 @@ class MainWindowCTk:
     def _browse_iso_dir(self):
         """Pick the folder ISOs are downloaded into."""
         try:
-            chosen = filedialog.askdirectory(title=_("Select ISO folder"))
+            # Start where the field already points, so the picker opens on
+            # the folder the user last chose.
+            current = (self.elements['iso_dir'].get() or '').strip()
+            chosen = native_dialogs.ask_directory(
+                _("Select ISO folder"), initial_dir=current or None)
         except tkinter.TclError as e:
             logger.warning(f"Could not open folder dialog: {e}")
             return

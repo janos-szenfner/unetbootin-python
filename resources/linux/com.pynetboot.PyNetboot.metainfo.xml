@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.4.0" date="2026-07-28">
+      <description>
+        <p>Uses your desktop's own file chooser on Linux.</p>
+        <ul>
+          <li>Choosing where to save an image now opens the desktop's usual file chooser, with its shortcuts and recent folders, instead of a plain built-in one</li>
+          <li>The chooser opens on the folder currently shown in the field</li>
+          <li>Desktops without one continue to use the built-in chooser. Windows and macOS were already using their own</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.4" date="2026-07-28">
       <description>
         <p>Fixes writing a drive on Windows.</p>
