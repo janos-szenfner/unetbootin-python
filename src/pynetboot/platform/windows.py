@@ -3,7 +3,6 @@ Windows-specific functionality for PyNetboot.
 """
 
 import os
-import sys
 import csv
 import io
 import json
@@ -304,14 +303,24 @@ def _diskpart_error(output: str) -> Optional[str]:
 _VOLUME_SETTLE_SECONDS = 30
 
 
+def drive_root(device: str) -> Optional[str]:
+    """Normalise a Windows target to its drive root: 'D', 'D:', 'D:\\' -> 'D:\\'.
+
+    Callers pass the drive in every one of those shapes, and each place that
+    re-derived it got the edge cases slightly differently -- one produced
+    'D:\\:' and printed it in the log.
+    """
+    letter = (device or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
+    return f"{letter}:\\" if letter.isalpha() else None
+
+
 def wait_for_drive(drive: str, timeout: int = _VOLUME_SETTLE_SECONDS) -> bool:
     """Wait for a freshly formatted drive letter to become usable."""
     import time
 
-    root = (drive or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
-    if not root.isalpha():
+    root = drive_root(drive)
+    if root is None:
         return False
-    root = f"{root}:\\"
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -351,10 +360,11 @@ def format_drive(drive: str, filesystem: str = "FAT32",
         # Callers pass 'E', 'E:' or 'E:\'. Appending ':' unconditionally
         # turned the last of those into 'E:\:', which then appeared in the
         # log as a nonsense path.
-        drive_letter = (drive or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
-        if not drive_letter.isalpha():
+        root = drive_root(drive)
+        if root is None:
             logger.error(f"Not a drive letter: {drive!r}")
             return False
+        drive_letter = root[0]
         drive = f"{drive_letter}:"
 
         # Create a temporary diskpart script
@@ -366,16 +376,16 @@ def format_drive(drive: str, filesystem: str = "FAT32",
             f.write(f"select volume {drive_letter}\r\n")
             f.write("clean\r\n")
             if filesystem.upper() == "FAT32":
-                f.write(f"create partition primary\r\n")
+                f.write("create partition primary\r\n")
                 f.write(f"format fs=fat32 label={label} quick\r\n")
             elif filesystem.upper() == "NTFS":
-                f.write(f"create partition primary\r\n")
+                f.write("create partition primary\r\n")
                 f.write(f"format fs=ntfs label={label} quick\r\n")
             elif filesystem.upper() == "EXFAT":
-                f.write(f"create partition primary\r\n")
+                f.write("create partition primary\r\n")
                 f.write(f"format fs=exfat label={label} quick\r\n")
             else:
-                f.write(f"create partition primary\r\n")
+                f.write("create partition primary\r\n")
                 f.write(f"format fs=fat32 label={label} quick\r\n")
             # Ask for the letter back explicitly. A bare `assign` lets
             # Windows pick any free letter, so the drive could reappear as

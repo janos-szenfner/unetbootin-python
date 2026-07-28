@@ -14,7 +14,6 @@ import sys
 import queue
 import logging
 import tkinter
-from tkinter import filedialog
 from typing import Optional, List, Dict, Any
 
 try:

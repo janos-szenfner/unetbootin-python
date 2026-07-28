@@ -2,7 +2,6 @@
 Distribution models and manager for PyNetboot.
 """
 
-import os
 import json
 import logging
 from pathlib import Path

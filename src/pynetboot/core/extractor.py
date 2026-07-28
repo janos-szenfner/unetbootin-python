@@ -5,15 +5,13 @@ ISO and archive extraction functionality for PyNetboot.
 import os
 import re
 import logging
-import asyncio
 import tempfile
 import shutil
 import zipfile
 import tarfile
 import subprocess
-from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -107,36 +105,6 @@ class ISOExtractor:
                 files_to_copy.append(os.path.relpath(full_path, source_dir))
         return files_to_copy
 
-    def extract_iso_sync_threaded(self, archive_path: str, dest_dir: str,
-                                  files_to_extract: Optional[List[str]] = None,
-                                  progress_callback: Optional[Callable[[int], None]] = None) -> tuple:
-        """Extract an ISO file in a thread (for use with PySimpleGUI).
-
-        This method runs the synchronous extraction in a separate thread to avoid
-        blocking the PySimpleGUI event loop.
-        """
-        import threading
-
-        result = [None, None]
-        exception = [None]
-
-        def extract_wrapper():
-            """Run extraction in the worker thread, capturing any exception."""
-            try:
-                result[0], result[1] = self.extract_iso_sync(
-                    archive_path, dest_dir, files_to_extract, progress_callback
-                )
-            except Exception as e:  # noqa: BLE001 - transparently re-raised on caller thread
-                exception[0] = e
-
-        thread = threading.Thread(target=extract_wrapper, daemon=True)
-        thread.start()
-        thread.join()
-
-        if exception[0]:
-            raise exception[0]
-
-        return result[0], result[1]
 
     def extract_iso_sync(self, archive_path: str, dest_dir: str,
                         files_to_extract: Optional[List[str]] = None,
@@ -725,11 +693,10 @@ class ISOExtractor:
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in the system.
 
-        Uses shutil.which rather than shelling out to `which`, which does not
-        exist on Windows -- every lookup failed there, so all the external
-        extractors were skipped and an ISO could not be unpacked at all.
+        Delegates to the shared lookup so sbin is searched too.
         """
-        return shutil.which(command) is not None
+        from pynetboot.core.utils import find_tool
+        return find_tool(command) is not None
 
     def list_archive_contents(self, archive_path: str) -> List[ArchiveFileInfo]:
         """List contents of an archive.
@@ -1031,82 +998,3 @@ class ISOExtractor:
         return False
 
 
-class AsyncISOExtractor:
-    """Async ISO and archive extractor for non-blocking I/O operations.
-
-    This class provides async/await compatible methods for extracting archives,
-    which can be used with asyncio event loops. It runs the extraction in a
-    thread pool executor since most extraction libraries are synchronous.
-    """
-
-    def __init__(self):
-        """Initialize the async extractor."""
-        self.supported_extensions = [
-            '.iso', '.img', '.raw',
-            '.zip',
-            '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz',
-            '.7z'
-        ]
-
-    async def extract_iso_async(
-        self,
-        archive_path: str,
-        dest_dir: str,
-        files_to_extract: Optional[List[str]] = None,
-        progress_callback: Optional[Callable[[int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None
-    ) -> tuple:
-        """Extract an archive file asynchronously.
-
-        Args:
-            archive_path: Path to the archive file
-            dest_dir: Destination directory for extracted files
-            files_to_extract: Optional list of specific files to extract
-            progress_callback: Optional callback for progress (0-100)
-            cancel_check: Optional callable to check for cancellation
-
-        Returns:
-            Tuple of (success: bool, message: str)
-        """
-        logger.info(f"Async extracting {archive_path} to {dest_dir}")
-
-        loop = asyncio.get_running_loop()
-        extractor = ISOExtractor()
-
-        # Run sync extraction in executor
-        return await loop.run_in_executor(
-            None,
-            lambda: extractor.extract_iso_sync(
-                archive_path,
-                dest_dir,
-                files_to_extract=files_to_extract,
-                progress_callback=progress_callback
-            )
-        )
-
-    async def extract_with_tool_async(
-        self,
-        archive_path: str,
-        dest_dir: str,
-        tool_name: str,
-        progress_callback: Optional[Callable[[int], None]] = None
-    ) -> tuple:
-        """Extract using a specific tool asynchronously."""
-        loop = asyncio.get_running_loop()
-        extractor = ISOExtractor()
-
-        def sync_extract():
-            """Run the blocking extraction, to be dispatched in an executor."""
-            try:
-                result = extractor._extract_with_tool(
-                    archive_path, dest_dir, tool_name, progress_callback
-                )
-                return result
-            except _SUBPROCESS_ERRORS as e:
-                return False, str(e)
-
-        return await loop.run_in_executor(None, sync_extract)
-
-    def get_supported_extensions(self) -> List[str]:
-        """Get list of supported archive extensions."""
-        return self.supported_extensions

@@ -15,10 +15,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from pynetboot.models.config import ConfigManager, AppConfig
 from pynetboot.models.distro import Distribution, DistributionVersion, DistributionManager
 from pynetboot.core.downloader import (
-    Downloader, AsyncDownloader,
+    Downloader,
     MirrorManager, MirrorInfo, DownloadResumeManager
 )
-from pynetboot.core.installer import USBInstaller, AsyncUSBInstaller
+from pynetboot.core.installer import USBInstaller
 
 
 class TestNewConfigOptions(unittest.TestCase):
@@ -671,23 +671,6 @@ class TestMainWindowNewFeatures(unittest.TestCase):
                          len(self.window.distributions))
 
 
-class TestAsyncNewFeatures(unittest.IsolatedAsyncioTestCase):
-    """Test async functionality for new features."""
-
-    async def asyncSetUp(self):
-        """Set up test fixtures."""
-        self.temp_dir = tempfile.mkdtemp()
-
-    async def asyncTearDown(self):
-        """Clean up."""
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    async def test_async_downloader_with_resume(self):
-        """Test async downloader with resume support."""
-        async_downloader = AsyncDownloader()
-
-        # Test that it can be initialized (actual download testing would require networking)
-        self.assertIsNotNone(async_downloader)
 
 
 if __name__ == '__main__':

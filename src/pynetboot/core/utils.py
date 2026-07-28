@@ -5,9 +5,7 @@ Utility functions for PyNetboot.
 import os
 import sys
 import platform
-import subprocess
 import logging
-import shlex
 import shutil
 import psutil
 from typing import Dict, Any, Optional, List, Tuple
@@ -293,14 +291,32 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
     return parsed
 
 
+# mkfs.vfat, parted and their kin live in sbin, which is usually absent from
+# a desktop user's PATH even though they run fine once elevated.
+_SBIN_DIRS = ('/sbin', '/usr/sbin', '/usr/local/sbin', '/app/bin')
+
+
+def find_tool(name: str) -> Optional[str]:
+    """Locate an external tool on PATH or in the usual sbin directories.
+
+    The single lookup for the whole application. shutil.which rather than
+    the `which` command, which does not exist on Windows and made every
+    lookup fail there.
+    """
+    found = shutil.which(name)
+    if found:
+        return found
+    for directory in _SBIN_DIRS:
+        candidate = os.path.join(directory, name)
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def locate_command(command: str, required_for: str = "",
                    package_name: str = "") -> Optional[str]:
-    """Locate a command in the system PATH.
-
-    shutil.which rather than the `which` command, which does not exist on
-    Windows and made every lookup fail there.
-    """
-    found = shutil.which(command)
+    """Locate a command, logging what it is needed for when it is missing."""
+    found = find_tool(command)
     if found:
         return found
 
@@ -316,93 +332,6 @@ def locate_command(command: str, required_for: str = "",
     return None
 
 
-def call_external_app(exec_file: str, exec_param: str = "",
-                      write_to_stdin: Optional[str] = None) -> Tuple[int, str, str]:
-    """Call an external application and return exit code, stdout, stderr.
-
-    exec_file must resolve to an existing executable (absolute path or a
-    command on PATH); the call is refused otherwise. exec_param is split
-    into an argument list - the command is never run through a shell.
-    """
-    logger.info(f"Calling external app: {exec_file} {exec_param}")
-
-    # Validate the executable before launching anything
-    if not exec_file or '\x00' in exec_file:
-        logger.error(f"Invalid executable name: {exec_file!r}")
-        return (-1, "", "Invalid executable name")
-
-    if os.path.isabs(exec_file):
-        resolved = exec_file if (
-            os.path.isfile(exec_file) and os.access(exec_file, os.X_OK)
-        ) else None
-    else:
-        resolved = shutil.which(exec_file)
-    if not resolved:
-        logger.error(f"Executable not found or not executable: {exec_file}")
-        return (-1, "", f"Executable not found: {exec_file}")
-    exec_file = resolved
-
-    process = None
-    try:
-        # Build an argument list on every platform - never shell=True, which
-        # would allow command injection through exec_param.
-        if sys.platform == 'win32':
-            args = shlex.split(exec_param, posix=False) if exec_param else []
-            process = subprocess.Popen(
-                [exec_file] + args,
-                stdin=subprocess.PIPE if write_to_stdin else None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
-            )
-        else:
-            args = shlex.split(exec_param) if exec_param else []
-            process = subprocess.Popen(
-                [exec_file] + args,
-                stdin=subprocess.PIPE if write_to_stdin else None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-
-        stdout, stderr = process.communicate(
-            input=write_to_stdin, timeout=300  # 5 minute timeout
-        )
-        return (process.returncode, stdout, stderr)
-
-    except subprocess.TimeoutExpired:
-        if process is not None:
-            process.kill()
-        logger.error(f"External app timeout: {exec_file} {exec_param}")
-        return (-1, "", "Timeout")
-    except (subprocess.SubprocessError, OSError, ValueError) as e:
-        logger.error(f"Failed to call external app: {exec_file} {exec_param} - {e}")
-        return (-1, "", str(e))
 
 
-def check_for_graphical_su(su_command: str) -> Optional[str]:
-    """Check if a graphical sudo alternative is available."""
-    graphical_su_commands = {
-        'gksu': ['gksu', 'gksudo'],
-        'kdesu': ['kdesu', 'kdesudo'],
-        'gnomesu': ['gnomesu'],
-        'pkexec': ['pkexec'],
-    }
-
-    # If specific command requested
-    if su_command in graphical_su_commands:
-        for cmd in graphical_su_commands[su_command]:
-            if locate_command(cmd):
-                return cmd
-
-    # Check for any available graphical su
-    for su_type, commands in graphical_su_commands.items():
-        if su_type == su_command:
-            continue
-        for cmd in commands:
-            if locate_command(cmd):
-                return cmd
-
-    return None
 

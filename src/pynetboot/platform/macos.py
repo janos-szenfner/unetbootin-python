@@ -4,7 +4,6 @@ macOS-specific functionality for PyNetboot.
 
 import os
 import re
-import sys
 import shutil
 import logging
 import plistlib

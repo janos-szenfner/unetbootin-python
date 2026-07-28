@@ -7,18 +7,16 @@ import re
 import sys
 import time
 import logging
-import asyncio
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List, Tuple
 
 from pynetboot.resources import (
-    bootloader_path, ensure_executable,
+    bootloader_path,
     find_bundled_syslinux, find_bundled_extlinux,
 )
-from pynetboot.core.utils import directory_stats, format_size
+from pynetboot.core.utils import directory_stats, find_tool, format_size
 
 logger = logging.getLogger(__name__)
 
@@ -32,16 +30,6 @@ _FILE_COPY_ERRORS = (OSError, shutil.Error)
 _SYSLINUX_MODULES = ('menu.c32', 'vesamenu.c32')
 
 
-def _windows_drive_root(device: str) -> str:
-    """Normalise a Windows target to its drive root, e.g. 'D' -> 'D:\\'.
-
-    Callers pass the drive in several shapes ('D', 'D:', 'D:\\'), and the
-    root is where the files have to land.
-    """
-    letter = (device or '').strip().rstrip('\\/').rstrip(':')
-    return f"{letter[:1].upper()}:\\" if letter else device
-
-
 class USBInstaller:
     """Handles USB installation process."""
 
@@ -50,36 +38,6 @@ class USBInstaller:
         self.worker = None
         self.platform = sys.platform
 
-    def install_sync_threaded(self, source_dir: str, target_device: str,
-                                       install_params: Optional[Dict[str, Any]] = None,
-                                       progress_callback: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
-        """Install to USB device in a thread (for use with PySimpleGUI).
-
-        This method runs the synchronous installation in a separate thread to avoid
-        blocking the PySimpleGUI event loop.
-        """
-        import threading
-
-        result = [None, None]
-        exception = [None]
-
-        def install_wrapper():
-            """Wrapper function to run installation in a thread."""
-            try:
-                result[0], result[1] = self.install_sync(
-                    source_dir, target_device, install_params, progress_callback
-                )
-            except Exception as e:  # noqa: BLE001 - transparently re-raised on caller thread
-                exception[0] = e
-
-        thread = threading.Thread(target=install_wrapper, daemon=True)
-        thread.start()
-        thread.join()
-
-        if exception[0]:
-            raise exception[0]
-
-        return result[0], result[1]
 
     def install_sync(self, source_dir: str, target_device: str,
                     install_params: Optional[Dict[str, Any]] = None,
@@ -123,7 +81,7 @@ class USBInstaller:
 
             def update_progress(percent_in_stage: int):
                 """Update overall progress based on current stage progress."""
-                nonlocal total_progress, current_stage
+                nonlocal total_progress
                 stage_name, stage_weight = stages[current_stage]
                 stage_progress = int(percent_in_stage * stage_weight / 100)
                 total_progress = sum(
@@ -265,7 +223,8 @@ class USBInstaller:
                 # mount, and the files belong at the drive's root. Copying
                 # them into a temporary folder instead would leave the drive
                 # empty while reporting success.
-                mount_point = _windows_drive_root(target_partition)
+                from pynetboot.platform.windows import drive_root
+                mount_point = drive_root(target_partition) or target_partition
 
                 # Formatting removes the letter and Windows re-creates the
                 # volume a moment later, so the root does not exist yet.
@@ -378,8 +337,6 @@ class USBInstaller:
         logger.info(f"Installing bootloader to {target_device}")
 
         try:
-            install_type = params.get('install_type', 'distribution')
-            drive_type = params.get('drive_type', 'USB Drive')
             enable_uefi_only = params.get('enable_uefi_only', False)
             enable_secure_boot = params.get('enable_secure_boot', False)
 
@@ -772,6 +729,7 @@ class USBInstaller:
 
     def _get_files_to_copy(self, source_dir: str, params: Dict[str, Any]) -> List[str]:
         """Get list of files to copy from source directory."""
+        install_type = params.get('install_type', 'distribution')
         files_to_copy = []
 
         # Walk through source directory
@@ -787,7 +745,6 @@ class USBInstaller:
                 files_to_copy.append(rel_path)
 
         # Filter by install type
-        install_type = params.get('install_type', 'distribution')
 
         if install_type == 'distribution':
             # For distributions, we might want to exclude certain files
@@ -960,6 +917,7 @@ class USBInstaller:
                                      enable_uefi_only: bool = False,
                                      enable_secure_boot: bool = False) -> bool:
         """Install bootloader on Linux."""
+        drive_type = params.get('drive_type', 'USB Drive')
         logger.info(
             f"Installing bootloader for Linux on {device} "
             f"(UEFI-only: {enable_uefi_only}, "
@@ -968,8 +926,6 @@ class USBInstaller:
         try:
             # Linux: use various tools depending on what's available
 
-            install_type = params.get('install_type', 'distribution')
-            drive_type = params.get('drive_type', 'USB Drive')
 
             # For UEFI-only installation
             if enable_uefi_only:
@@ -1135,11 +1091,9 @@ class USBInstaller:
     def _find_executable(self, name: str) -> Optional[str]:
         """Find an executable in the system PATH.
 
-        shutil.which rather than the `which` command, which does not exist
-        on Windows: every lookup failed there, so no bootloader tool was
-        ever found.
+        Delegates to the shared lookup so sbin is searched too.
         """
-        found = shutil.which(name)
+        found = find_tool(name)
         if found:
             return found
 
@@ -1640,114 +1594,3 @@ set check_signatures=enforce
             return False
 
 
-class AsyncUSBInstaller:
-    """Async USB installer for non-blocking I/O operations.
-
-    This class provides async/await compatible methods for USB installation,
-    which can be used with asyncio event loops. It runs the installation in a
-    thread pool executor since most filesystem operations are synchronous.
-    """
-
-    def __init__(self):
-        """Initialize the async installer."""
-        self.platform = sys.platform
-
-    async def install_async(
-        self,
-        source_dir: str,
-        target_device: str,
-        install_params: Optional[Dict[str, Any]] = None,
-        progress_callback: Optional[Callable[[int], None]] = None
-    ) -> Tuple[bool, str]:
-        """Install to USB device asynchronously.
-
-        Args:
-            source_dir: Source directory containing files to install
-            target_device: Target device path (e.g., /dev/sdb or D:)
-            install_params: Optional installation parameters
-            progress_callback: Optional callback for progress (0-100)
-
-        Returns:
-            Tuple of (success: bool, message: str)
-        """
-        logger.info(f"Async installing from {source_dir} to {target_device}")
-
-        loop = asyncio.get_running_loop()
-        installer = USBInstaller()
-
-        # Run sync installation in executor
-        return await loop.run_in_executor(
-            None,
-            lambda: installer.install_sync(
-                source_dir,
-                target_device,
-                install_params,
-                progress_callback=progress_callback
-            )
-        )
-
-    async def format_device_async(self, device: str) -> bool:
-        """Format device asynchronously."""
-        loop = asyncio.get_running_loop()
-        installer = USBInstaller()
-        return await loop.run_in_executor(
-            None,
-            installer._format_device,
-            device
-        )
-
-    async def mount_device_async(self, device: str, mount_point: str) -> bool:
-        """Mount device asynchronously."""
-        loop = asyncio.get_running_loop()
-        installer = USBInstaller()
-        return await loop.run_in_executor(
-            None,
-            installer._mount_device,
-            device, mount_point
-        )
-
-    async def copy_files_to_device_async(
-        self,
-        source_dir: str,
-        target_device: str,
-        params: Dict[str, Any],
-        progress_callback: Optional[Callable[[int], None]] = None
-    ) -> bool:
-        """Copy files to device asynchronously."""
-        loop = asyncio.get_running_loop()
-        installer = USBInstaller()
-        return await loop.run_in_executor(
-            None,
-            installer._copy_files_to_device,
-            source_dir, target_device, params, progress_callback
-        )
-
-    async def install_bootloader_async(
-        self,
-        target_device: str,
-        params: Dict[str, Any],
-        progress_callback: Optional[Callable[[int], None]] = None
-    ) -> bool:
-        """Install bootloader asynchronously."""
-        loop = asyncio.get_running_loop()
-        installer = USBInstaller()
-        return await loop.run_in_executor(
-            None,
-            installer._install_bootloader,
-            target_device, params, progress_callback
-        )
-
-    async def cleanup_installation_async(
-        self,
-        source_dir: str,
-        target_device: str,
-        params: Dict[str, Any]
-    ) -> None:
-        """Clean up installation asynchronously."""
-        loop = asyncio.get_running_loop()
-        installer = USBInstaller()
-        await loop.run_in_executor(
-            None,
-            installer._cleanup_installation,
-            source_dir, target_device, params
-        )

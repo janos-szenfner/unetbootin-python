@@ -14,9 +14,9 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # Add src to path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from pynetboot.core.downloader import Downloader, AsyncDownloader
-from pynetboot.core.extractor import ISOExtractor, AsyncISOExtractor
-from pynetboot.core.installer import USBInstaller, AsyncUSBInstaller
+from pynetboot.core.downloader import Downloader
+from pynetboot.core.extractor import ISOExtractor
+from pynetboot.core.installer import USBInstaller
 
 
 class TestDownloader(unittest.TestCase):
@@ -127,44 +127,6 @@ class TestDownloader(unittest.TestCase):
         self.assertEqual(self.downloader.format_size(1024 * 1024 * 1024), '1.0 GB')
 
 
-class TestAsyncDownloader(unittest.IsolatedAsyncioTestCase):
-    """Test AsyncDownloader class."""
-
-    async def asyncSetUp(self):
-        """Set up test fixtures."""
-        self.async_downloader = AsyncDownloader()
-        self.temp_dir = tempfile.mkdtemp()
-
-    async def asyncTearDown(self):
-        """Clean up."""
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    async def test_async_downloader_initialization(self):
-        """Test async downloader initialization."""
-        self.assertIsNotNone(self.async_downloader.user_agent)
-
-    async def test_get_remote_file_size_async(self):
-        """Test async remote file size retrieval."""
-        # Mock the sync method
-        with patch.object(Downloader, 'get_remote_file_size', return_value=1024):
-            size = await self.async_downloader.get_remote_file_size_async('https://example.com/file.iso')
-            self.assertEqual(size, 1024)
-
-    async def test_verify_checksum_async(self):
-        """Test async checksum verification."""
-        # Create a test file
-        test_file = os.path.join(self.temp_dir, 'test.txt')
-        with open(test_file, 'w') as f:
-            f.write('test content')
-
-        import hashlib
-        expected_sha256 = hashlib.sha256(b'test content').hexdigest()
-
-        with patch.object(Downloader, 'verify_checksum', return_value=True):
-            result = await self.async_downloader.verify_checksum_async(
-                test_file, expected_sha256, 'sha256'
-            )
-            self.assertTrue(result)
 
 
 class TestExtractor(unittest.TestCase):
@@ -288,31 +250,6 @@ class TestExtractor(unittest.TestCase):
         self.assertIn('visible.txt', files)
 
 
-class TestAsyncExtractor(unittest.IsolatedAsyncioTestCase):
-    """Test AsyncISOExtractor class."""
-
-    async def asyncSetUp(self):
-        """Set up test fixtures."""
-        self.async_extractor = AsyncISOExtractor()
-        self.temp_dir = tempfile.mkdtemp()
-
-    async def asyncTearDown(self):
-        """Clean up."""
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    async def test_async_extractor_initialization(self):
-        """Test async extractor initialization."""
-        self.assertIn('.iso', self.async_extractor.supported_extensions)
-
-    async def test_extract_iso_async_nonexistent_file(self):
-        """Test async extraction with non-existent file."""
-        # Mock the sync extractor
-        with patch.object(ISOExtractor, 'extract_iso_sync', return_value=(False, 'File not found')):
-            result = await self.async_extractor.extract_iso_async(
-                '/nonexistent/file.iso',
-                self.temp_dir
-            )
-            self.assertFalse(result[0])
 
 
 class TestInstaller(unittest.TestCase):
@@ -449,11 +386,11 @@ class TestInstaller(unittest.TestCase):
                                            umount_rc=1))
 
     def test_drive_root_normalisation(self):
-        from pynetboot.core.installer import _windows_drive_root
-        self.assertEqual(_windows_drive_root('D'), 'D:\\')
-        self.assertEqual(_windows_drive_root('D:'), 'D:\\')
-        self.assertEqual(_windows_drive_root('D:\\'), 'D:\\')
-        self.assertEqual(_windows_drive_root('e:\\'), 'E:\\')
+        """One normaliser for every spelling callers use."""
+        from pynetboot.platform.windows import drive_root
+        for spelling in ('D', 'D:', 'D:\\', 'd:/'):
+            self.assertEqual(drive_root(spelling), 'D:\\')
+        self.assertIsNone(drive_root('/dev/sdb'))
 
     def test_windows_without_administrator_stops_before_touching_the_drive(self):
         """diskpart needs Administrator and only says "Access is denied".
@@ -682,44 +619,6 @@ class TestInstaller(unittest.TestCase):
         self.assertEqual(format_size(1024 * 1024), '1.0 MB')
 
 
-class TestAsyncInstaller(unittest.IsolatedAsyncioTestCase):
-    """Test AsyncUSBInstaller class."""
-
-    async def asyncSetUp(self):
-        """Set up test fixtures."""
-        self.async_installer = AsyncUSBInstaller()
-        self.temp_dir = tempfile.mkdtemp()
-
-    async def asyncTearDown(self):
-        """Clean up."""
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-    async def test_async_installer_initialization(self):
-        """Test async installer initialization."""
-        self.assertEqual(self.async_installer.platform, sys.platform)
-
-    async def test_install_async(self):
-        """Test async installation."""
-        # Create a simple test case
-        source_dir = os.path.join(self.temp_dir, 'source')
-        os.makedirs(source_dir)
-        with open(os.path.join(source_dir, 'test.txt'), 'w') as f:
-            f.write('test')
-
-        target_dir = os.path.join(self.temp_dir, 'target')
-
-        # Mock the sync installer
-        with patch.object(
-            USBInstaller,
-            'install_sync',
-            return_value=(True, 'Success')
-        ):
-            result = await self.async_installer.install_async(
-                source_dir,
-                target_dir,
-                {}
-            )
-            self.assertTrue(result[0])
 
 
 # NOTE: TestDownloadWorker and TestExtractWorker were removed. They tested

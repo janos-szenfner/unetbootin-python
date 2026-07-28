@@ -4,13 +4,13 @@ Linux-specific functionality for PyNetboot.
 
 import os
 import re
-import sys
 import time
 import shlex
-import shutil
 import logging
 import subprocess
 from typing import Optional, List, Dict, Any
+
+from pynetboot.core.utils import find_tool
 
 logger = logging.getLogger(__name__)
 
@@ -410,19 +410,8 @@ _REQUIRED_TOOLS = {
 
 # mkfs.vfat and parted live in sbin, which is usually absent from a desktop
 # user's PATH even though the commands run fine once elevated.
-_SBIN_DIRS = ('/sbin', '/usr/sbin', '/usr/local/sbin', '/app/bin')
 
 
-def find_tool(name: str) -> Optional[str]:
-    """Locate an external tool on PATH or in the usual sbin directories."""
-    found = shutil.which(name)
-    if found:
-        return found
-    for directory in _SBIN_DIRS:
-        candidate = os.path.join(directory, name)
-        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    return None
 
 
 def missing_required_tools() -> List[str]:

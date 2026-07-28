@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.7.0" date="2026-07-28">
+      <description>
+        <p>Internal clean-up. No change to how the application behaves.</p>
+        <ul>
+          <li>Around 800 lines of code that nothing could reach have been removed</li>
+          <li>Several duplicated helpers have been reduced to one each, so a fix applies everywhere rather than in one copy</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.6.1" date="2026-07-28">
       <description>
         <p>Checks two more downloads against their publisher's checksum.</p>

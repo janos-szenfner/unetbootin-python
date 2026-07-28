@@ -18,7 +18,7 @@ except ImportError:
 
 import locale as _locale
 
-from pynetboot.core.utils import parse_command_line_args, normalize_language_code
+from pynetboot.core.utils import parse_command_line_args
 from pynetboot.core import i18n
 from pynetboot import APP_NAME, APP_VERSION
 

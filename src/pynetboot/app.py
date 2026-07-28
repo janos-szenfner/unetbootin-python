@@ -19,16 +19,16 @@ from pynetboot.ui.main_window_ctk import MainWindowCTk, HAS_CTK
 
 HAS_PYSIMPLEGUI = HAS_CTK  # kept: the app still guards on a usable toolkit
 
-from pynetboot import APP_NAME, APP_VERSION
+from pynetboot import APP_NAME
 from pynetboot.models.distro import DistributionManager
 from pynetboot.core.extractor import ISOExtractor
 from pynetboot.core.downloader import (
-    Downloader, AsyncDownloader, DownloadResumeManager
+    Downloader
 )
 from pynetboot.core.installer import USBInstaller
 from pynetboot.core.utils import (
-    check_root, check_admin, get_platform_info,
-    format_size, normalize_language_code, directory_stats
+    get_platform_info, format_size, normalize_language_code,
+    directory_stats
 )
 from pynetboot.platform import get_drive_list, is_safe_target
 
@@ -92,7 +92,6 @@ class PyNetbootApp:
         self.installer = USBInstaller()
 
         # Initialize async components
-        self.async_downloader = AsyncDownloader()
 
         # Initialize UI (window is finalized in __init__)
         self.ui = MainWindowCTk(self)
@@ -209,58 +208,7 @@ class PyNetbootApp:
 
         return display_list
 
-    def check_privileges(self):
-        """Check if running with sufficient privileges.
 
-        Uses the new elevation system instead of terminal-dependent flows.
-        If not elevated, will attempt to relaunch with elevation automatically.
-        """
-        from pynetboot.core.elevation import (
-            is_elevated, ensure_elevated, check_elevation_availability,
-            ElevationError
-        )
-
-        if is_elevated():
-            return
-
-        # Not elevated - try to elevate
-        if not check_elevation_availability():
-            # Fallback: show platform-specific message
-            self._show_elevation_not_available()
-            return
-
-        try:
-            ensure_elevated()
-        except ElevationError as e:
-            logger.warning(f"Elevation attempt failed: {e}")
-            self._show_elevation_not_available()
-
-    def _show_elevation_not_available(self):
-        """Show message when elevation is not available."""
-        if self.platform == 'linux':
-            sg.popup_error(
-                f"{APP_NAME} requires elevated privileges.\n\n"
-                "Please ensure polkit/pkexec is installed, or run from a terminal with sudo.",
-                title="Elevation Required"
-            )
-        elif self.platform == 'darwin':
-            sg.popup_error(
-                f"{APP_NAME} requires administrator privileges.\n\n"
-                "Please run with elevated privileges (pkexec, sudo, or as admin).",
-                title="Elevation Required"
-            )
-        elif self.platform == 'win32':
-            sg.popup_error(
-                f"{APP_NAME} requires Administrator privileges.\n\n"
-                "Please right-click and select 'Run as administrator'.",
-                title="Elevation Required"
-            )
-        else:
-            sg.popup_error(
-                f"{APP_NAME} requires elevated privileges on {self.platform}.\n\n"
-                "Please run with appropriate elevated permissions.",
-                title="Elevation Required"
-            )
 
     def get_installation_parameters(self) -> Dict[str, Any]:
         """Get installation parameters from UI.

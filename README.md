@@ -155,8 +155,12 @@ You are prompted for your password only when an install actually begins. On Linu
 - **pyudev>=0.24.0** - Linux hardware detection
 - **py7zr>=0.20.0** - 7z archive support
 - **beautifulsoup4>=4.12.0** - HTML parsing for directory listings
-- **pycdlib** - ISO9660 reading/writing
-- **iso9660** - Alternative ISO library
+- **pycdlib** - pure-Python ISO9660 fallback, tried last when no external
+  extractor is present
+
+> **On extracting ISOs.** In practice this uses `xorriso`, `7z` or **bsdtar**,
+> whichever is installed. bsdtar matters most on Windows, which ships it as
+> `tar.exe` — so an ISO unpacks there with nothing extra installed.
 
 ### Development Dependencies
 - pytest>=7.0.0
@@ -204,7 +208,7 @@ You are prompted for your password only when an install actually begins. On Linu
   1. xorriso (most reliable for ISO)
   2. 7z (p7zip)
   3. bsdtar
-  4. Python libraries (pycdlib, py7zr, iso9660)
+  4. Python libraries (pycdlib, py7zr)
 - Single file extraction from archives
 - Kernel and initrd auto-detection
 - Archive contents listing
@@ -628,7 +632,14 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] Add `build/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.). Note: `pynetboot.spec` is tracked in the repo.
 
 ### 🏗️ Architecture Improvements
-- [x] Consider using async/await for I/O operations - ✅ Complete
+- [x] Keep the interface responsive during I/O - ✅ Complete, using a worker
+  thread rather than async/await. `run_in_background` runs the work off the UI
+  thread while pumping the event loop, so the window stays live and Cancel and
+  Log keep responding. An unreachable async layer was removed in 1.7.0: eleven
+  of its thirteen methods wrapped `run_in_executor`, so they were threads with
+  a coroutine signature, and the one real async path needed `aiohttp`, which is
+  not a dependency. The work here is I/O-bound and the privileged steps block
+  on `subprocess` regardless, so threads are the fitting model.
 - [ ] Add plugin system for distribution definitions
 - [ ] Add plugin system for extraction methods
 - [ ] Add plugin system for bootloader installation

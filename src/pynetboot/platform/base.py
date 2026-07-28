@@ -7,7 +7,6 @@ provide). Each stub logs a warning so failures are visible instead of
 silently returning empty/False values.
 """
 
-import os
 import sys
 import logging
 import subprocess
