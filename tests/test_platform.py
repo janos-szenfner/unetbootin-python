@@ -1006,3 +1006,73 @@ class TestRequiredToolDiscovery(unittest.TestCase):
     def test_reports_nothing_when_all_are_present(self):
         with patch.object(linux, 'find_tool', return_value='/usr/bin/x'):
             self.assertEqual(linux.missing_required_tools(), [])
+
+
+class TestWindowsDriveListing(unittest.TestCase):
+    """Drive enumeration on Windows. Runs everywhere: pure parsing."""
+
+    _PS_JSON = ('[{"DeviceID":"C:","VolumeName":"System","FileSystem":"NTFS",'
+                '"Size":"500000000000","FreeSpace":"100000000000","DriveType":3},'
+                '{"DeviceID":"E:","VolumeName":"USB","FileSystem":"FAT32",'
+                '"Size":"16000000000","FreeSpace":"16000000000","DriveType":2}]')
+
+    def test_missing_wmic_does_not_raise_unbound_local(self):
+        """wmic is gone from current Windows 11.
+
+        Regression test: a function-level `import csv` made csv local to the
+        whole function, so when subprocess raised FileNotFoundError before
+        that line, the except clause referencing csv.Error died with
+        UnboundLocalError -- reported to the user as a fatal error, hiding
+        the real cause.
+        """
+        with patch('subprocess.run', side_effect=FileNotFoundError('wmic')):
+            drives = windows.get_drive_list()
+        self.assertEqual(drives, [])
+
+    def test_falls_back_to_powershell_when_wmic_is_absent(self):
+        def run(argv, **kwargs):
+            if argv[0] == 'powershell':
+                return MagicMock(returncode=0, stdout=self._PS_JSON, stderr='')
+            raise FileNotFoundError('wmic')
+
+        with patch('subprocess.run', side_effect=run):
+            drives = windows.get_drive_list()
+
+        self.assertEqual([d['letter'] for d in drives], ['C', 'E'])
+        usb = next(d for d in drives if d['letter'] == 'E')
+        self.assertTrue(usb['removable'])
+        self.assertEqual(usb['filesystem'], 'FAT32')
+        self.assertEqual(usb['size'], 16000000000)
+
+    def test_a_single_drive_is_not_mangled(self):
+        """ConvertTo-Json emits a bare object, not a list, for one result."""
+        single = ('{"DeviceID":"E:","VolumeName":"USB","FileSystem":"FAT32",'
+                  '"Size":"16000000000","FreeSpace":"1","DriveType":2}')
+        with patch('subprocess.run',
+                   return_value=MagicMock(returncode=0, stdout=single, stderr='')):
+            drives = windows.get_drive_list()
+        self.assertEqual([d['letter'] for d in drives], ['E'])
+
+    def test_wmic_is_used_when_powershell_yields_nothing(self):
+        csv_output = (
+            "\r\nNode,DeviceID,DriveType,FileSystem,FreeSpace,Size,VolumeName\r\n"
+            "PC,E:,2,FAT32,16000000000,16000000000,USB\r\n")
+
+        def run(argv, **kwargs):
+            if argv[0] == 'powershell':
+                return MagicMock(returncode=0, stdout='', stderr='')
+            return MagicMock(returncode=0, stdout=csv_output, stderr='')
+
+        with patch('subprocess.run', side_effect=run):
+            drives = windows.get_drive_list()
+
+        self.assertEqual([d['letter'] for d in drives], ['E'])
+        self.assertTrue(drives[0]['removable'])
+
+    def test_every_source_failing_reports_each_reason(self):
+        with patch('subprocess.run', side_effect=FileNotFoundError('gone')):
+            with self.assertLogs('pynetboot.platform.windows', 'ERROR') as logs:
+                self.assertEqual(windows.get_drive_list(), [])
+        message = '\n'.join(logs.output)
+        self.assertIn('PowerShell/CIM', message)
+        self.assertIn('wmic', message)

@@ -193,6 +193,41 @@ def window_icon_path() -> Optional[str]:
     return None
 
 
+def windows_icon_file() -> Optional[str]:
+    """Path to the bundled .ico, which Windows needs for a window icon.
+
+    iconphoto with a PNG leaves the title bar and task bar on the generic
+    Tk icon; iconbitmap with a real .ico is what Windows honours.
+    """
+    if sys.platform != 'win32':
+        return None
+    try:
+        from pynetboot.resources import icon_path
+        candidate = icon_path('unetbootin.ico')
+        if os.path.exists(candidate):
+            return str(candidate)
+    except (OSError, ValueError, ImportError) as e:
+        logger.debug(f"Bundled .ico unavailable: {e}")
+    return None
+
+
+def claim_windows_taskbar_identity() -> None:
+    """Tell Windows this process is its own application.
+
+    Without an explicit AppUserModelID, Windows groups the window under the
+    host interpreter and shows that generic icon in the task bar however the
+    window icon is set. Harmless everywhere else.
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            'com.pynetboot.PyNetboot')
+    except (ImportError, OSError, AttributeError) as e:  # cosmetic only
+        logger.debug(f"Could not set the task-bar application id: {e}")
+
+
 # --------------------------------------------------------------------------
 # Dialog helpers (replacing the PySimpleGUI popups)
 # --------------------------------------------------------------------------
@@ -826,6 +861,16 @@ class MainWindowCTk:
         reference, so an inline image is garbage-collected and the icon
         quietly reverts to the generic one.
         """
+        # Windows takes its title-bar and task-bar icon from an .ico; the
+        # PNG route below leaves it on the generic Tk icon there.
+        ico = windows_icon_file()
+        if ico:
+            try:
+                self.root.iconbitmap(default=ico)
+                logger.info(f"Window icon set from {ico}")
+            except Exception as e:  # noqa: BLE001 - cosmetic only
+                logger.warning(f"Could not set the window icon from {ico}: {e}")
+
         icon = window_icon_path()
         if not icon:
             return

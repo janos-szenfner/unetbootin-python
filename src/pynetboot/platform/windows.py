@@ -5,6 +5,8 @@ Windows-specific functionality for PyNetboot.
 import os
 import sys
 import csv
+import io
+import json
 import logging
 import subprocess
 from typing import Optional, List, Dict, Any
@@ -17,53 +19,130 @@ _SUBPROCESS_PARSE_ERRORS = (subprocess.SubprocessError, OSError,
                             ValueError, IndexError)
 
 
-def get_drive_list() -> List[Dict[str, Any]]:
-    """Get list of available drives on Windows."""
+def _drive_from_fields(device_id: str, drive_type: str, filesystem: str,
+                       label: str, size: str, free: str) -> Optional[Dict[str, Any]]:
+    """Build a drive entry from one source's raw string fields."""
+    device_id = (device_id or '').strip()
+    if not device_id:
+        return None
+
+    letter = device_id.rstrip(':')
+    type_str = (drive_type or '').strip()
+    type_code = int(type_str) if type_str.isdigit() else 0
+    size_str = (size or '').strip()
+    free_str = (free or '').strip()
+
+    return {
+        'device': f"{letter}:\\",
+        'letter': letter,
+        'type': get_drive_type_name(type_code),
+        'filesystem': (filesystem or '').strip(),
+        'label': (label or '').strip(),
+        'size': int(size_str) if size_str.isdigit() else 0,
+        'free': int(free_str) if free_str.isdigit() else 0,
+        'removable': type_code == 2,
+    }
+
+
+def _drives_via_powershell() -> List[Dict[str, Any]]:
+    """List drives with CIM, the supported replacement for wmic.
+
+    wmic is deprecated and no longer present on current Windows 11, where
+    invoking it raises FileNotFoundError and no drives can be listed.
+    """
+    script = (
+        "Get-CimInstance -ClassName Win32_LogicalDisk | "
+        "Select-Object DeviceID,VolumeName,FileSystem,Size,FreeSpace,DriveType | "
+        "ConvertTo-Json -Compress"
+    )
+    result = subprocess.run(
+        ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+        capture_output=True, text=True, timeout=30
+    )
+    if result.returncode != 0:
+        logger.warning(
+            f"PowerShell drive listing failed: {(result.stderr or '').strip()}")
+        return []
+
+    payload = (result.stdout or '').strip()
+    if not payload:
+        return []
+
+    rows = json.loads(payload)
+    # ConvertTo-Json emits a bare object, not a list, for a single drive.
+    if isinstance(rows, dict):
+        rows = [rows]
+
     drives = []
-
-    try:
-        # Use wmic CSV output and parse by column NAME. Plain `wmic get`
-        # prints columns in ALPHABETICAL order (not the requested order) and
-        # whitespace-splitting breaks on volume labels containing spaces.
-        result = subprocess.run(
-            ['wmic', 'logicaldisk', 'get',
-             'DeviceID,VolumeName,FileSystem,Size,FreeSpace,DriveType',
-             '/format:csv'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        if result.returncode == 0:
-            import csv
-            import io
-            # wmic CSV output starts with a blank line; strip empty lines
-            lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
-            reader = csv.DictReader(io.StringIO('\n'.join(lines)))
-            for row in reader:
-                device_id = (row.get('DeviceID') or '').strip()
-                if not device_id:
-                    continue
-                letter = device_id.rstrip(':')
-                drive_type_str = (row.get('DriveType') or '').strip()
-                drive_type = int(drive_type_str) if drive_type_str.isdigit() else 0
-                size_str = (row.get('Size') or '').strip()
-                free_str = (row.get('FreeSpace') or '').strip()
-                drive_info = {
-                    'device': f"{letter}:\\",
-                    'letter': letter,
-                    'type': get_drive_type_name(drive_type),
-                    'filesystem': (row.get('FileSystem') or '').strip(),
-                    'label': (row.get('VolumeName') or '').strip(),
-                    'size': int(size_str) if size_str.isdigit() else 0,
-                    'free': int(free_str) if free_str.isdigit() else 0,
-                    'removable': drive_type == 2,
-                }
-                drives.append(drive_info)
-    except (subprocess.SubprocessError, OSError, ValueError, csv.Error) as e:
-        logger.error(f"Failed to get drive list: {e}")
-
+    for row in rows:
+        drive = _drive_from_fields(
+            str(row.get('DeviceID') or ''), str(row.get('DriveType') or ''),
+            str(row.get('FileSystem') or ''), str(row.get('VolumeName') or ''),
+            str(row.get('Size') or ''), str(row.get('FreeSpace') or ''))
+        if drive:
+            drives.append(drive)
     return drives
+
+
+def _drives_via_wmic() -> List[Dict[str, Any]]:
+    """List drives with wmic, for Windows versions that still ship it.
+
+    Parses CSV by column NAME: plain `wmic get` prints columns in
+    ALPHABETICAL order rather than the requested order, and
+    whitespace-splitting breaks on volume labels containing spaces.
+    """
+    result = subprocess.run(
+        ['wmic', 'logicaldisk', 'get',
+         'DeviceID,VolumeName,FileSystem,Size,FreeSpace,DriveType',
+         '/format:csv'],
+        capture_output=True, text=True, timeout=10
+    )
+    if result.returncode != 0:
+        logger.warning(
+            f"wmic drive listing failed: {(result.stderr or '').strip()}")
+        return []
+
+    # wmic CSV output starts with a blank line; strip empty lines
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    reader = csv.DictReader(io.StringIO('\n'.join(lines)))
+
+    drives = []
+    for row in reader:
+        drive = _drive_from_fields(
+            row.get('DeviceID'), row.get('DriveType'), row.get('FileSystem'),
+            row.get('VolumeName'), row.get('Size'), row.get('FreeSpace'))
+        if drive:
+            drives.append(drive)
+    return drives
+
+
+def get_drive_list() -> List[Dict[str, Any]]:
+    """Get list of available drives on Windows.
+
+    Tries CIM first and falls back to wmic, so both current Windows 11
+    (where wmic is gone) and older releases are covered.
+    """
+    errors = []
+
+    for describe, source in (('PowerShell/CIM', _drives_via_powershell),
+                             ('wmic', _drives_via_wmic)):
+        try:
+            drives = source()
+        except FileNotFoundError:
+            # The tool is not installed on this version of Windows.
+            errors.append(f"{describe}: not available")
+            continue
+        except (subprocess.SubprocessError, OSError, ValueError,
+                csv.Error, json.JSONDecodeError) as e:
+            errors.append(f"{describe}: {e}")
+            continue
+
+        if drives:
+            return drives
+        errors.append(f"{describe}: no drives reported")
+
+    logger.error("Failed to get drive list -- " + "; ".join(errors))
+    return []
 
 
 def get_drive_type_name(drive_type: int) -> str:

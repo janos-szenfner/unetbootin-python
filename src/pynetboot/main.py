@@ -111,6 +111,10 @@ def main():
     from pynetboot.core.elevation import install_sudo_interceptor
     install_sudo_interceptor()
 
+    # Must happen before any window exists, or Windows keeps showing the
+    # host interpreter's generic icon in the task bar.
+    sg.claim_windows_taskbar_identity()
+
     # Parse command line arguments (--lang, --rootcheck, --automate, ...)
     cli_args = parse_command_line_args()
 

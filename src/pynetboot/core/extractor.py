@@ -409,7 +409,6 @@ class ISOExtractor:
                    progress_callback: Optional[Callable[[int], None]]) -> bool:
         """Try to extract using Python zipfile module."""
         try:
-            import zipfile
 
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 if files_to_extract:
@@ -481,7 +480,6 @@ class ISOExtractor:
                    progress_callback: Optional[Callable[[int], None]]) -> bool:
         """Try to extract using Python tarfile module."""
         try:
-            import tarfile
 
             mode = 'r'
             tar_ext = os.path.splitext(tar_path)[1].lower()
@@ -822,7 +820,6 @@ class ISOExtractor:
 
         # Try Python zipfile module
         try:
-            import zipfile
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 for info in zip_ref.infolist():
                     files.append(ArchiveFileInfo(
@@ -870,7 +867,6 @@ class ISOExtractor:
 
         # Try Python tarfile module
         try:
-            import tarfile
 
             mode = 'r'
             tar_ext = os.path.splitext(archive_path)[1].lower()

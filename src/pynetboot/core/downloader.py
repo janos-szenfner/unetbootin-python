@@ -110,7 +110,6 @@ class DownloadResumeManager:
         try:
             if os.path.exists(self.resume_info_path):
                 with open(self.resume_info_path, 'r') as f:
-                    import json
                     return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
