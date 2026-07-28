@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import time
+import shlex
 import shutil
 import logging
 import subprocess
@@ -464,20 +465,23 @@ def partition_device(disk: str) -> Optional[str]:
                      "partitioning it")
         return None
 
-    # Clear stale filesystem and partition-table signatures, otherwise the
-    # old superfloppy FAT signature can still be detected afterwards.
-    try:
-        subprocess.run(['sudo', 'wipefs', '-a', disk],
-                       capture_output=True, text=True, timeout=120)
-    except _SUBPROCESS_ERRORS as e:
-        logger.warning(f"wipefs on {disk} failed (continuing): {e}")
+    # Wiping stale signatures, writing the table and re-reading it are three
+    # privileged steps. Running them separately means three separate
+    # elevation prompts, so they go in as one script under a single one.
+    # wipefs is tolerated failing; the rest must succeed.
+    script = ' && '.join((
+        f"wipefs -a {shlex.quote(disk)} || true",
+        ' '.join(shlex.quote(a) for a in (
+            parted, '-s', '--align', 'optimal', disk,
+            'mklabel', 'msdos',
+            'mkpart', 'primary', 'fat32', '1MiB', '100%',
+            'set', '1', 'boot', 'on')),
+        f"partprobe {shlex.quote(disk)} || true",
+    ))
 
     try:
         result = subprocess.run(
-            ['sudo', parted, '-s', '--align', 'optimal', disk,
-             'mklabel', 'msdos',
-             'mkpart', 'primary', 'fat32', '1MiB', '100%',
-             'set', '1', 'boot', 'on'],
+            ['sudo', 'sh', '-c', script],
             capture_output=True, text=True, timeout=300
         )
     except _SUBPROCESS_ERRORS as e:
@@ -491,12 +495,12 @@ def partition_device(disk: str) -> Optional[str]:
             f"{detail or 'no output'}")
         return None
 
-    # Let the kernel and udev catch up before the new node is used.
-    for cmd in (['sudo', 'partprobe', disk], ['udevadm', 'settle']):
-        try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        except _SUBPROCESS_ERRORS as e:
-            logger.debug(f"{cmd[-1]} failed (continuing): {e}")
+    # udevadm needs no privileges, so it stays outside the elevated script.
+    try:
+        subprocess.run(['udevadm', 'settle'],
+                       capture_output=True, text=True, timeout=60)
+    except _SUBPROCESS_ERRORS as e:
+        logger.debug(f"udevadm settle failed (continuing): {e}")
 
     deadline = time.monotonic() + _PARTITION_SETTLE_SECONDS
     while time.monotonic() < deadline:

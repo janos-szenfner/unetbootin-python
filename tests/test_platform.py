@@ -318,20 +318,41 @@ class TestLinuxPlatform(unittest.TestCase):
                 patch('subprocess.run') as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout='\n'),      # lsblk: unmount
-                MagicMock(returncode=0, stdout=''),        # wipefs
-                MagicMock(returncode=0, stdout='', stderr=''),   # parted
-                MagicMock(returncode=0, stdout=''),        # partprobe
+                MagicMock(returncode=0, stdout='', stderr=''),   # elevated script
                 MagicMock(returncode=0, stdout=''),        # udevadm settle
                 MagicMock(returncode=0, stdout='sdb disk\nsdb1 part\n'),
             ]
 
             self.assertEqual(linux.partition_device('/dev/sdb'), '/dev/sdb1')
 
-            parted_argv = next(
-                call.args[0] for call in mock_run.call_args_list
+            script = next(
+                call.args[0][-1] for call in mock_run.call_args_list
                 if 'parted' in ' '.join(call.args[0]))
-            for expected in ('mklabel', 'msdos', 'fat32', 'boot', 'on'):
-                self.assertIn(expected, parted_argv)
+            for expected in ('wipefs', 'mklabel', 'msdos', 'fat32',
+                             'boot', 'on', 'partprobe'):
+                self.assertIn(expected, script)
+
+    def test_partitioning_uses_a_single_elevation_prompt(self):
+        """wipefs, parted and partprobe must share one prompt.
+
+        Run separately they each raise their own PolicyKit dialog, so the
+        user is asked for a password three times to partition one drive.
+        """
+        with patch('shutil.which', return_value='/sbin/parted'), \
+                patch('os.path.exists', return_value=True), \
+                patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout='\n'),
+                MagicMock(returncode=0, stdout='', stderr=''),
+                MagicMock(returncode=0, stdout=''),
+                MagicMock(returncode=0, stdout='sdb disk\nsdb1 part\n'),
+            ]
+
+            linux.partition_device('/dev/sdb')
+
+            elevated = [c.args[0] for c in mock_run.call_args_list
+                        if c.args[0][0] == 'sudo']
+            self.assertEqual(len(elevated), 1, elevated)
 
     def test_partition_device_without_parted_is_not_destructive(self):
         """If parted is missing, fail before touching the drive."""
@@ -348,8 +369,7 @@ class TestLinuxPlatform(unittest.TestCase):
                 patch('subprocess.run') as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout='\n'),   # lsblk: unmount
-                MagicMock(returncode=0, stdout=''),     # wipefs
-                MagicMock(returncode=1, stdout='',
+                MagicMock(returncode=1, stdout='',      # elevated script
                           stderr='parted: unable to open /dev/sdb'),
             ]
             self.assertIsNone(linux.partition_device('/dev/sdb'))

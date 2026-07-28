@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.2.5" date="2026-07-28">
+      <description>
+        <p>Fixes copying files to the drive, and asks for your password less often.</p>
+        <ul>
+          <li>The drive is now mounted so that your user account can write to it. Every file previously failed to copy with a permission error, because the drive was mounted by the administrator account instead</li>
+          <li>Preparing the drive now asks for your password once rather than for each step</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.4" date="2026-07-27">
       <description>
         <p>Records much more detail in the log, making a failed write easier to diagnose.</p>

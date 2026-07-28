@@ -647,13 +647,45 @@ class USBInstaller:
                 if not os.path.exists(mount_point):
                     os.makedirs(mount_point, exist_ok=True)
 
+                # The mount runs as root but the copy that follows runs as the
+                # desktop user. FAT carries no ownership of its own, so the
+                # kernel assigns it to the mounting user: without uid/gid the
+                # whole tree comes out root-owned and every write fails with
+                # EACCES.
+                options = (f"uid={os.getuid()},gid={os.getgid()},"
+                           f"fmask=0133,dmask=0022")
+                result = subprocess.run(
+                    ['sudo', 'mount', '-o', options, device, mount_point],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                if result.returncode == 0:
+                    logger.info(
+                        f"Mounted {device} at {mount_point} "
+                        f"owned by uid={os.getuid()}")
+                    return True
+
+                # Those options are FAT-specific; retry plainly for any other
+                # filesystem rather than failing outright.
+                logger.warning(
+                    f"Mounting {device} with ownership options failed "
+                    f"({(result.stderr or '').strip()}); retrying without them")
                 result = subprocess.run(
                     ['sudo', 'mount', device, mount_point],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=120
                 )
-                return result.returncode == 0
+                if result.returncode != 0:
+                    logger.error(
+                        f"mount failed for {device}: "
+                        f"{(result.stderr or '').strip()}")
+                    return False
+                logger.warning(
+                    f"Mounted {device} without ownership options; the copy "
+                    f"may fail if it is not running as root")
+                return True
 
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to mount device {device} to {mount_point}: {e}")

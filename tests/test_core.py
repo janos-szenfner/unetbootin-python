@@ -337,6 +337,44 @@ class TestInstaller(unittest.TestCase):
             result = self.installer._validate_target_device('/nonexistent/device')
             self.assertFalse(result)
 
+    def test_mount_gives_ownership_to_the_calling_user(self):
+        """The mount runs as root but the copy does not.
+
+        Regression test: FAT carries no ownership, so the kernel assigns it
+        to whoever mounted it. Mounting as root without uid/gid left the
+        whole tree root-owned and every copy failed with EACCES.
+        """
+        self.installer.platform = 'linux'
+        mount_point = os.path.join(self.temp_dir, 'mnt')
+        os.makedirs(mount_point, exist_ok=True)
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stderr='')
+            self.assertTrue(
+                self.installer._mount_device('/dev/sdb1', mount_point))
+
+        argv = mock_run.call_args_list[0].args[0]
+        self.assertIn('-o', argv)
+        options = argv[argv.index('-o') + 1]
+        self.assertIn(f'uid={os.getuid()}', options)
+        self.assertIn(f'gid={os.getgid()}', options)
+
+    def test_mount_falls_back_when_ownership_options_are_rejected(self):
+        """Those options are FAT-specific; other filesystems must still mount."""
+        self.installer.platform = 'linux'
+        mount_point = os.path.join(self.temp_dir, 'mnt2')
+        os.makedirs(mount_point, exist_ok=True)
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=32, stderr='bad option uid'),
+                MagicMock(returncode=0, stderr=''),
+            ]
+            self.assertTrue(
+                self.installer._mount_device('/dev/sdb1', mount_point))
+            self.assertEqual(mock_run.call_count, 2)
+            self.assertNotIn('-o', mock_run.call_args_list[1].args[0])
+
     def test_copying_an_empty_source_is_a_failure(self):
         """An empty extraction must not be reported as a successful copy.
 
