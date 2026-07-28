@@ -530,7 +530,9 @@ class DistributionManager:
                     {
     # mirror.midnightbsd.org no longer resolves; 3.2.3 is also long superseded.
     'name': 'Latest (4.0.6)',
-    'url': 'https://discovery.midnightbsd.org/ftp/releases/amd64/ISO-IMAGES/4.0.6/MidnightBSD-4.0.6--amd64-disc1.iso',
+    'url': 'https://midnightbsd.org/ftp/MidnightBSD/releases/amd64/ISO-IMAGES/4.0.6/MidnightBSD-4.0.6--amd64-disc1.iso',
+                     # MidnightBSD publishes SHA512 only.
+                     'sha512_url': 'https://midnightbsd.org/ftp/MidnightBSD/releases/amd64/ISO-IMAGES/4.0.6/CHECKSUM.SHA512',
      'size': 1062742016},
                 ],
                 'icon': 'midnightbsd',
