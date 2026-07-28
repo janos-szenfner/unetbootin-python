@@ -10,6 +10,7 @@ elevation — keeps working unchanged against a callback-driven toolkit.
 """
 
 import os
+import sys
 import queue
 import logging
 import tkinter
