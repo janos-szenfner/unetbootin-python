@@ -182,6 +182,17 @@ class USBInstaller:
         logger.info(f"Preparing installation on {target_device}")
         self._log_device_details(target_device)
 
+        # Check the external tools up front. Reaching mkfs before noticing
+        # dosfstools is absent means the drive has already been repartitioned.
+        if self.platform == 'linux':
+            from pynetboot.platform.linux import missing_required_tools
+            missing = missing_required_tools()
+            if missing:
+                logger.error(
+                    "Cannot write the drive: these commands are missing: "
+                    + ', '.join(missing))
+                return False
+
         try:
             # HARD SAFETY GATE (last line of defense): refuse to touch anything
             # that is not a proven removable/external USB drive. This runs at

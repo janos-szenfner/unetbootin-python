@@ -338,6 +338,22 @@ class TestInstaller(unittest.TestCase):
             result = self.installer._validate_target_device('/nonexistent/device')
             self.assertFalse(result)
 
+    def test_preparation_stops_before_touching_a_drive_without_the_tools(self):
+        """Missing tools must be caught before the drive is repartitioned.
+
+        Discovering dosfstools is absent at mkfs time leaves the drive
+        already wiped and repartitioned.
+        """
+        self.installer.platform = 'linux'
+        with patch('pynetboot.platform.linux.missing_required_tools',
+                   return_value=['mkfs.vfat (dosfstools)']), \
+                patch.object(self.installer, '_log_device_details'), \
+                patch.object(self.installer, '_partition_target') as partition:
+            self.assertFalse(
+                self.installer._prepare_installation(
+                    self.temp_dir, '/dev/sdb', {}))
+            partition.assert_not_called()
+
     def test_mount_gives_ownership_to_the_calling_user(self):
         """The mount runs as root but the copy does not.
 

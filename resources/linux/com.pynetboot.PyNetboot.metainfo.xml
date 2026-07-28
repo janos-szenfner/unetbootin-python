@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.3.1" date="2026-07-28">
+      <description>
+        <p>Applies the recent Linux fixes to macOS and Windows.</p>
+        <ul>
+          <li>On macOS the drive is now given a partition table, where before the filesystem was written straight over the boot record and the drive would not boot</li>
+          <li>Failures on macOS and Windows now report their cause instead of failing silently</li>
+          <li>Missing system tools are reported before the drive is modified, rather than part-way through</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-07-28">
       <description>
         <p>Asks for your password once for the whole operation.</p>

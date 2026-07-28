@@ -666,15 +666,89 @@ class TestMacOSPlatform(unittest.TestCase):
             result = macos.check_drive_writable('/dev/disk2')
             self.assertTrue(result)
 
+    @staticmethod
+    def _diskutil_info(whole_disk: bool):
+        """A diskutil `info -plist` reply saying whether this is a disk."""
+        import plistlib
+        reply = MagicMock()
+        reply.returncode = 0
+        reply.stdout = plistlib.dumps({'WholeDisk': whole_disk}).decode()
+        return reply
+
     def test_unmount_drive(self):
         """Test unmounting drive on macOS."""
         with patch('subprocess.run') as mock_run:
-            mock_result = MagicMock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
+            mock_run.side_effect = [
+                self._diskutil_info(whole_disk=False),
+                MagicMock(returncode=0, stdout='', stderr=''),
+            ]
+            self.assertTrue(macos.unmount_drive('/dev/disk2s1'))
 
-            result = macos.unmount_drive('/dev/disk2')
-            self.assertTrue(result)
+    def test_unmount_disk_detaches_every_partition(self):
+        """A whole disk needs unmountDisk, not unmount.
+
+        Unmounting one mount point leaves the disk's other partitions
+        mounted, and any mounted partition keeps the whole disk busy.
+        """
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                self._diskutil_info(whole_disk=True),
+                MagicMock(returncode=0, stdout='', stderr=''),
+            ]
+            self.assertTrue(macos.unmount_drive('/dev/disk2'))
+            self.assertIn('unmountDisk', mock_run.call_args_list[1].args[0])
+
+    def test_whole_disk_is_repartitioned_not_made_a_superfloppy(self):
+        """eraseVolume on a whole disk leaves no partition map.
+
+        The boot record written afterwards would land on the filesystem's
+        own boot sector. eraseDisk lays down an MBR map plus a partition.
+        """
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                self._diskutil_info(whole_disk=True),   # unmount_drive
+                MagicMock(returncode=0, stdout='', stderr=''),
+                self._diskutil_info(whole_disk=True),   # format_drive
+                MagicMock(returncode=0, stdout='', stderr=''),
+            ]
+            self.assertTrue(
+                macos.format_drive('/dev/disk2', 'vfat', 'PYNETBOOT'))
+
+            argv = mock_run.call_args_list[-1].args[0]
+            self.assertIn('eraseDisk', argv)
+            self.assertIn('MBRFormat', argv)
+            self.assertNotIn('eraseVolume', argv)
+
+    def test_an_existing_partition_is_only_reformatted(self):
+        """A partition must not be repartitioned out from under itself."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                self._diskutil_info(whole_disk=False),
+                MagicMock(returncode=0, stdout='', stderr=''),
+                self._diskutil_info(whole_disk=False),
+                MagicMock(returncode=0, stdout='', stderr=''),
+            ]
+            self.assertTrue(
+                macos.format_drive('/dev/disk2s1', 'vfat', 'PYNETBOOT'))
+
+            argv = mock_run.call_args_list[-1].args[0]
+            self.assertIn('eraseVolume', argv)
+            self.assertNotIn('eraseDisk', argv)
+
+    def test_format_failure_reports_the_reason(self):
+        """A bare False gives nothing to diagnose."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                self._diskutil_info(whole_disk=True),
+                MagicMock(returncode=0, stdout='', stderr=''),
+                self._diskutil_info(whole_disk=True),
+                MagicMock(returncode=1, stdout='',
+                          stderr='could not modify partition map'),
+            ]
+            with self.assertLogs('pynetboot.platform.macos', 'ERROR') as logs:
+                self.assertFalse(macos.format_drive('/dev/disk2', 'vfat'))
+            self.assertIn('could not modify partition map',
+                          '\n'.join(logs.output))
 
     def test_mount_drive(self):
         """Test mounting drive on macOS."""
@@ -861,3 +935,74 @@ class TestDriveSerialToolFallback(unittest.TestCase):
         self.assertIsNone(result)
         self.assertFalse([m for m in captured.output if m.startswith('ERROR')],
                          "a missing optional tool must not log an error")
+
+
+class TestDiskpartOutputParsing(unittest.TestCase):
+    """diskpart reports failures on stdout and still exits 0.
+
+    Pure text handling, so it runs everywhere rather than only on Windows.
+    """
+
+    def test_a_clean_run_is_not_treated_as_an_error(self):
+        output = (
+            "Volume 3 is the selected volume.\r\n"
+            "DiskPart succeeded in cleaning the disk.\r\n"
+            "DiskPart succeeded in creating the specified partition.\r\n"
+            "DiskPart successfully formatted the volume.\r\n"
+        )
+        self.assertIsNone(windows._diskpart_error(output))
+
+    def test_a_failed_script_is_detected_despite_exit_zero(self):
+        output = (
+            "Microsoft DiskPart version 10.0\r\n"
+            "There is no volume selected.\r\n"
+            "Please select a volume and try again.\r\n"
+        )
+        self.assertEqual(
+            windows._diskpart_error(output), "There is no volume selected.")
+
+    def test_service_errors_are_detected(self):
+        output = ("Virtual Disk Service error:\r\n"
+                  "The media is write protected.\r\n")
+        self.assertIn('Virtual Disk Service error',
+                      windows._diskpart_error(output) or '')
+
+    def test_encountered_error_is_detected(self):
+        output = "DiskPart has encountered an error: Access is denied.\r\n"
+        self.assertIn('encountered an error',
+                      windows._diskpart_error(output) or '')
+
+
+class TestRequiredToolDiscovery(unittest.TestCase):
+    """Locating the external commands a write depends on.
+
+    The deb and rpm declare these as package dependencies, but the AppImage
+    declares none and relies entirely on the host, so they are checked at
+    runtime. Pure lookup logic, so it runs on any platform.
+    """
+
+    def test_finds_a_tool_on_path(self):
+        self.assertIsNotNone(linux.find_tool('sh'))
+
+    def test_finds_a_tool_only_present_in_sbin(self):
+        """sbin is normally absent from a desktop user's PATH.
+
+        mkfs.vfat and parted live there and run fine once elevated, so
+        looking only at PATH would report them missing.
+        """
+        with patch('shutil.which', return_value=None), \
+                patch('os.path.exists',
+                      side_effect=lambda p: p == '/usr/sbin/parted'), \
+                patch('os.access', return_value=True):
+            self.assertEqual(linux.find_tool('parted'), '/usr/sbin/parted')
+
+    def test_reports_missing_tools_with_their_packages(self):
+        with patch.object(linux, 'find_tool',
+                          side_effect=lambda n: None if n in
+                          ('parted', 'mkfs.vfat') else f'/usr/bin/{n}'):
+            missing = linux.missing_required_tools()
+        self.assertEqual(missing, ['mkfs.vfat (dosfstools)', 'parted (parted)'])
+
+    def test_reports_nothing_when_all_are_present(self):
+        with patch.object(linux, 'find_tool', return_value='/usr/bin/x'):
+            self.assertEqual(linux.missing_required_tools(), [])

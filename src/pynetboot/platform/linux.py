@@ -397,6 +397,41 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
         return False
 
 
+# Writing a drive shells out to these. The deb and rpm depend on the packages
+# that provide them, but the AppImage declares no dependencies and the Flatpak
+# ships its own, so the set is checked at runtime instead of assumed.
+_REQUIRED_TOOLS = {
+    'lsblk': 'util-linux',
+    'mount': 'util-linux',
+    'umount': 'util-linux',
+    'parted': 'parted',
+    'mkfs.vfat': 'dosfstools',
+}
+
+# mkfs.vfat and parted live in sbin, which is usually absent from a desktop
+# user's PATH even though the commands run fine once elevated.
+_SBIN_DIRS = ('/sbin', '/usr/sbin', '/usr/local/sbin', '/app/bin')
+
+
+def find_tool(name: str) -> Optional[str]:
+    """Locate an external tool on PATH or in the usual sbin directories."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for directory in _SBIN_DIRS:
+        candidate = os.path.join(directory, name)
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def missing_required_tools() -> List[str]:
+    """Return 'command (package)' for each tool needed but not installed."""
+    return [f"{tool} ({package})"
+            for tool, package in sorted(_REQUIRED_TOOLS.items())
+            if find_tool(tool) is None]
+
+
 def is_whole_disk(device: str) -> bool:
     """True if `device` is a whole disk rather than one of its partitions."""
     if not device.startswith('/dev/'):
@@ -453,8 +488,8 @@ def partition_device(disk: str) -> Optional[str]:
     if not disk.startswith('/dev/'):
         disk = f"/dev/{disk}"
 
-    parted = shutil.which('parted') or '/sbin/parted'
-    if not os.path.exists(parted):
+    parted = find_tool('parted')
+    if parted is None:
         logger.error(
             "parted is required to partition the target drive but was not "
             "found. Install the 'parted' package and try again.")

@@ -7,6 +7,7 @@ import re
 import sys
 import shutil
 import logging
+import plistlib
 import subprocess
 from xml.parsers.expat import ExpatError
 from typing import Optional, List, Dict, Any
@@ -203,51 +204,21 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
 
 
 def unmount_drive(drive: str) -> bool:
-    """Unmount a drive on macOS."""
+    """Unmount a drive, and every partition on it, on macOS."""
     try:
         if not drive.startswith('/dev/'):
             drive = f'/dev/{drive}'
 
-        # Find mount point first
-        result = subprocess.run(
-            ['diskutil', 'info', drive],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        # unmountDisk detaches every volume on the disk. Unmounting a single
+        # mount point would leave the disk's other partitions mounted, and a
+        # mounted partition keeps the whole disk busy.
+        if is_whole_disk(drive):
+            return _run_diskutil(
+                ['diskutil', 'unmountDisk', drive],
+                f"Unmounting all volumes on {drive}")
 
-        if result.returncode == 0:
-            for line in result.stdout.split('\n'):
-                if line.startswith('Mount Point:') or line.startswith('Mount Points:'):
-                    mount_point = line.split(':')[1].strip()
-                    if mount_point and mount_point != 'Not mounted':
-                        # Unmount using diskutil
-                        result = subprocess.run(
-                            ['diskutil', 'unmount', mount_point],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-                        if result.returncode == 0:
-                            return True
-
-                        # Alternative: use umount
-                        result = subprocess.run(
-                            ['umount', mount_point],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-                        return result.returncode == 0
-
-        # Try direct unmount
-        result = subprocess.run(
-            ['diskutil', 'unmountDisk', drive],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        return result.returncode == 0
+        return _run_diskutil(
+            ['diskutil', 'unmount', drive], f"Unmounting {drive}")
 
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to unmount {drive}: {e}")
@@ -262,26 +233,58 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
 
         if mount_point is None:
             # Let system choose mount point
-            result = subprocess.run(
-                ['diskutil', 'mount', drive],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            return result.returncode == 0
-        else:
-            # Mount to specific point
-            result = subprocess.run(
-                ['mount', '-t', 'hfs', drive, mount_point],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            return result.returncode == 0
+            return _run_diskutil(
+                ['diskutil', 'mount', drive], f"Mounting {drive}")
+
+        # The drives this writes are FAT32, so msdos is the right type;
+        # hfs was hardcoded here and could never mount one of them.
+        return _run_diskutil(
+            ['mount', '-t', 'msdos', drive, mount_point],
+            f"Mounting {drive} at {mount_point}")
 
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to mount {drive}: {e}")
         return False
+
+
+def is_whole_disk(device: str) -> bool:
+    """True if `device` is a whole disk rather than one of its partitions."""
+    try:
+        result = subprocess.run(
+            ['diskutil', 'info', '-plist', device],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            return False
+        return bool(plistlib.loads(result.stdout.encode()).get('WholeDisk'))
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError,
+            AttributeError, ExpatError) as e:
+        # Unparseable output must not abort the caller: treating the device
+        # as a partition is the conservative answer, since it avoids
+        # repartitioning something on a guess.
+        logger.debug(f"diskutil info failed for {device}: {e}")
+        return False
+
+
+def _run_diskutil(command: List[str], description: str) -> bool:
+    """Run a diskutil command, logging why it failed rather than just False."""
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        logger.error(f"{description} timed out")
+        return False
+    except _SUBPROCESS_ERRORS as e:
+        logger.error(f"{description} failed: {e}")
+        return False
+
+    if result.returncode == 0:
+        return True
+
+    detail = ((result.stderr or '') + (result.stdout or '')).strip()
+    logger.error(f"{description} failed (exit {result.returncode}): "
+                 f"{detail or 'no output'}")
+    return False
 
 
 def format_drive(drive: str, filesystem: str = "vfat",
@@ -294,37 +297,30 @@ def format_drive(drive: str, filesystem: str = "vfat",
         # First, unmount the drive
         unmount_drive(drive)
 
-        # Format based on filesystem type
-        if filesystem.lower() in ['vfat', 'msdos', 'fat32']:
-            # For FAT32, we use diskutil
-            result = subprocess.run(
-                ['diskutil', 'eraseVolume', 'FAT32', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+        personality = {
+            'vfat': 'FAT32', 'msdos': 'FAT32', 'fat32': 'FAT32',
+            'hfs': 'HFS+', 'hfs+': 'HFS+',
+            'exfat': 'ExFAT',
+        }.get(filesystem.lower())
 
-        elif filesystem.lower() in ['hfs', 'hfs+']:
-            result = subprocess.run(
-                ['diskutil', 'eraseVolume', 'HFS+', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+        if personality is None:
+            logger.error(f"Unsupported filesystem type: {filesystem}")
+            return False
 
-        elif filesystem.lower() == 'exfat':
-            result = subprocess.run(
-                ['diskutil', 'eraseVolume', 'ExFAT', label, drive],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+        if is_whole_disk(drive):
+            # eraseVolume on a whole disk lays a filesystem straight over
+            # sector 0 with no partition map -- a "superfloppy". The boot
+            # record written later would then overwrite the filesystem's own
+            # boot sector. eraseDisk creates the map plus a partition.
+            return _run_diskutil(
+                ['diskutil', 'eraseDisk', personality, label,
+                 'MBRFormat', drive],
+                f"Partitioning and formatting {drive} as {personality}")
 
-        logger.error(f"Unsupported filesystem type: {filesystem}")
-        return False
+        # Already a partition: erase just that volume.
+        return _run_diskutil(
+            ['diskutil', 'eraseVolume', personality, label, drive],
+            f"Formatting {drive} as {personality}")
 
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to format {drive} as {filesystem}: {e}")

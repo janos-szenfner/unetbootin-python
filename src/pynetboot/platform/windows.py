@@ -110,6 +110,33 @@ def mount_drive(drive: str, mount_point: str = None) -> bool:
     return True
 
 
+# diskpart announces failures in prose on stdout and still exits 0, so a
+# script that selected nothing and formatted nothing looks like a success.
+# These are its failure phrasings.
+_DISKPART_ERRORS = (
+    'DiskPart has encountered an error',
+    'Virtual Disk Service error',
+    'The arguments specified for this command are not valid',
+    'There is no volume selected',
+    'There is no disk selected',
+    'The specified volume is not valid',
+    'access is denied',
+)
+
+
+def _diskpart_error(output: str) -> Optional[str]:
+    """Return the first failure line diskpart printed, if any."""
+    lowered = output.lower()
+    for marker in _DISKPART_ERRORS:
+        position = lowered.find(marker.lower())
+        if position == -1:
+            continue
+        line_start = output.rfind('\n', 0, position) + 1
+        line_end = output.find('\n', position)
+        return output[line_start:line_end if line_end != -1 else None].strip()
+    return None
+
+
 def format_drive(drive: str, filesystem: str = "FAT32",
                  label: str = "PYNETBOOT") -> bool:
     """Format a drive on Windows using diskpart scripting.
@@ -142,8 +169,7 @@ def format_drive(drive: str, filesystem: str = "FAT32",
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             # Diskpart script to format the drive
-            f.write(f"select volume {drive_letter}\
-\n")
+            f.write(f"select volume {drive_letter}\r\n")
             f.write("clean\r\n")
             if filesystem.upper() == "FAT32":
                 f.write(f"create partition primary\r\n")
@@ -170,13 +196,19 @@ def format_drive(drive: str, filesystem: str = "FAT32",
                 timeout=120
             )
 
-            # Check for success
-            if result.returncode == 0:
+            # diskpart reports failures on stdout and still exits 0, so the
+            # exit code alone would accept a script that formatted nothing.
+            output = ((result.stdout or '') + (result.stderr or '')).strip()
+            failure = _diskpart_error(output)
+
+            if result.returncode == 0 and not failure:
                 logger.info(f"Successfully formatted {drive} as {filesystem}")
                 return True
-            else:
-                logger.error(f"diskpart failed to format {drive}: {result.stderr}")
-                return False
+
+            logger.error(
+                f"diskpart failed to format {drive} "
+                f"(exit {result.returncode}): {failure or output or 'no output'}")
+            return False
         finally:
             # Clean up the script file
             try:
