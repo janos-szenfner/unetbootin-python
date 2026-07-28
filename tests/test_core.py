@@ -354,9 +354,35 @@ class TestInstaller(unittest.TestCase):
                              side_effect=lambda d: d), \
                 patch.object(self.installer, '_format_device',
                              return_value=True), \
+                patch('pynetboot.platform.windows.wait_for_drive',
+                      return_value=True), \
                 patch.object(self.installer, '_mount_device') as mount:
             ok = self.installer._prepare_installation('/src', 'D:\\', params)
         return ok, params, mount
+
+    def test_windows_waits_for_the_drive_before_writing(self):
+        """Formatting removes the letter; writing before it returns fails
+        on every file with "cannot find the path specified"."""
+        self.installer.platform = 'win32'
+        params = {}
+        with patch('pynetboot.core.elevation.is_elevated', return_value=True), \
+                patch.object(self.installer, '_log_device_details'), \
+                patch('pynetboot.platform.is_safe_target', return_value=True), \
+                patch.object(self.installer, '_validate_target_device',
+                             return_value=True), \
+                patch.object(self.installer, '_is_device_mounted',
+                             return_value=False), \
+                patch.object(self.installer, '_partition_target',
+                             side_effect=lambda d: d), \
+                patch.object(self.installer, '_format_device',
+                             return_value=True), \
+                patch('pynetboot.platform.windows.wait_for_drive',
+                      return_value=False) as waited:
+            self.assertFalse(
+                self.installer._prepare_installation('/src', 'D:\\', params))
+
+        waited.assert_called_once()
+        self.assertIn('did not come back', params['failure_reason'])
 
     def test_windows_writes_to_the_drive_root_not_a_temp_folder(self):
         """A drive letter is already a path; there is nothing to mount.

@@ -266,6 +266,19 @@ class USBInstaller:
                 # them into a temporary folder instead would leave the drive
                 # empty while reporting success.
                 mount_point = _windows_drive_root(target_partition)
+
+                # Formatting removes the letter and Windows re-creates the
+                # volume a moment later, so the root does not exist yet.
+                # Writing now fails on every single file.
+                from pynetboot.platform.windows import wait_for_drive
+                if not wait_for_drive(mount_point):
+                    self._fail(params,
+                               f"{mount_point} did not come back after "
+                               f"formatting. Unplug the drive, plug it in "
+                               f"again and retry.")
+                    shutil.rmtree(params['temp_dir'], ignore_errors=True)
+                    return False
+
                 params['mount_point_is_temp'] = False
                 logger.info(f"Writing directly to {mount_point}")
             else:

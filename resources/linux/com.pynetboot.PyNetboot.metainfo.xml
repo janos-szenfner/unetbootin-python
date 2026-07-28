@@ -41,6 +41,14 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.4.5" date="2026-07-28">
+      <description>
+        <p>Fixes copying files to the drive on Windows.</p>
+        <ul>
+          <li>Formatting a drive briefly removes its letter. Writing began before the drive came back, so every file failed. It now keeps its original letter and is waited for</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.4" date="2026-07-28">
       <description>
         <p>Protects a drive that cannot be released at the end of a write.</p>

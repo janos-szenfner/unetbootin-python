@@ -937,6 +937,77 @@ class TestDriveSerialToolFallback(unittest.TestCase):
                          "a missing optional tool must not log an error")
 
 
+class TestWindowsFormatting(unittest.TestCase):
+    """diskpart scripting. Pure text, so it runs on any platform."""
+
+    def _script_for(self, drive):
+        import io
+        captured = {}
+
+        class FakeTempFile(io.StringIO):
+            name = '/tmp/diskpart.txt'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                captured['script'] = self.getvalue()
+                return False
+
+        with patch('tempfile.NamedTemporaryFile', return_value=FakeTempFile()), \
+                patch('os.unlink'), \
+                patch('subprocess.run',
+                      return_value=MagicMock(returncode=0, stdout='done',
+                                             stderr='')):
+            windows.format_drive(drive, 'FAT32', 'PYNETBOOT')
+        return captured['script']
+
+    def test_the_original_letter_is_requested_back(self):
+        """A bare `assign` lets Windows choose any free letter.
+
+        Regression test: the drive could reappear as a different letter, and
+        every write then went to a path that did not exist.
+        """
+        self.assertIn('assign letter=E', self._script_for('E:\\'))
+
+    def test_every_drive_spelling_is_accepted(self):
+        for spelling in ('E', 'e:', 'E:\\', 'e:/'):
+            with self.subTest(drive=spelling):
+                script = self._script_for(spelling)
+                self.assertIn('select volume E', script)
+                self.assertIn('assign letter=E', script)
+
+    def test_a_non_drive_is_refused(self):
+        self.assertFalse(windows.format_drive('/dev/sdb', 'FAT32'))
+
+
+class TestWaitForDrive(unittest.TestCase):
+    """Formatting removes the letter; the volume returns a moment later."""
+
+    def test_waits_until_the_volume_is_listable(self):
+        appearing = [False, False, True]
+        with patch('os.path.exists',
+                   side_effect=lambda p: appearing.pop(0) if appearing else True), \
+                patch('os.listdir', return_value=[]), \
+                patch('time.sleep'):
+            self.assertTrue(windows.wait_for_drive('E:\\', timeout=5))
+
+    def test_existing_but_not_yet_readable_is_not_ready(self):
+        """exists() can be true before the filesystem will answer."""
+        with patch('os.path.exists', return_value=True), \
+                patch('os.listdir', side_effect=OSError('not ready')), \
+                patch('time.sleep'), \
+                patch('time.monotonic', side_effect=[0, 1, 99]):
+            self.assertFalse(windows.wait_for_drive('E:\\', timeout=5))
+
+    def test_gives_up_and_says_so(self):
+        with patch('os.path.exists', return_value=False), \
+                patch('time.sleep'), \
+                patch('time.monotonic', side_effect=[0, 1, 99]):
+            with self.assertLogs('pynetboot.platform.windows', 'ERROR'):
+                self.assertFalse(windows.wait_for_drive('E:\\', timeout=5))
+
+
 class TestDiskpartOutputParsing(unittest.TestCase):
     """diskpart reports failures on stdout and still exits 0.
 

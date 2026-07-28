@@ -298,6 +298,39 @@ def _diskpart_error(output: str) -> Optional[str]:
     return None
 
 
+# Windows removes the drive letter during `clean` and re-creates the volume
+# a moment after `assign`; writing before it reappears fails with "The system
+# cannot find the path specified".
+_VOLUME_SETTLE_SECONDS = 30
+
+
+def wait_for_drive(drive: str, timeout: int = _VOLUME_SETTLE_SECONDS) -> bool:
+    """Wait for a freshly formatted drive letter to become usable."""
+    import time
+
+    root = (drive or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
+    if not root.isalpha():
+        return False
+    root = f"{root}:\\"
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        # exists() alone can be true before the filesystem is ready, so the
+        # directory is actually listed.
+        try:
+            if os.path.exists(root):
+                os.listdir(root)
+                logger.info(f"{root} is ready")
+                return True
+        except OSError:
+            pass
+        time.sleep(0.5)
+
+    logger.error(
+        f"{root} did not become available within {timeout}s after formatting")
+    return False
+
+
 def format_drive(drive: str, filesystem: str = "FAT32",
                  label: str = "PYNETBOOT") -> bool:
     """Format a drive on Windows using diskpart scripting.
@@ -315,14 +348,14 @@ def format_drive(drive: str, filesystem: str = "FAT32",
         True if formatting succeeded, False otherwise
     """
     try:
-        # Normalize drive letter
-        if drive and len(drive) == 1 and drive.isalpha():
-            drive = f"{drive}:"
-
-        if not drive.endswith(':'):
-            drive = f"{drive}:"
-
-        drive_letter = drive[0].upper()
+        # Callers pass 'E', 'E:' or 'E:\'. Appending ':' unconditionally
+        # turned the last of those into 'E:\:', which then appeared in the
+        # log as a nonsense path.
+        drive_letter = (drive or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
+        if not drive_letter.isalpha():
+            logger.error(f"Not a drive letter: {drive!r}")
+            return False
+        drive = f"{drive_letter}:"
 
         # Create a temporary diskpart script
         import tempfile
@@ -344,7 +377,10 @@ def format_drive(drive: str, filesystem: str = "FAT32",
             else:
                 f.write(f"create partition primary\r\n")
                 f.write(f"format fs=fat32 label={label} quick\r\n")
-            f.write("assign\r\n")
+            # Ask for the letter back explicitly. A bare `assign` lets
+            # Windows pick any free letter, so the drive could reappear as
+            # something else and every later write would go nowhere.
+            f.write(f"assign letter={drive_letter}\r\n")
             f.write("exit\r\n")
             script_path = f.name
 
