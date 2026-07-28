@@ -384,18 +384,43 @@ class TestInstaller(unittest.TestCase):
         removed = [call.args[0] for call in rmtree.call_args_list]
         self.assertNotIn('D:\\', removed)
 
-    def test_a_temporary_mount_point_is_still_removed(self):
-        """The guard must not leak the temp mount directory on Unix."""
-        self.installer.platform = 'linux'
+    def _cleanup_removals(self, platform, mounted_after_unmount, umount_rc=0):
+        self.installer.platform = platform
         params = {'mount_point': '/tmp/pynetboot_mount_x',
                   'mount_point_is_temp': True}
         with patch('shutil.rmtree') as rmtree, \
                 patch('os.path.exists', return_value=True), \
-                patch('subprocess.run'):
+                patch('os.path.ismount',
+                      side_effect=[True, mounted_after_unmount]), \
+                patch('subprocess.run',
+                      return_value=MagicMock(returncode=umount_rc,
+                                             stderr='target is busy')):
             self.installer._cleanup_installation('/src', '/dev/sdb', params)
+        return [call.args[0] for call in rmtree.call_args_list]
 
-        self.assertIn('/tmp/pynetboot_mount_x',
-                      [call.args[0] for call in rmtree.call_args_list])
+    def test_a_temporary_mount_point_is_still_removed(self):
+        """The guard must not leak the temp mount directory on Unix."""
+        for platform in ('linux', 'darwin'):
+            with self.subTest(platform=platform):
+                self.assertIn(
+                    '/tmp/pynetboot_mount_x',
+                    self._cleanup_removals(platform,
+                                           mounted_after_unmount=False))
+
+    def test_a_failed_unmount_does_not_delete_the_drive_contents(self):
+        """Removing a live mount point deletes what is on the device.
+
+        Neither unmount checked its result, and the directory was removed
+        regardless -- so a busy device meant deleting the files that had
+        just been written to it.
+        """
+        for platform in ('linux', 'darwin'):
+            with self.subTest(platform=platform):
+                self.assertNotIn(
+                    '/tmp/pynetboot_mount_x',
+                    self._cleanup_removals(platform,
+                                           mounted_after_unmount=True,
+                                           umount_rc=1))
 
     def test_drive_root_normalisation(self):
         from pynetboot.core.installer import _windows_drive_root

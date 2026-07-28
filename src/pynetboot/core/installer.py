@@ -406,40 +406,31 @@ class USBInstaller:
                 if self.platform == 'win32':
                     # Windows: no explicit unmount needed for drive letters
                     pass
-                elif self.platform == 'darwin':
-                    # Find what's mounted at this point and unmount it
+                elif os.path.ismount(mount_point):
+                    command = (['umount', mount_point] if self.platform == 'darwin'
+                               else ['sudo', 'umount', mount_point])
                     result = subprocess.run(
-                        ['mount'],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
+                        command, capture_output=True, text=True, timeout=60)
                     if result.returncode == 0:
-                        for line in result.stdout.split('\n'):
-                            if mount_point in line:
-                                parts = line.strip().split()
-                                if len(parts) >= 1:
-                                    subprocess.run(
-                                        ['umount', mount_point],
-                                        capture_output=True,
-                                        timeout=5
-                                    )
-                                break
-                else:  # Linux
-                    subprocess.run(
-                        ['sudo', 'umount', mount_point],
-                        capture_output=True,
-                        timeout=5
-                    )
+                        logger.info(f"Unmounted {mount_point}")
+                    else:
+                        logger.error(
+                            f"Could not unmount {mount_point}: "
+                            f"{(result.stderr or '').strip()}")
 
-                # Remove the mount point directory -- but only when it is one
-                # we created. On Windows it is the drive's own root, and
-                # deleting it would erase everything just written.
-                if params.get('mount_point_is_temp', True):
-                    shutil.rmtree(mount_point, ignore_errors=True)
-                else:
+                # Removing the directory is only safe once nothing is mounted
+                # on it. While it is still a mount point it *is* the drive, so
+                # deleting it would erase everything just written -- which is
+                # what would happen whenever an unmount failed.
+                if not params.get('mount_point_is_temp', True):
                     logger.debug(
                         f"Leaving {mount_point} alone: it is the target drive")
+                elif os.path.ismount(mount_point):
+                    logger.error(
+                        f"Not removing {mount_point}: it is still mounted, so "
+                        f"removing it would delete the drive's contents")
+                else:
+                    shutil.rmtree(mount_point, ignore_errors=True)
 
             # Remove temporary directory
             temp_dir = params.get('temp_dir')

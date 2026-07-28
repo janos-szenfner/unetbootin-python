@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.4.4" date="2026-07-28">
+      <description>
+        <p>Protects a drive that cannot be released at the end of a write.</p>
+        <ul>
+          <li>If the drive is still in use when the write finishes, its contents are no longer deleted during tidying up. This affected Linux and macOS</li>
+          <li>A drive that cannot be released now says so, instead of failing silently</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.3" date="2026-07-28">
       <description>
         <p>Fixes writing a drive on Windows.</p>
