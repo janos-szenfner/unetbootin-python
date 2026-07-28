@@ -41,6 +41,14 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.7.1" date="2026-07-28">
+      <description>
+        <p>openSUSE Leap downloads are now checked against their published checksum.</p>
+        <ul>
+          <li>Both Leap versions now use the image openSUSE publishes a checksum for, so the download can be verified. 32 of 37 downloads are now checked</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.0" date="2026-07-28">
       <description>
         <p>Internal clean-up. No change to how the application behaves.</p>

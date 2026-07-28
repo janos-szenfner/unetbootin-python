@@ -319,11 +319,19 @@ class DistributionManager:
                 'versions': [
                     {
     'name': 'Leap 16.1 (Stable)',
-    'url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64.install.iso',
+    'url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64-Build37.2.install.iso',
+                     # openSUSE publishes checksums only for the
+                     # build-numbered image, not the unversioned
+                     # alias, and only as SHA512.
+                     'sha512_url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64-Build37.2.install.iso.sha512',
      'size': 4552916992},
                     {
     'name': 'Leap 16.0 (Stable)',
-    'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64.install.iso',
+    'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64-Build178.27.install.iso',
+                     # openSUSE publishes checksums only for the
+                     # build-numbered image, not the unversioned
+                     # alias, and only as SHA512.
+                     'sha512_url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64-Build178.27.install.iso.sha512',
      'size': 4538236928},
                     {
     'name': 'Tumbleweed (Rolling)',
