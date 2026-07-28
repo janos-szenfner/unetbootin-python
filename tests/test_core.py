@@ -338,6 +338,34 @@ class TestInstaller(unittest.TestCase):
             result = self.installer._validate_target_device('/nonexistent/device')
             self.assertFalse(result)
 
+    def test_windows_without_administrator_stops_before_touching_the_drive(self):
+        """diskpart needs Administrator and only says "Access is denied".
+
+        Regression test: that surfaced once the write was under way, as an
+        opaque "Preparation failed" with no hint of the cause.
+        """
+        self.installer.platform = 'win32'
+        params = {}
+        with patch('pynetboot.core.elevation.is_elevated', return_value=False), \
+                patch.object(self.installer, '_log_device_details'), \
+                patch.object(self.installer, '_partition_target') as partition:
+            self.assertFalse(
+                self.installer._prepare_installation('/src', 'D:\\', params))
+            partition.assert_not_called()
+
+        self.assertIn('Administrator', params['failure_reason'])
+
+    def test_the_failure_reason_reaches_the_caller(self):
+        """The dialog must show the cause, not just "Preparation failed"."""
+        self.installer.platform = 'win32'
+        with patch('pynetboot.core.elevation.is_elevated', return_value=False), \
+                patch('pynetboot.core.elevation.privileged_session'), \
+                patch.object(self.installer, '_log_device_details'):
+            ok, message = self.installer._install_sync('/src', 'D:\\', {})
+
+        self.assertFalse(ok)
+        self.assertIn('Administrator', message)
+
     def test_preparation_stops_before_touching_a_drive_without_the_tools(self):
         """Missing tools must be caught before the drive is repartitioned.
 

@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.4.2" date="2026-07-28">
+      <description>
+        <p>The log can be opened at any time, and failures explain themselves.</p>
+        <ul>
+          <li>The Log button now works while a drive is being written, which is when it is most useful</li>
+          <li>When a drive cannot be written, the reason is shown instead of a bare "Preparation failed"</li>
+          <li>On Windows, the lack of administrator rights is reported before the drive is touched rather than part-way through</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.1" date="2026-07-28">
       <description>
         <p>Starts much faster on Windows.</p>

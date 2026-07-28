@@ -431,6 +431,13 @@ class PyNetbootApp:
                     percent, text = values['-WORK_PROGRESS-']
                     self.ui.set_progress(percent=percent, text=text)
 
+                elif event == '-LOG-':
+                    # The log button stays enabled while work runs (it is not
+                    # in _BUSY_ELEMENTS), but this loop used to drop the
+                    # event, so nothing happened when it was pressed. The log
+                    # is most wanted precisely while something is going on.
+                    self.ui.show_log()
+
                 elif event in ('-CANCEL_DOWNLOAD-', '-CANCEL-') and cancellable:
                     if not cancel_event.is_set():
                         logger.info("Cancel requested by user")

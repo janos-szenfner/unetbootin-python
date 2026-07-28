@@ -79,10 +79,14 @@ class USBInstaller:
         The whole run happens inside one privileged session, so the user is
         asked for a password once rather than once per privileged command.
         """
-        from pynetboot.core.elevation import privileged_session
+        from pynetboot.core.elevation import privileged_session, is_elevated
 
         with privileged_session() as single_prompt:
-            if not single_prompt:
+            if single_prompt:
+                pass          # one prompt already covers the whole run
+            elif is_elevated():
+                logger.info("Already running elevated; no prompt needed")
+            else:
                 logger.info(
                     "No privileged session; each step will ask separately")
             return self._install_sync(
@@ -134,7 +138,7 @@ class USBInstaller:
             started = time.monotonic()
             if not self._prepare_installation(source_dir, target_device, params):
                 logger.error("Stage 'Preparing' failed")
-                return False, "Preparation failed"
+                return False, params.get('failure_reason', "Preparation failed")
             finished('Preparing', started)
             update_progress(100)
             current_stage += 1
@@ -182,15 +186,26 @@ class USBInstaller:
         logger.info(f"Preparing installation on {target_device}")
         self._log_device_details(target_device)
 
+        # diskpart needs Administrator and reports the lack of it as a bare
+        # "Access is denied" once the write is already under way. Say so
+        # here instead, while the drive is still untouched.
+        if self.platform == 'win32':
+            from pynetboot.core.elevation import is_elevated
+            if not is_elevated():
+                self._fail(params,
+                           "PyNetboot is not running as Administrator. "
+                           "Right-click it and choose "
+                           "'Run as administrator', then try again.")
+                return False
+
         # Check the external tools up front. Reaching mkfs before noticing
         # dosfstools is absent means the drive has already been repartitioned.
         if self.platform == 'linux':
             from pynetboot.platform.linux import missing_required_tools
             missing = missing_required_tools()
             if missing:
-                logger.error(
-                    "Cannot write the drive: these commands are missing: "
-                    + ', '.join(missing))
+                self._fail(params, "These required commands are missing: "
+                                   + ', '.join(missing))
                 return False
 
         try:
@@ -574,6 +589,13 @@ class USBInstaller:
                     f"{(result.stderr or '').strip()}")
         except _SUBPROCESS_ERRORS as e:
             logger.warning(f"Could not describe {device}: {e}")
+
+    @staticmethod
+    def _fail(params: Dict[str, Any], reason: str) -> None:
+        """Record why a stage failed, so the user sees it rather than a
+        generic "Preparation failed"."""
+        logger.error(reason)
+        params['failure_reason'] = reason
 
     def _partition_target(self, target_device: str) -> Optional[str]:
         """Return the partition to format and mount for `target_device`.

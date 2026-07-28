@@ -108,8 +108,13 @@ def main():
     # rewrites the installer's subprocess `sudo` calls. Relaunching the whole
     # app as root is unnecessary and, via pkexec, would strip DISPLAY/XAUTHORITY
     # and break the GUI — so we deliberately do NOT force elevation at startup.
-    from pynetboot.core.elevation import install_sudo_interceptor
+    from pynetboot.core.elevation import install_sudo_interceptor, is_elevated
     install_sudo_interceptor()
+
+    # Windows embeds a requireAdministrator manifest, so this should already
+    # be true there. Recorded because when it is not, the failure surfaces
+    # much later as an opaque "Access is denied" from diskpart.
+    logger.info(f"Running elevated: {is_elevated()}")
 
     # Must happen before any window exists, or Windows keeps showing the
     # host interpreter's generic icon in the task bar.
