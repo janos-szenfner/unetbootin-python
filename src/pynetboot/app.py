@@ -668,28 +668,26 @@ class PyNetbootApp:
             return None
 
         for version in distro.versions:
-            if version.name == version_name:
-                static = version.get_checksum("sha256")
-                if static:
-                    return static, "sha256"
+            if version.name != version_name:
+                continue
 
-                url = getattr(version, 'sha256_url', None)
+            # Strongest first. A weaker digest is worth far more than
+            # skipping verification entirely, which is what happened
+            # before: it still catches a truncated download, a corrupt
+            # mirror or a substituted file.
+            for algorithm in ("sha256", "sha512", "sha1", "md5"):
+                static = getattr(version, algorithm, None)
+                if static:
+                    return static, algorithm
+
+                url = getattr(version, f"{algorithm}_url", None)
                 if url and iso_filename:
                     fetched = self.downloader.fetch_checksum_from_url(
-                        url, iso_filename)
+                        url, iso_filename, algorithm)
                     if fetched:
-                        return fetched, "sha256"
+                        return fetched, algorithm
 
-                # Some publishers only offer a weaker digest. It is worth
-                # far more than skipping verification entirely, which is
-                # what happened before: it still catches a truncated
-                # download, a corrupt mirror or a substituted file.
-                for weaker in ("sha1", "md5"):
-                    value = version.get_checksum(weaker)
-                    if value:
-                        return value, weaker
-
-                return None
+            return None
 
         return None
 

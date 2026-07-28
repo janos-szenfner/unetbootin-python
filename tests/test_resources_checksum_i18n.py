@@ -185,5 +185,59 @@ class TestCompanionChecksumFile(unittest.TestCase):
         self.assertIsNone(
             self._fetch(text, 'x.iso', 'https://e.test/x.iso.sha256'))
 
+
+class TestOtherDigestAlgorithms(unittest.TestCase):
+    """Some publishers offer no SHA256 at all.
+
+    NetBSD publishes only SHA512 and DragonFly only MD5, so those images
+    were downloaded with nothing checking them.
+    """
+
+    def setUp(self):
+        from pynetboot.core.downloader import Downloader
+        self.downloader = Downloader()
+
+    def _fetch(self, text, iso, algorithm):
+        with patch.object(self.downloader, 'download_page_contents',
+                          return_value=text):
+            return self.downloader.fetch_checksum_from_url(
+                'https://e.test/SUMS', iso, algorithm)
+
+    def test_sha512_in_bsd_layout(self):
+        h = 'a' * 128
+        self.assertEqual(
+            self._fetch(f"SHA512 (NetBSD-10.1-amd64.iso) = {h}\n",
+                        'NetBSD-10.1-amd64.iso', 'sha512'), h)
+
+    def test_md5_in_bsd_layout(self):
+        h = 'b' * 32
+        text = (f"MD5 (dfly-x86_64-5.8.1_REL.img) = {'c' * 32}\n"
+                f"MD5 (dfly-x86_64-6.4.2_REL.iso) = {h}\n")
+        self.assertEqual(
+            self._fetch(text, 'dfly-x86_64-6.4.2_REL.iso', 'md5'), h)
+
+    def test_a_digest_of_the_wrong_width_is_not_accepted(self):
+        """A SHA256 line must not satisfy a request for SHA512."""
+        self.assertIsNone(
+            self._fetch(f"SHA256 (x.iso) = {'d' * 64}\n", 'x.iso', 'sha512'))
+
+    def test_verify_checksum_supports_the_new_algorithms(self):
+        import hashlib, tempfile, os
+        handle = tempfile.NamedTemporaryFile(delete=False)
+        handle.write(b'pynetboot' * 100)
+        handle.close()
+        try:
+            for algorithm in ('sha256', 'sha512', 'sha1', 'md5'):
+                digest = getattr(hashlib, algorithm)(
+                    open(handle.name, 'rb').read()).hexdigest()
+                self.assertTrue(
+                    self.downloader.verify_checksum(handle.name, digest, algorithm))
+                self.assertFalse(
+                    self.downloader.verify_checksum(
+                        handle.name, '0' * len(digest), algorithm))
+        finally:
+            os.unlink(handle.name)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -41,6 +41,14 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.6.1" date="2026-07-28">
+      <description>
+        <p>Checks two more downloads against their publisher's checksum.</p>
+        <ul>
+          <li>NetBSD and DragonFly BSD are now verified. Neither publisher offers the checksum type the application previously understood, so their images were downloaded unchecked</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.6.0" date="2026-07-28">
       <description>
         <p>Drives now get a boot menu, and downloads are checked far more widely.</p>

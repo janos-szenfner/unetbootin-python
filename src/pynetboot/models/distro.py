@@ -26,6 +26,11 @@ class DistributionVersion:
         sha256: SHA256 checksum for verification
         sha1: SHA1 checksum for verification
         md5: MD5 checksum for verification
+        sha512: SHA512 checksum for verification
+        sha512_url: URL of a published SHA512 file, for publishers that offer
+            no SHA256 (NetBSD)
+        md5_url: URL of a published MD5 file, for publishers that offer
+            nothing stronger (DragonFly BSD)
         sha256_url: URL of a published SHA256SUMS-style file. When no static
             `sha256` is set, the checksum is fetched from here at download time
             and matched against the ISO filename — this keeps verification
@@ -45,6 +50,9 @@ class DistributionVersion:
     sha1: Optional[str] = None
     md5: Optional[str] = None
     sha256_url: Optional[str] = None
+    sha512: Optional[str] = None
+    sha512_url: Optional[str] = None
+    md5_url: Optional[str] = None
     download_page: Optional[str] = None
     mirrors: List[str] = field(default_factory=list)
 
@@ -65,6 +73,12 @@ class DistributionVersion:
             result['md5'] = self.md5
         if self.sha256_url:
             result['sha256_url'] = self.sha256_url
+        if self.sha512:
+            result['sha512'] = self.sha512
+        if self.sha512_url:
+            result['sha512_url'] = self.sha512_url
+        if self.md5_url:
+            result['md5_url'] = self.md5_url
         if self.download_page:
             result['download_page'] = self.download_page
         if self.mirrors:
@@ -77,6 +91,8 @@ class DistributionVersion:
             return self.sha256
         elif checksum_type == "sha1" and self.sha1:
             return self.sha1
+        elif checksum_type == "sha512" and self.sha512:
+            return self.sha512
         elif checksum_type == "md5" and self.md5:
             return self.md5
         # Fallback to any available checksum
@@ -491,6 +507,8 @@ class DistributionManager:
                 'versions': [
                     {'name': 'Latest (10.1)',
     'url': 'https://cdn.netbsd.org/pub/NetBSD/images/10.1/NetBSD-10.1-amd64.iso',
+                     # NetBSD publishes no SHA256 for its images.
+                     'sha512_url': 'https://cdn.netbsd.org/pub/NetBSD/images/10.1/SHA512',
      'size': 360000000},
                 ],
                 'icon': 'netbsd',
@@ -535,6 +553,8 @@ class DistributionManager:
                     {
     'name': 'Latest (6.4.2)',
     'url': 'https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.2_REL.iso',
+                     # DragonFly publishes nothing stronger than MD5.
+                     'md5_url': 'https://mirror-master.dragonflybsd.org/iso-images/md5.txt',
      'size': 800000000},
                 ],
                 'icon': 'dragonflybsd',

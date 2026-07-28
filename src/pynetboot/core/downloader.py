@@ -805,6 +805,8 @@ class Downloader:
 
             if checksum_type == "sha256":
                 hasher = hashlib.sha256()
+            elif checksum_type == "sha512":
+                hasher = hashlib.sha512()
             elif checksum_type == "sha1":
                 hasher = hashlib.sha1()
             elif checksum_type == "md5":
@@ -827,9 +829,15 @@ class Downloader:
             logger.error(f"Failed to verify checksum for {file_path}: {e}")
             return False
 
+    # Hex length of each digest, and the tag publishers use in the BSD
+    # layout. Keyed by the name hashlib knows.
+    CHECKSUM_FORMATS = {'sha256': (64, 'SHA256'), 'sha512': (128, 'SHA512'),
+                        'sha1': (40, 'SHA1'), 'md5': (32, 'MD5')}
+
     def fetch_checksum_from_url(self, checksum_url: str,
-                                iso_filename: str) -> Optional[str]:
-        """Fetch a SHA256SUMS-style file and return the hash for `iso_filename`.
+                                iso_filename: str,
+                                algorithm: str = 'sha256') -> Optional[str]:
+        """Fetch a checksum file and return the hash for `iso_filename`.
 
         Handles both common layouts:
           * GNU coreutils: ``<hex>  <filename>`` / ``<hex> *<filename>``
@@ -846,8 +854,13 @@ class Downloader:
                 return None
             target = os.path.basename(iso_filename).strip()
 
-            # BSD / Fedora style: SHA256 (name) = hex
-            bsd = re.compile(r'^SHA256\s*\(([^)]+)\)\s*=\s*([0-9a-fA-F]{64})\s*$')
+            width, tag = self.CHECKSUM_FORMATS.get(
+                algorithm.lower(), self.CHECKSUM_FORMATS['sha256'])
+
+            # BSD / Fedora style: SHA256 (name) = hex. NetBSD publishes
+            # SHA512 and DragonFly MD5 in exactly this shape.
+            bsd = re.compile(
+                rf'^{tag}\s*\(([^)]+)\)\s*=\s*([0-9a-fA-F]{{{width}}})\s*$')
 
             for line in text.splitlines():
                 line = line.strip()
@@ -858,7 +871,7 @@ class Downloader:
                 if m:
                     name, digest = os.path.basename(m.group(1)), m.group(2)
                     if name == target:
-                        logger.info(f"Found published SHA256 for {target}")
+                        logger.info(f"Found published {tag} for {target}")
                         return digest.lower()
                     continue
 
@@ -867,12 +880,12 @@ class Downloader:
                 if len(parts) < 2:
                     continue
                 digest = parts[0].strip()
-                if not re.fullmatch(r'[0-9a-fA-F]{64}', digest):
+                if not re.fullmatch(rf'[0-9a-fA-F]{{{width}}}', digest):
                     continue
                 name = os.path.basename(
                     line[len(parts[0]):].strip().lstrip('*').strip())
                 if name == target:
-                    logger.info(f"Found published SHA256 for {target}")
+                    logger.info(f"Found published {tag} for {target}")
                     return digest.lower()
 
             # A companion file named after the image itself -- say
@@ -885,13 +898,13 @@ class Downloader:
             # of the wrong image gets accepted as verification.
             companion = os.path.basename(checksum_url).startswith(target)
             if companion:
-                digests = re.findall(r'\b[0-9a-fA-F]{64}\b', text)
+                digests = re.findall(rf'\b[0-9a-fA-F]{{{width}}}\b', text)
                 if len(set(d.lower() for d in digests)) == 1:
                     logger.info(
-                        f"Using the single published SHA256 in {checksum_url}")
+                        f"Using the single published {tag} in {checksum_url}")
                     return digests[0].lower()
 
-            logger.warning(f"No SHA256 entry for {target} in {checksum_url}")
+            logger.warning(f"No {tag} entry for {target} in {checksum_url}")
             return None
         except (OSError, ValueError) as e:
             logger.error(f"Failed to fetch checksum from {checksum_url}: {e}")
