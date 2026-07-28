@@ -132,7 +132,7 @@ jobs:
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
 
-      - name: Build with PyInstaller (Universal 2 for Apple Silicon + Intel)
+      - name: Build with PyInstaller (Apple Silicon, arm64)
         run: pyinstaller pynetboot-macos.spec --noconfirm --clean --distpath dist/macos
 
       - name: Create ZIP (Primary - No Gatekeeper issues)
@@ -254,13 +254,27 @@ jobs:
         # A timeout means the GUI came up and stayed up, which is success.
         run: |
           sudo apt-get install -y xvfb
+          # Record the application's own exit status to a file. xvfb-run
+          # returns its own status, and exits 5 when it cannot remove its
+          # temporary directory afterwards -- which masked the real result
+          # and failed this step even though the GUI had come up fine.
           set +e
-          xvfb-run -a timeout 25 dist/linux-appimage/${{ env.APP_NAME }}.AppImage
-          code=$?
+          xvfb-run -a bash -c '
+            timeout 25 dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+            echo $? > appimage-status
+          '
+          xvfb_code=$?
           set -e
+
+          code="$(cat appimage-status 2>/dev/null || echo missing)"
+          echo "application exit status: $code (xvfb-run itself returned $xvfb_code)"
+
           # 124 = timeout: still running after 25s, i.e. the window stayed open.
-          if [ "$code" -eq 124 ]; then
+          if [ "$code" = "124" ]; then
             echo "AppImage started and kept running - bundle is self-contained."
+          elif [ "$code" = "missing" ]; then
+            echo "The application never reported a status; xvfb-run returned $xvfb_code"
+            exit 1
           else
             echo "AppImage exited early with code $code"
             exit 1
@@ -602,7 +616,7 @@ jobs:
             ### Changes
 
             - Windows: EXE with UAC manifest for admin elevation
-            - macOS: .app bundle (Universal 2 - Apple Silicon + Intel), distributed as ZIP and DMG
+            - macOS: .app bundle (Apple Silicon/arm64 only - not Intel), distributed as ZIP and DMG
             - Linux: AppImage, DEB, RPM, and Flatpak packages
 
             ### macOS Installation Notes

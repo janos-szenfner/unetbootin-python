@@ -1016,6 +1016,70 @@ class TestWindowsDriveListing(unittest.TestCase):
                 '{"DeviceID":"E:","VolumeName":"USB","FileSystem":"FAT32",'
                 '"Size":"16000000000","FreeSpace":"16000000000","DriveType":2}]')
 
+    @staticmethod
+    def _fake_kernel32(drive_bits):
+        """A stand-in kernel32 reporting the given drive letters."""
+        k32 = MagicMock()
+        k32.GetLogicalDrives.return_value = drive_bits
+        k32.SetErrorMode.return_value = 0
+        k32.GetDriveTypeW.side_effect = (
+            lambda root: 3 if root.startswith('C') else 2)
+
+        def volume_info(root, label, _ln, _ser, _mx, _fl, fs, _fn):
+            label.value = 'System' if root.startswith('C') else 'PYNETBOOT'
+            fs.value = 'NTFS' if root.startswith('C') else 'FAT32'
+            return 1
+        k32.GetVolumeInformationW.side_effect = volume_info
+
+        def free_space(root, _a, total, free):
+            total.value = 500_000_000_000 if root.startswith('C') else 16_000_000_000
+            free.value = 100
+            return 1
+        k32.GetDiskFreeSpaceExW.side_effect = free_space
+        return k32
+
+    def _run_win32(self, kernel32):
+        import ctypes
+        import types
+        wintypes = types.SimpleNamespace(
+            DWORD=ctypes.c_ulong, UINT=ctypes.c_uint, BOOL=ctypes.c_int,
+            LPCWSTR=ctypes.c_wchar_p, LPWSTR=ctypes.c_wchar_p)
+        with patch.object(ctypes, 'WinDLL', create=True,
+                          return_value=kernel32), \
+                patch.object(ctypes, 'wintypes', create=True, new=wintypes), \
+                patch.object(ctypes, 'byref', side_effect=lambda x: x):
+            return windows._drives_via_win32()
+
+    def test_win32_listing_spawns_no_process(self):
+        """PowerShell takes about three seconds to start, and that cost was
+        paid at launch and again on every refresh."""
+        kernel32 = self._fake_kernel32((1 << 2) | (1 << 4))   # C and E
+        with patch('subprocess.run') as mock_run:
+            drives = self._run_win32(kernel32)
+            mock_run.assert_not_called()
+
+        self.assertEqual([d['letter'] for d in drives], ['C', 'E'])
+        usb = drives[1]
+        self.assertTrue(usb['removable'])
+        self.assertEqual(usb['label'], 'PYNETBOOT')
+        self.assertEqual(usb['size'], 16_000_000_000)
+
+    def test_win32_listing_suppresses_no_media_dialogs(self):
+        """Probing an empty card reader otherwise raises a system dialog."""
+        kernel32 = self._fake_kernel32(1 << 2)
+        self._run_win32(kernel32)
+        self.assertTrue(kernel32.SetErrorMode.called)
+        # Called again to restore the previous mode.
+        self.assertEqual(kernel32.SetErrorMode.call_count, 2)
+
+    def test_win32_listing_handles_a_drive_with_no_media(self):
+        kernel32 = self._fake_kernel32(1 << 4)
+        kernel32.GetVolumeInformationW.side_effect = None
+        kernel32.GetVolumeInformationW.return_value = 0     # failure
+        drives = self._run_win32(kernel32)
+        self.assertEqual([d['letter'] for d in drives], ['E'])
+        self.assertEqual(drives[0]['label'], '')
+
     def test_missing_wmic_does_not_raise_unbound_local(self):
         """wmic is gone from current Windows 11.
 

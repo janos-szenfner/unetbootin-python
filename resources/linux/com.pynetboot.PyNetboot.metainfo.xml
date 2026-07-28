@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.4.1" date="2026-07-28">
+      <description>
+        <p>Starts much faster on Windows.</p>
+        <ul>
+          <li>Listing drives no longer takes about three seconds. It asked Windows through a helper program that is slow to start; it now asks the system directly, which is immediate. This applied at start-up and again on every refresh</li>
+          <li>Checking an empty card reader no longer raises a "there is no disk in the drive" message</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-07-28">
       <description>
         <p>Uses your desktop's own file chooser on Linux.</p>

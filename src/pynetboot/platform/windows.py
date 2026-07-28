@@ -44,6 +44,84 @@ def _drive_from_fields(device_id: str, drive_type: str, filesystem: str,
     }
 
 
+def _drives_via_win32() -> List[Dict[str, Any]]:
+    """List drives through the Win32 API.
+
+    Both other sources start a process -- PowerShell needs about three
+    seconds to load .NET, and that cost is paid again on every refresh.
+    These calls answer from the kernel in well under a millisecond.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
+    kernel32.GetLogicalDrives.restype = wintypes.DWORD
+    kernel32.GetDriveTypeW.argtypes = [wintypes.LPCWSTR]
+    kernel32.GetDriveTypeW.restype = wintypes.UINT
+    kernel32.GetVolumeInformationW.argtypes = [
+        wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
+        ctypes.POINTER(wintypes.DWORD), wintypes.LPWSTR, wintypes.DWORD]
+    kernel32.GetVolumeInformationW.restype = wintypes.BOOL
+    kernel32.GetDiskFreeSpaceExW.argtypes = [
+        wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_ulonglong),
+        ctypes.POINTER(ctypes.c_ulonglong), ctypes.POINTER(ctypes.c_ulonglong)]
+    kernel32.GetDiskFreeSpaceExW.restype = wintypes.BOOL
+
+    # Probing an empty card reader otherwise raises a "There is no disk in
+    # the drive" dialog that the user has to dismiss.
+    SEM_FAILCRITICALERRORS = 0x0001
+    previous_mode = kernel32.SetErrorMode(SEM_FAILCRITICALERRORS)
+
+    try:
+        mask = kernel32.GetLogicalDrives()
+        if not mask:
+            return []
+
+        drives = []
+        for index in range(26):
+            if not (mask >> index) & 1:
+                continue
+
+            letter = chr(ord('A') + index)
+            root = f"{letter}:\\"
+            drive_type = kernel32.GetDriveTypeW(root)
+
+            label_buffer = ctypes.create_unicode_buffer(261)
+            fs_buffer = ctypes.create_unicode_buffer(261)
+            serial = wintypes.DWORD()
+            max_component = wintypes.DWORD()
+            flags = wintypes.DWORD()
+
+            # Fails for a drive with no media; the entry is still listed so
+            # an empty card reader remains visible, just without details.
+            # len() of a unicode buffer is its length in characters, which
+            # is what the API wants; sizeof would be bytes.
+            if not kernel32.GetVolumeInformationW(
+                    root, label_buffer, len(label_buffer),
+                    ctypes.byref(serial), ctypes.byref(max_component),
+                    ctypes.byref(flags),
+                    fs_buffer, len(fs_buffer)):
+                label_buffer.value = ''
+                fs_buffer.value = ''
+
+            total = ctypes.c_ulonglong(0)
+            free = ctypes.c_ulonglong(0)
+            kernel32.GetDiskFreeSpaceExW(
+                root, None, ctypes.byref(total), ctypes.byref(free))
+
+            drive = _drive_from_fields(
+                f"{letter}:", str(drive_type), fs_buffer.value,
+                label_buffer.value, str(total.value), str(free.value))
+            if drive:
+                drives.append(drive)
+
+        return drives
+    finally:
+        kernel32.SetErrorMode(previous_mode)
+
+
 def _drives_via_powershell() -> List[Dict[str, Any]]:
     """List drives with CIM, the supported replacement for wmic.
 
@@ -119,12 +197,14 @@ def _drives_via_wmic() -> List[Dict[str, Any]]:
 def get_drive_list() -> List[Dict[str, Any]]:
     """Get list of available drives on Windows.
 
-    Tries CIM first and falls back to wmic, so both current Windows 11
-    (where wmic is gone) and older releases are covered.
+    Asks the Win32 API first, which answers immediately; PowerShell and
+    wmic are kept as fallbacks, covering both current Windows 11 (where
+    wmic is gone) and older releases.
     """
     errors = []
 
-    for describe, source in (('PowerShell/CIM', _drives_via_powershell),
+    for describe, source in (('Win32 API', _drives_via_win32),
+                             ('PowerShell/CIM', _drives_via_powershell),
                              ('wmic', _drives_via_wmic)):
         try:
             drives = source()
@@ -133,7 +213,9 @@ def get_drive_list() -> List[Dict[str, Any]]:
             errors.append(f"{describe}: not available")
             continue
         except (subprocess.SubprocessError, OSError, ValueError,
-                csv.Error, json.JSONDecodeError) as e:
+                AttributeError, csv.Error, json.JSONDecodeError) as e:
+            # AttributeError covers a missing ctypes symbol on an unexpected
+            # Windows build, so the fallbacks still get their turn.
             errors.append(f"{describe}: {e}")
             continue
 
