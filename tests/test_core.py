@@ -338,6 +338,72 @@ class TestInstaller(unittest.TestCase):
             result = self.installer._validate_target_device('/nonexistent/device')
             self.assertFalse(result)
 
+    def _prepared_windows_params(self):
+        """Run _prepare_installation for a Windows drive letter."""
+        from pynetboot.core.installer import USBInstaller as _Installer
+        self.installer.platform = 'win32'
+        params = {}
+        with patch('pynetboot.core.elevation.is_elevated', return_value=True), \
+                patch.object(self.installer, '_log_device_details'), \
+                patch('pynetboot.platform.is_safe_target', return_value=True), \
+                patch.object(self.installer, '_validate_target_device',
+                             return_value=True), \
+                patch.object(self.installer, '_is_device_mounted',
+                             return_value=False), \
+                patch.object(self.installer, '_partition_target',
+                             side_effect=lambda d: d), \
+                patch.object(self.installer, '_format_device',
+                             return_value=True), \
+                patch.object(self.installer, '_mount_device') as mount:
+            ok = self.installer._prepare_installation('/src', 'D:\\', params)
+        return ok, params, mount
+
+    def test_windows_writes_to_the_drive_root_not_a_temp_folder(self):
+        """A drive letter is already a path; there is nothing to mount.
+
+        Regression test: the mount step only recognised a bare letter, so
+        'D:\\' failed outright. Had it matched, the files would have been
+        copied into a temporary folder and the drive left empty.
+        """
+        ok, params, mount = self._prepared_windows_params()
+        self.assertTrue(ok)
+        self.assertEqual(params['mount_point'], 'D:\\')
+        self.assertFalse(params['mount_point_is_temp'])
+        mount.assert_not_called()
+
+    def test_cleanup_never_deletes_the_windows_drive_root(self):
+        """The mount point is the drive itself, so removing it would erase
+        everything just written to it."""
+        _ok, params, _mount = self._prepared_windows_params()
+
+        with patch('shutil.rmtree') as rmtree, \
+                patch('os.path.exists', return_value=True), \
+                patch('subprocess.run'):
+            self.installer._cleanup_installation('/src', 'D:\\', dict(params))
+
+        removed = [call.args[0] for call in rmtree.call_args_list]
+        self.assertNotIn('D:\\', removed)
+
+    def test_a_temporary_mount_point_is_still_removed(self):
+        """The guard must not leak the temp mount directory on Unix."""
+        self.installer.platform = 'linux'
+        params = {'mount_point': '/tmp/pynetboot_mount_x',
+                  'mount_point_is_temp': True}
+        with patch('shutil.rmtree') as rmtree, \
+                patch('os.path.exists', return_value=True), \
+                patch('subprocess.run'):
+            self.installer._cleanup_installation('/src', '/dev/sdb', params)
+
+        self.assertIn('/tmp/pynetboot_mount_x',
+                      [call.args[0] for call in rmtree.call_args_list])
+
+    def test_drive_root_normalisation(self):
+        from pynetboot.core.installer import _windows_drive_root
+        self.assertEqual(_windows_drive_root('D'), 'D:\\')
+        self.assertEqual(_windows_drive_root('D:'), 'D:\\')
+        self.assertEqual(_windows_drive_root('D:\\'), 'D:\\')
+        self.assertEqual(_windows_drive_root('e:\\'), 'E:\\')
+
     def test_windows_without_administrator_stops_before_touching_the_drive(self):
         """diskpart needs Administrator and only says "Access is denied".
 

@@ -556,7 +556,13 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 #### Available Distributions by Category:
 - **Linux**: Ubuntu (24.04, 22.04, 20.04), Debian 13, Fedora (44, 43), Linux Mint (22.3, 22.2), Arch Linux, SUSE Tumbleweed, SUSE Leap 16.0, Zorin OS 18.1, Kali Linux 2026.2, Slackware 15.0, OpenMandriva (ROME, 6.0), Tiny Core 17.0
 - **BSD**: FreeBSD 15.1, NetBSD 10.1, MidnightBSD 3.2.3, GhostBSD 26.1, DragonFly BSD 6.4.2, TrueNAS SCALE 25.10.4
-- **Windows**: Windows 11 (24H2, 23H2, 22H2), Windows 10 (22H2, 21H2)
+- **Windows**: Windows 11 (25H2), Windows 10 (22H2) — **not downloaded by PyNetboot**
+
+> **Note on Windows entries.** Microsoft does not publish direct ISO links, so
+> these two cannot be downloaded for you. Selecting one opens Microsoft's own
+> download page instead; fetch the ISO from there, then write it with
+> **Disk image**, pointing at the file you downloaded. Every Linux and BSD
+> entry above *is* downloaded automatically.
 
 ### 🚀 High Priority
 - [x] Copy resources from original project (`src/unetbootin/*.png`, `*.xpm`) to `python_unetbootin/src/unetbootin/resources/` - ✅ Complete

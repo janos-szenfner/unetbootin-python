@@ -32,6 +32,16 @@ _FILE_COPY_ERRORS = (OSError, shutil.Error)
 _SYSLINUX_MODULES = ('menu.c32', 'vesamenu.c32')
 
 
+def _windows_drive_root(device: str) -> str:
+    """Normalise a Windows target to its drive root, e.g. 'D' -> 'D:\\'.
+
+    Callers pass the drive in several shapes ('D', 'D:', 'D:\\'), and the
+    root is where the files have to land.
+    """
+    letter = (device or '').strip().rstrip('\\/').rstrip(':')
+    return f"{letter[:1].upper()}:\\" if letter else device
+
+
 class USBInstaller:
     """Handles USB installation process."""
 
@@ -250,15 +260,25 @@ class USBInstaller:
             # Create temporary working directory
             params['temp_dir'] = tempfile.mkdtemp(prefix='pynetboot_install_')
 
-            # Create and mount the device to a temporary mount point
-            mount_point = tempfile.mkdtemp(prefix='pynetboot_mount_')
-            logger.info(f"Mounting {target_partition} to {mount_point}")
-            if not self._mount_device(target_partition, mount_point):
-                logger.error(f"Failed to mount {target_partition}")
-                # Clean up temp dir
-                shutil.rmtree(params['temp_dir'], ignore_errors=True)
-                shutil.rmtree(mount_point, ignore_errors=True)
-                return False
+            if self.platform == 'win32':
+                # A drive letter is already a path: there is nothing to
+                # mount, and the files belong at the drive's root. Copying
+                # them into a temporary folder instead would leave the drive
+                # empty while reporting success.
+                mount_point = _windows_drive_root(target_partition)
+                params['mount_point_is_temp'] = False
+                logger.info(f"Writing directly to {mount_point}")
+            else:
+                # Create and mount the device to a temporary mount point
+                mount_point = tempfile.mkdtemp(prefix='pynetboot_mount_')
+                params['mount_point_is_temp'] = True
+                logger.info(f"Mounting {target_partition} to {mount_point}")
+                if not self._mount_device(target_partition, mount_point):
+                    logger.error(f"Failed to mount {target_partition}")
+                    # Clean up temp dir
+                    shutil.rmtree(params['temp_dir'], ignore_errors=True)
+                    shutil.rmtree(mount_point, ignore_errors=True)
+                    return False
 
             # Store mount point in params for use during file copying
             params['mount_point'] = mount_point
@@ -412,8 +432,14 @@ class USBInstaller:
                         timeout=5
                     )
 
-                # Remove the mount point directory
-                shutil.rmtree(mount_point, ignore_errors=True)
+                # Remove the mount point directory -- but only when it is one
+                # we created. On Windows it is the drive's own root, and
+                # deleting it would erase everything just written.
+                if params.get('mount_point_is_temp', True):
+                    shutil.rmtree(mount_point, ignore_errors=True)
+                else:
+                    logger.debug(
+                        f"Leaving {mount_point} alone: it is the target drive")
 
             # Remove temporary directory
             temp_dir = params.get('temp_dir')

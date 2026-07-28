@@ -41,6 +41,14 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.4.3" date="2026-07-28">
+      <description>
+        <p>Fixes writing a drive on Windows.</p>
+        <ul>
+          <li>Files are now written to the drive itself. Preparing the drive failed at the last step, and the path it would otherwise have used was a temporary folder rather than the drive</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.2" date="2026-07-28">
       <description>
         <p>The log can be opened at any time, and failures explain themselves.</p>
