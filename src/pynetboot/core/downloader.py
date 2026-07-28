@@ -875,6 +875,22 @@ class Downloader:
                     logger.info(f"Found published SHA256 for {target}")
                     return digest.lower()
 
+            # A companion file named after the image itself -- say
+            # `<iso>.sha256` -- covers only that image, and often omits the
+            # name or gives the dated name hiding behind a rolling alias, so
+            # no name can match. A lone hash there is unambiguous.
+            #
+            # This is deliberately restricted to that naming: a SHA256SUMS
+            # listing one *other* file must still be a mismatch, or the hash
+            # of the wrong image gets accepted as verification.
+            companion = os.path.basename(checksum_url).startswith(target)
+            if companion:
+                digests = re.findall(r'\b[0-9a-fA-F]{64}\b', text)
+                if len(set(d.lower() for d in digests)) == 1:
+                    logger.info(
+                        f"Using the single published SHA256 in {checksum_url}")
+                    return digests[0].lower()
+
             logger.warning(f"No SHA256 entry for {target} in {checksum_url}")
             return None
         except (OSError, ValueError) as e:

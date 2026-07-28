@@ -288,6 +288,7 @@ class DistributionManager:
                 'versions': [
                     {'name': 'Latest',
     'url': 'https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso',
+                     'sha256_url': 'https://geo.mirror.pkgbuild.com/iso/latest/sha256sums.txt',
      'size': 800000000},
                 ],
                 'icon': 'archlinux',
@@ -312,6 +313,7 @@ class DistributionManager:
                     {
     'name': 'Tumbleweed (Rolling)',
     'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso',
+                     'sha256_url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso.sha256',
      'size': 4469030912},
                 ],
                 'icon': 'opensuse',
@@ -352,6 +354,7 @@ class DistributionManager:
                     {
     'name': 'Latest (2026.2)',
     'url': 'https://cdimage.kali.org/kali-2026.2/kali-linux-2026.2-installer-amd64.iso',
+                     'sha256_url': 'https://cdimage.kali.org/kali-2026.2/SHA256SUMS',
      'size': 3800000000},
                 ],
                 'icon': 'kali',
@@ -366,6 +369,7 @@ class DistributionManager:
                     {
     'name': 'Latest (15.0)',
     'url': 'https://mirrors.slackware.com/slackware/slackware-iso/slackware64-15.0-iso/slackware64-15.0-install-dvd.iso',
+                     'sha256_url': 'https://mirrors.slackware.com/slackware/slackware-iso/slackware64-15.0-iso/slackware64-15.0-install-dvd.iso.sha256',
      'size': 4800000000},
                 ],
                 'icon': 'slackware',
@@ -405,10 +409,12 @@ class DistributionManager:
                     {
     'name': '10.2 (Stable)',
     'url': 'https://download.rockylinux.org/pub/rocky/10.2/isos/x86_64/Rocky-10.2-x86_64-minimal.iso',
+                     'sha256_url': 'https://download.rockylinux.org/pub/rocky/10.2/isos/x86_64/Rocky-10.2-x86_64-minimal.iso.CHECKSUM',
      'size': 2072444928},
                     {
     'name': '9.8 (Stable)',
     'url': 'https://download.rockylinux.org/pub/rocky/9.8/isos/x86_64/Rocky-9.8-x86_64-minimal.iso',
+                     'sha256_url': 'https://download.rockylinux.org/pub/rocky/9.8/isos/x86_64/Rocky-9.8-x86_64-minimal.iso.CHECKSUM',
      'size': 2755067904},
                 ],
                 'icon': 'rocky',
@@ -446,11 +452,13 @@ class DistributionManager:
                 'versions': [
                     {
     'name': '17.1 TinyCore',
-    'url': 'http://tinycorelinux.net/17.x/x86/release/TinyCore-current.iso',
+    'url': 'http://tinycorelinux.net/17.x/x86/release/TinyCore-17.1.iso',
+                     'md5': '42db5663757add090857059c096a6801',
      'size': 27262976},
                     {
     'name': '17.1 Core Plus',
-    'url': 'http://tinycorelinux.net/17.x/x86/release/CorePlus-current.iso',
+    'url': 'http://tinycorelinux.net/17.x/x86/release/CorePlus-17.1.iso',
+                     'md5': 'c681af3450c9890b6bd816fb8d8ea491',
      'size': 289406976},
                 ],
                 'icon': 'tinycore',
@@ -469,6 +477,7 @@ class DistributionManager:
                     {
     'name': 'Latest (15.1)',
     'url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/15.1/FreeBSD-15.1-RELEASE-amd64-disc1.iso',
+                     'sha256_url': 'https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/15.1/CHECKSUM.SHA256-FreeBSD-15.1-RELEASE-amd64',
      'size': 1900000000},
                 ],
                 'icon': 'freebsd',
@@ -511,6 +520,7 @@ class DistributionManager:
                     {
     'name': 'Latest (26.1-R15.0p2)',
     'url': 'https://download.ghostbsd.org/releases/amd64/26.1-R15.0p2/GhostBSD-26.1-R15.0p2.iso',
+                     'sha256_url': 'https://download.ghostbsd.org/releases/amd64/26.1-R15.0p2/GhostBSD-26.1-R15.0p2.iso.sha256',
      'size': 1900000000},
                 ],
                 'icon': 'ghostbsd',
@@ -539,6 +549,7 @@ class DistributionManager:
                     {
     'name': 'Latest (SCALE Goldeye 25.10.5)',
     'url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/25.10.5/TrueNAS-SCALE-25.10.5.iso',
+                     'sha256_url': 'https://download.truenas.com/TrueNAS-SCALE-Goldeye/25.10.5/TrueNAS-SCALE-25.10.5.iso.sha256',
      'size': 1600000000},
                 ],
                 'icon': 'truenas',

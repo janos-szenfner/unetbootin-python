@@ -505,13 +505,16 @@ class PyNetbootApp:
             raise ValueError(f"Failed to download ISO: {message}")
 
         # Hashing a multi-GB ISO also blocks, so verify off the UI thread too.
-        checksum = self.get_distribution_checksum(
+        verification = self.get_distribution_checksum(
             distro, version, iso_filename=iso_filename)
-        if checksum:
+        if verification:
+            checksum, algorithm = verification
+
             def do_verify(report, cancelled):
-                report(percent=100, text="Verifying ISO checksum...")
+                report(percent=100,
+                       text=f"Verifying ISO {algorithm.upper()}...")
                 return self.downloader.verify_checksum(
-                    iso_path, checksum, "sha256")
+                    iso_path, checksum, algorithm)
 
             if not self.run_in_background(
                     do_verify, status="Verifying ISO checksum...",
@@ -668,11 +671,24 @@ class PyNetbootApp:
             if version.name == version_name:
                 static = version.get_checksum("sha256")
                 if static:
-                    return static
+                    return static, "sha256"
+
                 url = getattr(version, 'sha256_url', None)
                 if url and iso_filename:
-                    return self.downloader.fetch_checksum_from_url(
+                    fetched = self.downloader.fetch_checksum_from_url(
                         url, iso_filename)
+                    if fetched:
+                        return fetched, "sha256"
+
+                # Some publishers only offer a weaker digest. It is worth
+                # far more than skipping verification entirely, which is
+                # what happened before: it still catches a truncated
+                # download, a corrupt mirror or a substituted file.
+                for weaker in ("sha1", "md5"):
+                    value = version.get_checksum(weaker)
+                    if value:
+                        return value, weaker
+
                 return None
 
         return None
@@ -890,14 +906,17 @@ class PyNetbootApp:
                 f"{format_size(int(rate))}/s)")
 
             # Verify checksum (hashing a large ISO blocks too).
-            checksum = self.get_distribution_checksum(
+            verification = self.get_distribution_checksum(
                 params.get('distro'), params.get('version'),
                 iso_filename=iso_filename)
-            if checksum:
+            if verification:
+                checksum, algorithm = verification
+
                 def do_verify(report, cancelled):
-                    report(percent=30, text="Verifying ISO checksum...")
+                    report(percent=30,
+                           text=f"Verifying ISO {algorithm.upper()}...")
                     return self.downloader.verify_checksum(
-                        iso_path, checksum, "sha256")
+                        iso_path, checksum, algorithm)
 
                 if not self.run_in_background(
                         do_verify, status="Verifying ISO checksum...",

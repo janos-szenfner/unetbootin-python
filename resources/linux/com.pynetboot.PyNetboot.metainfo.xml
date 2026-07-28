@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.6.0" date="2026-07-28">
+      <description>
+        <p>Drives now get a boot menu, and downloads are checked far more widely.</p>
+        <ul>
+          <li>A boot menu is written to the drive, pointing at the one inside the image. Without it a drive started to a bare prompt instead of the distribution</li>
+          <li>28 of 37 downloads are now checked against the publisher's checksum, up from 17</li>
+          <li>Tiny Core is downloaded from a fixed release rather than a moving link, so its published checksum can be checked</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-07-28">
       <description>
         <p>Adds Manjaro, and updates Linux Mint and Zorin OS.</p>

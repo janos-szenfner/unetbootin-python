@@ -866,6 +866,10 @@ class USBInstaller:
                 # Copy bundled menu modules onto the drive so the menu renders.
                 self._copy_syslinux_modules(params.get('mount_point') or device)
 
+                # As on Linux: syslinux reads its config from the filesystem
+                # root, so the image's own menu has to be chained to.
+                self._write_boot_config(params)
+
                 flag = '--uefi' if enable_uefi_only else '-ma'
                 result = subprocess.run(
                     [syslinux_path, flag, device],
@@ -1044,6 +1048,10 @@ class USBInstaller:
 
                 # 2) Copy bundled menu modules onto the target filesystem.
                 self._copy_syslinux_modules(params.get('mount_point'))
+
+                # Without a config at the root, syslinux boots to a bare
+                # prompt: it does not find the menu inside the image.
+                self._write_boot_config(params)
 
                 # 3) Install syslinux to the partition — prefer the BUNDLED
                 #    binary, fall back to a system syslinux only if missing.
@@ -1247,9 +1255,66 @@ class USBInstaller:
                 except _FILE_COPY_ERRORS as e:
                     logger.warning(f"Failed to copy {name}: {e}")
 
+    # Where distributions keep the boot menu inside their image. syslinux
+    # only reads a config from the filesystem root, so one of these has to be
+    # chained to or the drive boots to a bare prompt.
+    _IMAGE_BOOT_CONFIGS = (
+        'boot/isolinux/isolinux.cfg',
+        'isolinux/isolinux.cfg',
+        'boot/syslinux/syslinux.cfg',
+        'syslinux/syslinux.cfg',
+        'boot/grub/grub.cfg',
+    )
+
+    def _write_boot_config(self, params: Dict[str, Any]) -> bool:
+        """Write the root boot menu onto the mounted target, if there is one."""
+        mount_point = params.get('mount_point')
+        if not mount_point or not os.path.isdir(mount_point):
+            logger.warning(
+                "No mounted target; the drive will have no boot menu")
+            return False
+        return self.create_syslinux_cfg(mount_point, params)
+
+    def _find_image_boot_config(self, mount_point: str) -> Optional[str]:
+        """Return the image's own boot config, relative to the drive root."""
+        for relative in self._IMAGE_BOOT_CONFIGS:
+            if os.path.exists(os.path.join(mount_point, *relative.split('/'))):
+                return relative
+        return None
+
     def create_syslinux_cfg(self, target_device: str, params: Dict[str, Any]) -> bool:
-        """Create syslinux configuration file."""
+        """Write the syslinux config at the root of a mounted target.
+
+        `target_device` is the mounted filesystem, not a device node.
+
+        A distribution image carries its own menu, with kernel and initrd
+        paths that only it knows. Chaining to that config is what makes the
+        drive boot the distribution; generating a menu here from assumed
+        paths produces one that points at files which are not there. Only
+        when the image supplies no config at all is one generated.
+        """
         try:
+            existing = self._find_image_boot_config(target_device)
+            if existing:
+                directory = os.path.dirname(existing)
+                # CONFIG hands over to that file; APPEND sets the directory
+                # its own relative paths resolve against.
+                cfg_content = (
+                    "DEFAULT chain\n"
+                    "LABEL chain\n"
+                    f"    CONFIG /{existing}\n"
+                    f"    APPEND /{directory}/\n"
+                )
+                path = os.path.join(target_device, 'syslinux.cfg')
+                with open(path, 'w') as handle:
+                    handle.write(cfg_content)
+                logger.info(f"Boot menu chains to /{existing}")
+                return True
+
+            logger.warning(
+                "The image supplies no boot menu; generating one from the "
+                "kernel and initrd given in the options")
+
             # Get parameters
             distro = params.get('distro', 'unknown')
             version = params.get('version', 'unknown')
