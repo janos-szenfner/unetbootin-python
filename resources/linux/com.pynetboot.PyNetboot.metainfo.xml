@@ -41,6 +41,16 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.3.4" date="2026-07-28">
+      <description>
+        <p>Fixes writing a drive on Windows.</p>
+        <ul>
+          <li>Images can be unpacked again on Windows. Every helper program was reported missing there, so no method could be used and unpacking always failed</li>
+          <li>Console windows no longer flash up while a drive is being written</li>
+          <li>Dialogs now carry the application icon instead of a generic one</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.3" date="2026-07-28">
       <description>
         <p>Fixes a crash on start-up on Windows, and the Windows application icon.</p>

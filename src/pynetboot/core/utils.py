@@ -295,20 +295,14 @@ def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
 
 def locate_command(command: str, required_for: str = "",
                    package_name: str = "") -> Optional[str]:
-    """Locate a command in the system PATH."""
-    try:
-        result = subprocess.run(
-            ['which', command],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            path = result.stdout.strip()
-            if os.path.exists(path):
-                return path
-    except (subprocess.SubprocessError, OSError):
-        pass
+    """Locate a command in the system PATH.
+
+    shutil.which rather than the `which` command, which does not exist on
+    Windows and made every lookup fail there.
+    """
+    found = shutil.which(command)
+    if found:
+        return found
 
     # Try alternative methods
     for path in os.environ.get('PATH', '').split(':'):

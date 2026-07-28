@@ -1073,18 +1073,15 @@ class USBInstaller:
             return False
 
     def _find_executable(self, name: str) -> Optional[str]:
-        """Find an executable in the system PATH."""
-        try:
-            result = subprocess.run(
-                ['which', name],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                path = result.stdout.strip()
-                if os.path.exists(path):
-                    return path
-        except _SUBPROCESS_ERRORS:
-            pass
+        """Find an executable in the system PATH.
+
+        shutil.which rather than the `which` command, which does not exist
+        on Windows: every lookup failed there, so no bootloader tool was
+        ever found.
+        """
+        found = shutil.which(name)
+        if found:
+            return found
 
         # Try common locations
         common_locations = [

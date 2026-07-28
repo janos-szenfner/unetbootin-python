@@ -212,6 +212,33 @@ def windows_icon_file() -> Optional[str]:
     return None
 
 
+def apply_window_icon(window) -> None:
+    """Give a window the app icon on Windows.
+
+    CTkToplevel does not inherit the root window's icon, and sets its own
+    shortly after creation, so dialogs show the generic icon unless it is
+    applied to each of them after that has happened.
+    """
+    ico = windows_icon_file()
+    if not ico:
+        return
+    try:
+        window.iconbitmap(ico)
+        # CustomTkinter re-applies its own icon on a timer after the window
+        # is mapped; re-assert afterwards or it wins.
+        window.after(300, lambda: _reapply_window_icon(window, ico))
+    except Exception as e:  # noqa: BLE001 - cosmetic only
+        logger.debug(f"Could not set the dialog icon: {e}")
+
+
+def _reapply_window_icon(window, ico: str) -> None:
+    try:
+        if window.winfo_exists():
+            window.iconbitmap(ico)
+    except Exception as e:  # noqa: BLE001 - cosmetic only
+        logger.debug(f"Could not re-apply the dialog icon: {e}")
+
+
 def claim_windows_taskbar_identity() -> None:
     """Tell Windows this process is its own application.
 
@@ -274,6 +301,7 @@ def _show_dialog(message: str, title: str, buttons=("OK",),
         logger.error(f"{title}: {message} ({e})")
         return buttons[0]
 
+    apply_window_icon(win)
     win.title(title)
     win.configure(fg_color=BACKGROUND)
     win.resizable(False, False)
@@ -1262,6 +1290,7 @@ class MainWindowCTk:
                 pass
 
         win = ctk.CTkToplevel(self.root)
+        apply_window_icon(win)
         self._log_window = win
         win.title(f"{_('Log')} - {APP_TITLE}")
         win.geometry("900x560")
@@ -1338,6 +1367,7 @@ class MainWindowCTk:
         repo_url = "https://github.com/janos-szenfner/unetbootin-python"
 
         win = ctk.CTkToplevel(self.root)
+        apply_window_icon(win)
         win.title(f"{_('About')} {APP_TITLE}")
         win.geometry("470x360")
         win.resizable(False, False)

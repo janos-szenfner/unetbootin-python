@@ -606,23 +606,29 @@ class ISOExtractor:
     def _try_bsdtar(self, archive_path: str, dest_dir: str,
                     files_to_extract: Optional[List[str]],
                     progress_callback: Optional[Callable[[int], None]]) -> bool:
-        """Try to extract using bsdtar."""
+        """Try to extract using bsdtar, which reads ISO9660 via libarchive.
+
+        Windows 10 and 11 ship bsdtar as ``tar.exe`` in System32, and macOS
+        ships it as ``tar``, so the plain name is tried as well. It is the
+        only ISO extractor present by default on Windows.
+        """
         try:
-            if not self._command_exists('bsdtar'):
+            binary = next(
+                (name for name in ('bsdtar', 'tar')
+                 if self._command_exists(name)), None)
+            if binary is None:
                 return False
 
-            cmd = ['bsdtar', '-xf', archive_path, '-C', dest_dir]
+            cmd = [binary, '-xf', archive_path, '-C', dest_dir]
 
             if files_to_extract:
                 cmd.extend(files_to_extract)
 
             result = subprocess.run(
-    cmd,
-    capture_output=True,
-    text=True,
-     timeout=EXTRACT_TIMEOUT)
+                cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
             if result.returncode != 0:
-                logger.debug(f"bsdtar extraction failed: {result.stderr}")
+                logger.debug(
+                    f"{binary} extraction failed: {(result.stderr or '').strip()}")
                 return False
 
             if progress_callback:
@@ -717,14 +723,13 @@ class ISOExtractor:
         return False
 
     def _command_exists(self, command: str) -> bool:
-        """Check if a command exists in the system."""
-        try:
-            result = subprocess.run(
-                ['which', command], capture_output=True, text=True,
-                timeout=COMMAND_CHECK_TIMEOUT)
-            return result.returncode == 0 and os.path.exists(result.stdout.strip())
-        except _SUBPROCESS_ERRORS:
-            return False
+        """Check if a command exists in the system.
+
+        Uses shutil.which rather than shelling out to `which`, which does not
+        exist on Windows -- every lookup failed there, so all the external
+        extractors were skipped and an ISO could not be unpacked at all.
+        """
+        return shutil.which(command) is not None
 
     def list_archive_contents(self, archive_path: str) -> List[ArchiveFileInfo]:
         """List contents of an archive.

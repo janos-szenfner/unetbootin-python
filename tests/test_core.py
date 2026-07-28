@@ -692,3 +692,51 @@ class TestPrivilegedSession(unittest.TestCase):
             self.assertIsNone(self.elevation._active_session())
         finally:
             self.elevation._session = original
+
+
+class TestExternalCommandLookup(unittest.TestCase):
+    """Finding helper commands, which used to shell out to `which`.
+
+    `which` does not exist on Windows, so every lookup failed there: no
+    extractor and no bootloader tool was ever found, and an ISO could not
+    be unpacked at all.
+    """
+
+    def test_extractor_finds_a_real_command(self):
+        """tar exists on Windows, macOS and Linux alike."""
+        self.assertTrue(ISOExtractor()._command_exists('tar'))
+
+    def test_extractor_rejects_a_missing_command(self):
+        self.assertFalse(
+            ISOExtractor()._command_exists('definitely-not-a-real-command'))
+
+    def test_lookup_does_not_shell_out(self):
+        """Nothing may be spawned to answer 'does this command exist'."""
+        with patch('subprocess.run') as mock_run:
+            ISOExtractor()._command_exists('tar')
+            mock_run.assert_not_called()
+
+    def test_installer_finds_executables_without_which(self):
+        with patch('subprocess.run') as mock_run:
+            found = USBInstaller()._find_executable('sh')
+            mock_run.assert_not_called()
+        self.assertTrue(found is None or found.endswith('sh'))
+
+    def test_bsdtar_falls_back_to_tar(self):
+        """Windows ships bsdtar as tar.exe, and has no `bsdtar` name."""
+        extractor = ISOExtractor()
+        with patch.object(ISOExtractor, '_command_exists',
+                          side_effect=lambda c: c == 'tar'), \
+                patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stderr='')
+            self.assertTrue(
+                extractor._try_bsdtar('/tmp/x.iso', '/tmp/out', None, None))
+        self.assertEqual(mock_run.call_args.args[0][0], 'tar')
+
+    def test_bsdtar_is_skipped_when_neither_name_exists(self):
+        extractor = ISOExtractor()
+        with patch.object(ISOExtractor, '_command_exists', return_value=False), \
+                patch('subprocess.run') as mock_run:
+            self.assertFalse(
+                extractor._try_bsdtar('/tmp/x.iso', '/tmp/out', None, None))
+            mock_run.assert_not_called()

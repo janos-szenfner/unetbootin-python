@@ -799,8 +799,21 @@ def install_sudo_interceptor() -> None:
     original_run = subprocess.run
     original_Popen = subprocess.Popen
 
+    def hide_console(kwargs: dict) -> dict:
+        """Keep helper commands from flashing a console window on Windows.
+
+        A windowed build has no console of its own, so every subprocess --
+        powershell, diskpart, tar -- opens one and closes it again. Applied
+        here because it has to hold for every call site.
+        """
+        if not _IS_WINDOWS or 'creationflags' in kwargs:
+            return kwargs
+        no_window = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+        return {**kwargs, 'creationflags': no_window}
+
     def patched_run(args, **kwargs):
         """Patched subprocess.run that handles sudo commands."""
+        kwargs = hide_console(kwargs)
         # Check if this is a sudo command
         if args and len(args) > 0 and args[0] == 'sudo':
             # Extract the actual command (remove 'sudo')
@@ -816,6 +829,7 @@ def install_sudo_interceptor() -> None:
 
     def patched_Popen(args, **kwargs):
         """Patched subprocess.Popen that handles sudo commands."""
+        kwargs = hide_console(kwargs)
         if args and len(args) > 0 and args[0] == 'sudo':
             actual_cmd = args[1:]
             if not actual_cmd:
