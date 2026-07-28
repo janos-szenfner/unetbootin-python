@@ -41,6 +41,17 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.5.0" date="2026-07-28">
+      <description>
+        <p>Adds Manjaro, and updates Linux Mint and Zorin OS.</p>
+        <ul>
+          <li>Manjaro 26.0.4 in Xfce, KDE Plasma and GNOME editions</li>
+          <li>Linux Mint 22.3 now offers both Cinnamon and MATE</li>
+          <li>Zorin OS 18.1 Core and Lite, replacing the older 18 revision</li>
+          <li>All of these verify their download against the publisher's checksum</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.5" date="2026-07-28">
       <description>
         <p>Fixes copying files to the drive on Windows.</p>

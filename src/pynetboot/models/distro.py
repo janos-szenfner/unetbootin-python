@@ -242,16 +242,42 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://linuxmint.com',
                 'versions': [
-                    {
-    'name': '22.3 (Zena)',
-    'url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso',
-     'size': 3500000000},
-                    {
-    'name': '22.2 (Zara)',
-    'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso',
-     'size': 3500000000},
+                    {'name': '22.3 Cinnamon (Zena)',
+                     'url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso',
+                     'sha256_url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/sha256sum.txt',
+                     'size': 3091660800},
+                    {'name': '22.3 MATE (Zena)',
+                     'url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-mate-64bit.iso',
+                     'sha256_url': 'https://mirrors.kernel.org/linuxmint/stable/22.3/sha256sum.txt',
+                     'size': 3134275584},
+                    {'name': '22.2 Cinnamon (Zara)',
+                     'url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/linuxmint-22.2-cinnamon-64bit.iso',
+                     'sha256_url': 'https://mirrors.kernel.org/linuxmint/stable/22.2/sha256sum.txt',
+                     'size': 3500000000},
                 ],
                 'icon': 'linuxmint',
+            },
+            {
+                'name': 'manjaro',
+                'display_name': 'Manjaro Linux',
+                'description': 'Arch-based distribution with a guided installer',
+                'category': 'Linux',
+                'homepage': 'https://manjaro.org',
+                'versions': [
+                    {'name': '26.0.4 Xfce',
+                     'url': 'https://download.manjaro.org/xfce/26.0.4/manjaro-xfce-26.0.4-260327-linux618.iso',
+                     'sha256_url': 'https://download.manjaro.org/xfce/26.0.4/manjaro-xfce-26.0.4-260327-linux618.iso.sha256',
+                     'size': 5363275776},
+                    {'name': '26.0.4 KDE Plasma',
+                     'url': 'https://download.manjaro.org/kde/26.0.4/manjaro-kde-26.0.4-260327-linux618.iso',
+                     'sha256_url': 'https://download.manjaro.org/kde/26.0.4/manjaro-kde-26.0.4-260327-linux618.iso.sha256',
+                     'size': 5669099520},
+                    {'name': '26.0.4 GNOME',
+                     'url': 'https://download.manjaro.org/gnome/26.0.4/manjaro-gnome-26.0.4-260327-linux618.iso',
+                     'sha256_url': 'https://download.manjaro.org/gnome/26.0.4/manjaro-gnome-26.0.4-260327-linux618.iso.sha256',
+                     'size': 5518409728},
+                ],
+                'icon': 'manjaro',
             },
             {
                 'name': 'archlinux',
@@ -297,12 +323,22 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://zorin.com/os',
                 'versions': [
-                    {
-    # cdn.zorincdn.com no longer resolves, and there is no "18.1" release —
-    # Zorin ships revisions of 18 (r1, r2, r3). Served from a public mirror.
-    'name': 'Core 18 (r3)',
-    'url': 'https://mirrors.dotsrc.org/zorinos/18/Zorin-OS-18-Core-64-bit-r3.iso',
-     'size': 3787948032},
+                    # cdn.zorincdn.com no longer resolves, so these come from
+                    # a public mirror. The 18.1 images live in the "18"
+                    # directory alongside the 18 revisions, rather than in a
+                    # directory of their own.
+                    {'name': 'Core 18.1',
+                     'url': 'https://mirrors.dotsrc.org/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso',
+                     'sha256_url': 'https://mirrors.dotsrc.org/zorinos/18/SHA256SUMS.txt',
+                     'size': 3909091328},
+                    {'name': 'Lite 18.1',
+                     'url': 'https://mirrors.dotsrc.org/zorinos/18/Zorin-OS-18.1-Lite-64-bit.iso',
+                     'sha256_url': 'https://mirrors.dotsrc.org/zorinos/18/SHA256SUMS.txt',
+                     'size': 3981279232},
+                    {'name': 'Core 18 (r3)',
+                     'url': 'https://mirrors.dotsrc.org/zorinos/18/Zorin-OS-18-Core-64-bit-r3.iso',
+                     'sha256_url': 'https://mirrors.dotsrc.org/zorinos/18/SHA256SUMS.txt',
+                     'size': 3787948032},
                 ],
                 'icon': 'zorin',
             },

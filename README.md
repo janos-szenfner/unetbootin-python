@@ -184,8 +184,8 @@ You are prompted for your password only when an install actually begins. On Linu
 - Inline progress bar and Cancel button in the main window (no popups)
 
 ### Distribution Management
-- Built-in list of **21 distributions** across Linux (13), BSD (6), and Windows (2) — see the full list under *Next Steps → Distribution Statistics*
-- Version management with download URLs, file sizes, and optional dynamic checksums (⚠️ partial — 6 of 28 versions have `sha256_url` wired; see checksum note above)
+- Built-in list of **22 distributions** across Linux (14), BSD (6), and Windows (2) — see the full list under *Next Steps → Distribution Statistics*
+- Version management with download URLs, file sizes, and optional dynamic checksums (⚠️ partial — 17 of 39 versions have `sha256_url` wired; see checksum note above)
 - Search and filtering by category
 - Easy extensibility to add more distributions
 - JSON-based external distribution loading
@@ -550,11 +550,11 @@ See [LICENSE](LICENSE) for the full license text.
 This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🎯 Distribution Statistics
-- **Total Distributions**: 21
-- **Categories**: Linux (13), BSD (6), Windows (2)
+- **Total Distributions**: 22
+- **Categories**: Linux (14), BSD (6), Windows (2)
 
 #### Available Distributions by Category:
-- **Linux**: Ubuntu (24.04, 22.04, 20.04), Debian 13, Fedora (44, 43), Linux Mint (22.3, 22.2), Arch Linux, SUSE Tumbleweed, SUSE Leap 16.0, Zorin OS 18.1, Kali Linux 2026.2, Slackware 15.0, OpenMandriva (ROME, 6.0), Tiny Core 17.0
+- **Linux**: Ubuntu (24.04, 22.04, 20.04), Debian 13, Fedora (44, 43), Linux Mint 22.3 (Cinnamon, MATE), Arch Linux, Manjaro 26.0.4 (Xfce, KDE, GNOME), SUSE Tumbleweed, SUSE Leap 16.0, Zorin OS 18.1 (Core, Lite), Kali Linux 2026.2, Slackware 15.0, OpenMandriva (ROME, 6.0), Tiny Core 17.0
 - **BSD**: FreeBSD 15.1, NetBSD 10.1, MidnightBSD 3.2.3, GhostBSD 26.1, DragonFly BSD 6.4.2, TrueNAS SCALE 25.10.4
 - **Windows**: Windows 11 (25H2), Windows 10 (22H2) — **not downloaded by PyNetboot**
 
