@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.8.0" date="2026-07-28">
+      <description>
+        <p>Every download is now checked against its publisher's checksum.</p>
+        <ul>
+          <li>OpenMandriva was the last one downloading unchecked; all 40 images are now verified</li>
+          <li>OpenMandriva now offers ROME in Plasma X11, Plasma Wayland and GNOME, and 6.0 Rock in Plasma X11 and Wayland</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.3" date="2026-07-28">
       <description>
         <p>CentOS Stream downloads are now checked against their published checksum.</p>

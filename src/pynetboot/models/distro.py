@@ -408,14 +408,30 @@ class DistributionManager:
                 'category': 'Linux',
                 'homepage': 'https://www.openmandriva.org',
                 'versions': [
-                    {
-    'name': '6.0 (Stable, Plasma 6)',
-    'url': 'https://mirror.openmandriva.org/release_current/6.0/openmandriva-6.0-plasma6-x11.x86_64.iso',
-     'size': 3227226112},
-                    {
-    'name': 'ROME (Rolling, GNOME)',
-    'url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-rome-gnome3.x86_64.iso',
-     'size': 3401375744},
+                    # ROME is the rolling release; 6.0 ("Rock") the stable one.
+                    # ROME publishes a checksum beside each image; 6.0 a single
+                    # sha256sums for the directory. Both name the image, so
+                    # matching by filename works for either.
+                    {'name': 'ROME Plasma (Rolling, X11)',
+                     'url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-snapshot.20260213.4403-plasma6x11.x86_64.iso',
+                     'sha256_url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-snapshot.20260213.4403-plasma6x11.x86_64.iso.sha256sum',
+                     'size': 3416365056},
+                    {'name': 'ROME Plasma (Rolling, Wayland)',
+                     'url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-snapshot.20260213.4404-plasma6wayland.x86_64.iso',
+                     'sha256_url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-snapshot.20260213.4404-plasma6wayland.x86_64.iso.sha256sum',
+                     'size': 3407906816},
+                    {'name': 'ROME GNOME (Rolling)',
+                     'url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-rome-gnome3.x86_64.iso',
+                     'sha256_url': 'https://mirror.openmandriva.org/release_current/ROME/OpenMandrivaLx.rolling-rome-gnome3.x86_64.iso.sha256sum',
+                     'size': 3200000000},
+                    {'name': '6.0 Rock Plasma (Stable, X11)',
+                     'url': 'https://mirror.openmandriva.org/release_current/6.0/openmandriva-6.0-plasma6-x11.x86_64.iso',
+                     'sha256_url': 'https://mirror.openmandriva.org/release_current/6.0/sha256sums',
+                     'size': 3227226112},
+                    {'name': '6.0 Rock Plasma (Stable, Wayland)',
+                     'url': 'https://mirror.openmandriva.org/release_current/6.0/openmandriva-6.0-plasma6-wayland.x86_64.iso',
+                     'sha256_url': 'https://mirror.openmandriva.org/release_current/6.0/sha256sums',
+                     'size': 3228639232},
                 ],
                 'icon': 'openmandriva',
             },
