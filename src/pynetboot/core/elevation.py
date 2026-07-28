@@ -19,8 +19,13 @@ Usage:
 
 import sys
 import os
+import shlex
+import select
+import threading
 import subprocess
+import time
 import logging
+from contextlib import contextmanager
 from typing import List, Optional, Tuple, Any
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,7 @@ logger = logging.getLogger(__name__)
 # `sudo`, and going through the patched wrapper would re-enter the elevation
 # path and recurse infinitely.
 _ORIGINAL_RUN = subprocess.run
+_ORIGINAL_POPEN = subprocess.Popen
 
 
 # Platform detection
@@ -94,6 +100,210 @@ def _command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
+class PrivilegedSession:
+    """One root shell, held open, so the user authenticates once.
+
+    Elevating each command on its own means one PolicyKit prompt per
+    command: partitioning and writing a drive asks five times over. This
+    authenticates once and then feeds commands to a root shell over a pipe.
+
+    Preferred over a polkit ``auth_admin_keep`` rule because it needs no
+    system configuration, cannot be overridden by an administrator, expires
+    when the work finishes rather than on a timer, and keeps working where
+    installing a policy file is not possible.
+
+    Linux only. Everything else falls back to per-command elevation.
+    """
+
+    _MARKER = '__PYNETBOOT_RC__'
+
+    def __init__(self) -> None:
+        self._proc: Optional[subprocess.Popen] = None
+        self._buffer = b''
+        self._lock = threading.Lock()
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def start(self) -> bool:
+        """Authenticate once and open the root shell. False if unavailable."""
+        if not _IS_LINUX or not _command_exists('pkexec'):
+            return False
+
+        try:
+            self._proc = _ORIGINAL_POPEN(
+                ['pkexec', '/bin/sh'],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                # Merged so a command's diagnostics arrive in order with its
+                # output; the callers here log the two together anyway.
+                stderr=subprocess.STDOUT,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.warning(f"Could not start a privileged session: {e}")
+            self._proc = None
+            return False
+
+        # The password prompt happens here, on the first command. A cancel
+        # closes the pipe, which surfaces as a failure rather than a hang.
+        try:
+            returncode, output = self._execute('id -u', timeout=300)
+        except (ElevationError, OSError) as e:
+            logger.warning(f"Privileged session did not start: {e}")
+            self.close()
+            return False
+
+        if returncode != 0 or output.strip() != '0':
+            logger.warning(
+                f"Privileged session is not root (exit {returncode}); "
+                f"falling back to per-command elevation")
+            self.close()
+            return False
+
+        logger.info("Privileged session started; one prompt for this run")
+        return True
+
+    def close(self) -> None:
+        """Drop root. Safe to call more than once."""
+        with self._lock:
+            self._close_locked()
+
+    def _close_locked(self) -> None:
+        proc, self._proc = self._proc, None
+        self._buffer = b''
+        if proc is None:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+            proc.wait(timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            proc.kill()
+        finally:
+            logger.info("Privileged session closed")
+
+    @property
+    def active(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    # -- execution ---------------------------------------------------------
+
+    def run(self, command: List[str],
+            timeout: Optional[float] = None) -> Tuple[int, str, str]:
+        """Run one command as root. Matches run_elevated's return shape."""
+        quoted = ' '.join(shlex.quote(part) for part in command)
+        returncode, output = self._execute(quoted, timeout)
+        # stderr was merged into stdout, so report it as stdout and leave
+        # stderr empty rather than duplicating it into both.
+        return (returncode, output, '')
+
+    def _execute(self, command: str,
+                 timeout: Optional[float]) -> Tuple[int, str]:
+        with self._lock:
+            if self._proc is None or self._proc.poll() is not None:
+                raise ElevationError("Privileged session is not running")
+
+            # The marker carries the exit status, so the reader knows where
+            # this command's output ends without guessing.
+            script = f"{command}\n echo {self._MARKER} $?\n"
+            try:
+                self._proc.stdin.write(script.encode())
+                self._proc.stdin.flush()
+            except (BrokenPipeError, OSError) as e:
+                raise ElevationError(f"Privileged session closed: {e}")
+
+            try:
+                return self._read_until_marker(timeout)
+            except ElevationError:
+                # The command is still running and will emit its marker
+                # later, which the next call would read as its own result.
+                # The session is desynchronised: end it and let the caller
+                # fall back to per-command elevation.
+                self._close_locked()
+                raise
+
+    def _read_until_marker(self, timeout: Optional[float]) -> Tuple[int, str]:
+        """Collect output up to the marker line.
+
+        Reads the raw descriptor rather than readline() so a partial line
+        can never block past the deadline.
+        """
+        deadline = None if timeout is None else time.monotonic() + timeout
+        stdout = self._proc.stdout
+
+        while True:
+            marker = self._take_marked_output()
+            if marker is not None:
+                return marker
+
+            remaining = None
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ElevationError("Elevated command timed out")
+
+            ready, _, _ = select.select([stdout], [], [], remaining)
+            if not ready:
+                continue
+
+            chunk = os.read(stdout.fileno(), 65536)
+            if not chunk:
+                raise ElevationError("Privileged session ended unexpectedly")
+            self._buffer += chunk
+
+    def _take_marked_output(self) -> Optional[Tuple[int, str]]:
+        """Split off a completed command's output, if the marker arrived."""
+        needle = self._MARKER.encode()
+        start = self._buffer.find(needle)
+        if start == -1:
+            return None
+        end = self._buffer.find(b'\n', start)
+        if end == -1:
+            return None
+
+        status = self._buffer[start + len(needle):end].strip()
+        output = self._buffer[:start].decode('utf-8', 'replace')
+        self._buffer = self._buffer[end + 1:]
+        try:
+            returncode = int(status)
+        except ValueError:
+            returncode = -1
+        return returncode, output
+
+
+_session: Optional[PrivilegedSession] = None
+_session_lock = threading.Lock()
+
+
+def _active_session() -> Optional[PrivilegedSession]:
+    session = _session
+    return session if session is not None and session.active else None
+
+
+@contextmanager
+def privileged_session():
+    """Hold root for the duration of a block, prompting the user once.
+
+    Falls back silently to per-command elevation when a session cannot be
+    started, so callers need no alternative path.
+    """
+    global _session
+    started = None
+    with _session_lock:
+        if _session is None and not is_elevated():
+            candidate = PrivilegedSession()
+            if candidate.start():
+                _session = candidate
+                started = candidate
+    try:
+        yield started is not None
+    finally:
+        if started is not None:
+            with _session_lock:
+                if _session is started:
+                    _session = None
+            started.close()
+
+
 def run_elevated(
     command: List[str],
     timeout: Optional[float] = None,
@@ -137,6 +347,18 @@ def run_elevated(
         except (subprocess.SubprocessError, OSError) as e:
             # SubprocessError: Popen/communication errors; OSError: file/exec issues
             return (-1, '', str(e))
+
+    # An open session already holds root: reuse it so the user is not asked
+    # for a password again for every command.
+    session = _active_session()
+    if session is not None:
+        try:
+            return session.run(command, timeout)
+        except ElevationError as e:
+            # A dead session must not strand the install; drop back to
+            # per-command elevation for the rest of the run.
+            logger.warning(f"Privileged session unusable ({e}); "
+                           f"falling back to per-command elevation")
 
     # Not elevated, need to elevate
     if _IS_LINUX:

@@ -41,6 +41,15 @@
        and rpm ship release notes too, not just the Flatpak. The build stamps
        the tag version in if it is not already listed here. -->
   <releases>
+    <release version="1.3.0" date="2026-07-28">
+      <description>
+        <p>Asks for your password once for the whole operation.</p>
+        <ul>
+          <li>Writing a drive now prompts for authentication a single time, instead of once for each privileged step</li>
+          <li>If authentication cannot be held open, each step asks separately as before, so the write still completes</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.5" date="2026-07-28">
       <description>
         <p>Fixes copying files to the drive, and asks for your password less often.</p>

@@ -74,7 +74,23 @@ class USBInstaller:
     def install_sync(self, source_dir: str, target_device: str,
                     install_params: Optional[Dict[str, Any]] = None,
                     progress_callback: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
-        """Synchronously install to USB device."""
+        """Synchronously install to USB device.
+
+        The whole run happens inside one privileged session, so the user is
+        asked for a password once rather than once per privileged command.
+        """
+        from pynetboot.core.elevation import privileged_session
+
+        with privileged_session() as single_prompt:
+            if not single_prompt:
+                logger.info(
+                    "No privileged session; each step will ask separately")
+            return self._install_sync(
+                source_dir, target_device, install_params, progress_callback)
+
+    def _install_sync(self, source_dir: str, target_device: str,
+                      install_params: Optional[Dict[str, Any]] = None,
+                      progress_callback: Optional[Callable[[int], None]] = None) -> Tuple[bool, str]:
         try:
             params = install_params or {}
             install_type = params.get('install_type', 'distribution')

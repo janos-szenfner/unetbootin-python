@@ -5,6 +5,7 @@ Unit tests for core functionality: downloader, extractor, installer.
 import unittest
 import os
 import sys
+import subprocess
 import tempfile
 import shutil
 from pathlib import Path
@@ -606,3 +607,72 @@ class TestArchiveExtractionSafety(unittest.TestCase):
         self.assertEqual(
             unguarded, [],
             f"extraction without member validation at lines {unguarded}")
+
+
+@unittest.skipIf(sys.platform == 'win32', "POSIX pipe semantics")
+class TestPrivilegedSession(unittest.TestCase):
+    """The root shell that lets one password prompt cover a whole install.
+
+    A real /bin/sh stands in for `pkexec /bin/sh`: the pipe, marker and
+    timeout handling under test are identical, and no root is needed.
+    """
+
+    def setUp(self):
+        from pynetboot.core import elevation
+        self.elevation = elevation
+        self.session = elevation.PrivilegedSession()
+        self.session._proc = elevation._ORIGINAL_POPEN(
+            ['/bin/sh'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+
+    def tearDown(self):
+        self.session.close()
+
+    def test_runs_a_command_and_reports_its_output(self):
+        returncode, stdout, _ = self.session.run(['echo', 'hello'])
+        self.assertEqual(returncode, 0)
+        self.assertEqual(stdout.strip(), 'hello')
+
+    def test_reports_a_failing_exit_status(self):
+        self.assertEqual(self.session.run(['false'])[0], 1)
+
+    def test_keeps_diagnostics_from_a_failing_command(self):
+        returncode, stdout, _ = self.session.run(
+            ['sh', '-c', 'echo oops >&2; exit 3'])
+        self.assertEqual(returncode, 3)
+        self.assertIn('oops', stdout)
+
+    def test_arguments_are_quoted_against_injection(self):
+        """Arguments reach the shell as data, never as further commands."""
+        payload = 'a b; touch /tmp/pynetboot-should-not-exist'
+        _, stdout, _ = self.session.run(['echo', payload])
+        self.assertEqual(stdout.strip(), payload)
+        self.assertFalse(os.path.exists('/tmp/pynetboot-should-not-exist'))
+
+    def test_consecutive_commands_do_not_leak_output(self):
+        results = [self.session.run(['echo', str(i)])[1].strip()
+                   for i in range(5)]
+        self.assertEqual(results, ['0', '1', '2', '3', '4'])
+        self.assertEqual(self.session._buffer, b'')
+
+    def test_a_timed_out_command_ends_the_session(self):
+        """The stale marker would otherwise be read as the next result."""
+        with self.assertRaises(self.elevation.ElevationError):
+            self.session.run(['sleep', '5'], timeout=1)
+
+        self.assertFalse(self.session.active)
+        with self.assertRaises(self.elevation.ElevationError):
+            self.session.run(['echo', 'next'])
+
+    def test_run_elevated_falls_back_when_the_session_dies(self):
+        """A broken session must not strand the install."""
+        self.session.close()
+        original = self.elevation._session
+        self.elevation._session = self.session
+        try:
+            self.assertIsNone(self.elevation._active_session())
+        finally:
+            self.elevation._session = original
