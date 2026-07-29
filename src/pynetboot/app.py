@@ -9,7 +9,6 @@ import platform
 import subprocess
 import logging
 import tempfile
-import shutil
 import threading
 import time
 from typing import Optional, List, Dict, Any
@@ -28,7 +27,7 @@ from pynetboot.core.downloader import (
 from pynetboot.core.installer import USBInstaller
 from pynetboot.core.utils import (
     get_platform_info, format_size, normalize_language_code,
-    directory_stats
+    directory_stats, remove_tree
 )
 from pynetboot.platform import get_drive_list, is_safe_target
 
@@ -553,11 +552,13 @@ class PyNetbootApp:
     def cleanup(self) -> None:
         """Clean up temporary files."""
         if self.tmp_dir and os.path.exists(self.tmp_dir):
-            try:
-                shutil.rmtree(self.tmp_dir)
+            # Files unpacked from an ISO are read-only, which makes a plain
+            # rmtree fail on Windows; remove_tree clears the bit and retries.
+            if remove_tree(self.tmp_dir):
                 logger.info(f"Cleaned up temporary directory: {self.tmp_dir}")
-            except (OSError, shutil.Error) as e:
-                logger.error(f"Failed to clean up temporary directory: {e}")
+            else:
+                logger.error(
+                    f"Failed to clean up temporary directory: {self.tmp_dir}")
         self.tmp_dir = None
 
     def show_error(self, message: str) -> None:

@@ -7,6 +7,7 @@ import sys
 import platform
 import logging
 import shutil
+import stat
 import psutil
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -208,6 +209,52 @@ def directory_stats(path: str) -> Tuple[int, int]:
             except OSError:
                 files += 1
     return files, total
+
+
+def remove_tree(path: str) -> bool:
+    """Delete a directory tree, clearing read-only files on the way.
+
+    Files unpacked from an ISO keep the image's read-only bit, and on Windows
+    ``shutil.rmtree`` then fails with "Access is denied" and leaves the
+    temporary directory behind. Retrying after making the entry writable
+    removes it.
+
+    Unix decides deletion by the *parent* directory's permissions rather than
+    the file's, so both the entry and its parent are made writable before the
+    retry; the mode is widened, never replaced, so a directory keeps the
+    execute bit it needs to be traversed.
+    """
+    def _make_writable(entry: str) -> None:
+        try:
+            mode = os.stat(entry).st_mode
+        except OSError:
+            return
+        extra = stat.S_IWRITE | (stat.S_IEXEC if os.path.isdir(entry) else 0)
+        try:
+            os.chmod(entry, mode | extra)
+        except OSError as e:
+            logger.debug(f"Could not chmod {entry}: {e}")
+
+    def _on_error(func, entry, _exc_info):
+        _make_writable(entry)
+        _make_writable(os.path.dirname(entry))
+        try:
+            func(entry)
+        except OSError as e:
+            logger.warning(f"Could not remove {entry}: {e}")
+
+    if not path or not os.path.exists(path):
+        return True
+    try:
+        # onexc replaces the deprecated onerror in 3.12+; both take the same
+        # (func, path, error) callback.
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=_on_error)
+        else:
+            shutil.rmtree(path, onerror=_on_error)
+    except (OSError, shutil.Error) as e:
+        logger.warning(f"Could not remove {path}: {e}")
+    return not os.path.exists(path)
 
 
 def parse_command_line_args(args: Optional[List[str]] = None) -> Dict[str, Any]:
