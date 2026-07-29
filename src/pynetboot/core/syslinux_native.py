@@ -1,0 +1,417 @@
+"""Native syslinux installer -- no external syslinux binary required.
+
+Installing syslinux on a FAT volume means three things: write ``ldlinux.sys``
+onto the filesystem, tell the boot sector where its sectors are, and merge
+syslinux's boot code into that sector while keeping the volume's own BPB.
+Upstream ships one installer binary per platform to do it; this module does
+the same work in Python, so a build with no runnable syslinux binary (macOS,
+or a non-x86 Linux) still produces a bootable drive without asking the user
+to install anything.
+
+The patching follows syslinux 6.03 ``libinstaller/syslxmod.c`` -- the same
+version whose ``ldlinux.sys``, ``ldlinux.bss`` and ``*.c32`` modules are
+bundled in ``resources/bootloader``. The two must stay in step: the patch
+area layout is per-version.
+
+Everything here works through ``read``/``write`` callables, so the caller
+decides how the device is reached (directly when root, via ``dd`` under
+elevation otherwise) and the logic stays testable against a disk image.
+"""
+
+import logging
+import os
+import struct
+import subprocess
+import tempfile
+from typing import Callable, List, Optional, Tuple
+
+from pynetboot.core.fat import FatVolume, FatError, SECTOR_SIZE
+
+logger = logging.getLogger(__name__)
+
+# --- syslinux 6.03 on-disk constants ---------------------------------------
+
+LDLINUX_MAGIC = 0x3EB202FE
+
+# The Auxiliary Data Vector: two sectors appended to ldlinux.sys where
+# syslinux keeps boot-once/menu-save state.
+ADV_SIZE = 512
+ADV_MAGIC1 = 0x5A2D2FA5
+ADV_MAGIC2 = 0xA3041767
+ADV_MAGIC3 = 0xDD28BF64
+
+# struct patch_area, at the LDLINUX_MAGIC marker inside ldlinux.sys.
+_PATCH_AREA = '<IIHHIIHH'   # magic, instance, data_sectors, adv_sectors,
+#                             dwords, checksum, maxtransfer, epaoffset
+_OFF_DATA_SECTORS = 8
+_OFF_ADV_SECTORS = 10
+_OFF_DWORDS = 12
+_OFF_CHECKSUM = 16
+_OFF_MAXTRANSFER = 20
+_OFF_EPAOFFSET = 22
+
+# struct ext_patch_area, at patch_area.epaoffset (all uint16).
+_EPA_FIELDS = ('advptroffset', 'diroffset', 'dirlen', 'subvoloffset',
+               'subvollen', 'secptroffset', 'secptrcnt',
+               'sect1ptr0', 'sect1ptr1', 'raidpatch')
+
+# A FAT boot sector keeps its BPB in bytes 11..89; syslinux owns the jump
+# instruction and OEM name before it and the code after it.
+_BS_HEAD_LEN = 11
+_BS_CODE_START = 90
+_BS_CODE_END = 510
+
+_EXTENT_STRUCT = struct.Struct('<QH')   # syslinux_extent: lba, len
+
+
+class SyslinuxError(Exception):
+    """The native syslinux install could not be completed."""
+
+
+# --- the pieces ------------------------------------------------------------
+
+def build_adv() -> bytes:
+    """Build the two-sector vacuous ADV appended to ldlinux.sys."""
+    adv = bytearray(ADV_SIZE)
+    struct.pack_into('<I', adv, 0, ADV_MAGIC1)
+    # The checksum makes the whole ADV sum to ADV_MAGIC2; every data word is
+    # zero here, so it is just the magic itself.
+    csum = ADV_MAGIC2
+    for i in range(8, ADV_SIZE - 4, 4):
+        csum = (csum - struct.unpack_from('<I', adv, i)[0]) & 0xFFFFFFFF
+    struct.pack_into('<I', adv, 4, csum)
+    struct.pack_into('<I', adv, ADV_SIZE - 4, ADV_MAGIC3)
+    return bytes(adv) * 2
+
+
+def file_payload(ldlinux: bytes) -> bytes:
+    """The exact bytes to write to the volume as ``ldlinux.sys``.
+
+    The ADV has to be part of the file, otherwise the sectors the boot code
+    is told about do not exist.
+    """
+    return ldlinux + build_adv()
+
+
+def _find_patch_area(image: bytes) -> int:
+    """Return the offset of LDLINUX_MAGIC, which marks the patch area."""
+    for offset in range(0, len(image) - 4, 4):
+        if struct.unpack_from('<I', image, offset)[0] == LDLINUX_MAGIC:
+            return offset
+    raise SyslinuxError(
+        "No patch area in ldlinux.sys: the bundled bootloader is corrupt")
+
+
+def _read_epa(image: bytes, epa_offset: int) -> dict:
+    values = struct.unpack_from('<10H', image, epa_offset)
+    return dict(zip(_EPA_FIELDS, values))
+
+
+def generate_extents(sectors: List[int], max_extents: int) -> bytes:
+    """Pack a sector list into syslinux extents.
+
+    Runs of consecutive sectors collapse into one extent, subject to the two
+    limits the boot code has: an extent may not exceed 64 KiB, and it may not
+    straddle a 64 KiB real-mode segment boundary in the load buffer.
+    """
+    packed = bytearray()
+    count = 0
+    addr = 0x8000          # where ldlinux.sys starts loading
+    base = addr
+    lba = 0
+    length = 0
+
+    def emit(lba_: int, len_: int) -> None:
+        nonlocal count
+        if count >= max_extents:
+            raise SyslinuxError(
+                "ldlinux.sys is too fragmented for the boot sector "
+                "(reformat the drive and retry)")
+        packed.extend(_EXTENT_STRUCT.pack(lba_, len_))
+        count += 1
+
+    for sector in sectors:
+        if length:
+            xbytes = (length + 1) * SECTOR_SIZE
+            if (sector == lba + length and xbytes < 65536
+                    and ((addr ^ (base + xbytes - 1)) & 0xFFFF0000) == 0):
+                length += 1
+                addr += SECTOR_SIZE
+                continue
+            emit(lba, length)
+        base = addr
+        lba = sector
+        length = 1
+        addr += SECTOR_SIZE
+
+    if length:
+        emit(lba, length)
+
+    # The rest of the pointer array must be zeroed: the boot code reads until
+    # it finds a zero-length extent.
+    return bytes(packed).ljust(max_extents * _EXTENT_STRUCT.size, b'\0')
+
+
+def patch(ldlinux: bytes, boot_template: bytes, sectors: List[int],
+          subdir: Optional[str] = None,
+          raid_mode: bool = False,
+          stupid_mode: bool = False) -> Tuple[bytes, bytes, int]:
+    """Patch ldlinux.sys and the boot sector template with a sector map.
+
+    `sectors` lists every sector of the on-disk ldlinux.sys, including its two
+    ADV sectors. Returns (patched ldlinux.sys, patched boot sector template,
+    number of bytes of ldlinux.sys that changed).
+    """
+    image = bytearray(ldlinux)
+    boot = bytearray(boot_template)
+
+    # Two ADV sectors follow the image itself.
+    nsect = ((len(ldlinux) + SECTOR_SIZE - 1) // SECTOR_SIZE) + 2
+    if len(sectors) < nsect:
+        raise SyslinuxError(
+            f"ldlinux.sys occupies {len(sectors)} sectors on disk, "
+            f"but {nsect} are needed")
+
+    patch_area = _find_patch_area(image)
+    epa_offset = struct.unpack_from(
+        '<H', image, patch_area + _OFF_EPAOFFSET)[0]
+    epa = _read_epa(image, epa_offset)
+
+    # The boot sector loads the first sector on its own; everything after it
+    # is found through the extent list.
+    struct.pack_into('<I', boot, epa['sect1ptr0'], sectors[0] & 0xFFFFFFFF)
+    struct.pack_into('<I', boot, epa['sect1ptr1'], sectors[0] >> 32)
+    if raid_mode:
+        # INT 18h: hand back to the BIOS to try the next boot device.
+        struct.pack_into('<H', boot, epa['raidpatch'], 0x18CD)
+
+    dwords = len(ldlinux) >> 2
+    struct.pack_into('<H', image, patch_area + _OFF_DATA_SECTORS, nsect - 2)
+    struct.pack_into('<H', image, patch_area + _OFF_ADV_SECTORS, 2)
+    struct.pack_into('<I', image, patch_area + _OFF_DWORDS, dwords)
+    if stupid_mode:
+        struct.pack_into('<H', image, patch_area + _OFF_MAXTRANSFER, 1)
+
+    # Sector 0 is in the boot sector and the last two sectors are the ADVs,
+    # so the extent list covers what is left.
+    extents = generate_extents(sectors[1:nsect - 2], epa['secptrcnt'])
+    image[epa['secptroffset']:epa['secptroffset'] + len(extents)] = extents
+
+    struct.pack_into('<Q', image, epa['advptroffset'], sectors[nsect - 2])
+    struct.pack_into('<Q', image, epa['advptroffset'] + 8, sectors[nsect - 1])
+
+    if subdir:
+        encoded = subdir.encode('ascii') + b'\0'
+        if len(encoded) > epa['dirlen']:
+            raise SyslinuxError(f"Subdirectory path too long: {subdir}")
+        image[epa['diroffset']:epa['diroffset'] + len(encoded)] = encoded
+
+    # Checksum last: it covers the fields patched above.
+    struct.pack_into('<I', image, patch_area + _OFF_CHECKSUM, 0)
+    csum = LDLINUX_MAGIC
+    for i in range(dwords):
+        csum = (csum - struct.unpack_from('<I', image, i * 4)[0]) & 0xFFFFFFFF
+    struct.pack_into('<I', image, patch_area + _OFF_CHECKSUM, csum)
+
+    return bytes(image), bytes(boot), dwords << 2
+
+
+def merge_boot_sector(existing: bytes, template: bytes) -> bytes:
+    """Put syslinux's boot code into a FAT boot sector, keeping its BPB.
+
+    Overwriting the whole sector would destroy the geometry the filesystem
+    was formatted with and the volume would no longer mount.
+    """
+    if len(existing) < SECTOR_SIZE or len(template) < SECTOR_SIZE:
+        raise SyslinuxError("Boot sectors must be 512 bytes")
+    merged = bytearray(existing[:SECTOR_SIZE])
+    merged[0:_BS_HEAD_LEN] = template[0:_BS_HEAD_LEN]
+    merged[_BS_CODE_START:_BS_CODE_END] = \
+        template[_BS_CODE_START:_BS_CODE_END]
+    return bytes(merged)
+
+
+# --- installation ----------------------------------------------------------
+
+def install(read: Callable[[int, int], bytes],
+            write: Callable[[int, bytes], None],
+            ldlinux: bytes, boot_template: bytes,
+            filename: str = 'LDLINUX SYS') -> None:
+    """Finish a syslinux install on a FAT volume reached via read/write.
+
+    ``ldlinux.sys`` (with its ADV) must already have been copied onto the
+    volume; this maps it, patches it in place and writes the boot sector.
+    """
+    try:
+        volume = FatVolume(read)
+    except FatError as e:
+        raise SyslinuxError(f"Target is not a usable FAT volume: {e}")
+    logger.info(f"Native syslinux install on {volume}")
+
+    entry = volume.find_in_root(filename)
+    if entry is None:
+        raise SyslinuxError(
+            f"{filename.strip()} is not in the root directory of the target")
+    first_cluster, size = entry
+
+    expected = len(ldlinux) + 2 * ADV_SIZE
+    if size != expected:
+        raise SyslinuxError(
+            f"ldlinux.sys on the target is {size} bytes, expected {expected}")
+
+    nsectors = (size + SECTOR_SIZE - 1) // SECTOR_SIZE
+    sectors = volume.sectors_of(first_cluster, nsectors)
+    if len(sectors) < nsectors:
+        raise SyslinuxError(
+            f"Could only map {len(sectors)} of {nsectors} sectors of "
+            f"ldlinux.sys; the FAT chain is broken")
+    logger.info(
+        f"ldlinux.sys maps to {nsectors} sectors starting at {sectors[0]}")
+
+    image, boot_code, modified = patch(ldlinux, boot_template, sectors)
+    # Rebuild exactly what the file looks like on disk, so the last sector --
+    # part ldlinux.sys, part ADV -- is written back intact.
+    on_disk = (image + build_adv()).ljust(nsectors * SECTOR_SIZE, b'\0')
+
+    # Write back only what changed, in runs of consecutive sectors so a
+    # device reached through dd is not written a sector at a time.
+    changed = (modified + SECTOR_SIZE - 1) // SECTOR_SIZE
+    index = 0
+    for start, count in _runs(sectors[:changed]):
+        write(start * SECTOR_SIZE,
+              on_disk[index * SECTOR_SIZE:(index + count) * SECTOR_SIZE])
+        index += count
+    logger.info(f"Patched the first {changed} sectors of ldlinux.sys")
+
+    # Re-read the boot sector: copying files may have changed it (FAT32
+    # keeps a dirty flag there).
+    current = read(0, SECTOR_SIZE)
+    write(0, merge_boot_sector(current, boot_code))
+    logger.info("Wrote the syslinux boot sector")
+
+
+def _runs(sectors: List[int]) -> List[Tuple[int, int]]:
+    """Collapse a sector list into (start, count) runs of consecutive sectors."""
+    runs: List[Tuple[int, int]] = []
+    for sector in sectors:
+        if runs and sector == runs[-1][0] + runs[-1][1]:
+            start, count = runs[-1]
+            runs[-1] = (start, count + 1)
+        else:
+            runs.append((sector, 1))
+    return runs
+
+
+# --- device access ---------------------------------------------------------
+
+class RawDevice:
+    """Sector-level access to a partition, direct or through elevation.
+
+    A partition device is only writable by root. When the process is already
+    root (Linux run under pkexec, Windows running elevated, or a plain image
+    file in a test) it is opened directly; otherwise every access goes
+    through ``dd`` under the app's normal elevation, which reuses the single
+    password prompt the rest of the install already asked for.
+    """
+
+    def __init__(self, path: str, elevated: Optional[bool] = None):
+        self.path = path
+        if elevated is None:
+            elevated = not _can_open_directly(path)
+        self.elevated = elevated
+        self._handle = None
+
+    def __enter__(self) -> 'RawDevice':
+        if not self.elevated:
+            self._handle = open(self.path, 'rb+')
+        logger.info(
+            f"Raw access to {self.path}: "
+            f"{'elevated (dd)' if self.elevated else 'direct'}")
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        if self._handle is not None:
+            self._handle.flush()
+            os.fsync(self._handle.fileno())
+            self._handle.close()
+            self._handle = None
+
+    def read(self, offset: int, length: int) -> bytes:
+        if self._handle is not None:
+            self._handle.seek(offset)
+            return self._handle.read(length)
+
+        # dd works in whole sectors, so read the sectors that cover the range.
+        first = offset // SECTOR_SIZE
+        last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
+        data = self._dd_read(first, last - first)
+        start = offset - first * SECTOR_SIZE
+        return data[start:start + length]
+
+    def write(self, offset: int, data: bytes) -> None:
+        if self._handle is not None:
+            self._handle.seek(offset)
+            self._handle.write(data)
+            self._handle.flush()
+            return
+
+        if offset % SECTOR_SIZE or len(data) % SECTOR_SIZE:
+            raise SyslinuxError(
+                "Elevated writes must be whole sectors "
+                f"(offset {offset}, {len(data)} bytes)")
+        self._dd_write(offset // SECTOR_SIZE, data)
+
+    # -- dd plumbing --------------------------------------------------------
+
+    def _dd_read(self, sector: int, count: int) -> bytes:
+        with tempfile.NamedTemporaryFile(prefix='pynetboot_dd_') as tmp:
+            self._run_elevated([
+                'dd', f'if={self.path}', f'of={tmp.name}',
+                f'bs={SECTOR_SIZE}', f'skip={sector}', f'count={count}',
+                'conv=notrunc',
+            ], f"read {count} sectors at {sector}")
+            with open(tmp.name, 'rb') as fh:
+                return fh.read()
+
+    def _dd_write(self, sector: int, data: bytes) -> None:
+        with tempfile.NamedTemporaryFile(prefix='pynetboot_dd_',
+                                         delete=False) as tmp:
+            tmp.write(data)
+            tmp.flush()
+            path = tmp.name
+        try:
+            self._run_elevated([
+                'dd', f'if={path}', f'of={self.path}',
+                f'bs={SECTOR_SIZE}', f'seek={sector}',
+                f'count={len(data) // SECTOR_SIZE}', 'conv=notrunc',
+            ], f"write {len(data) // SECTOR_SIZE} sectors at {sector}")
+        finally:
+            os.unlink(path)
+
+    @staticmethod
+    def _run_elevated(command: List[str], what: str) -> None:
+        from pynetboot.core.elevation import run_elevated
+
+        try:
+            returncode, _stdout, stderr = run_elevated(command, timeout=120)
+        except Exception as e:                # elevation errors vary by OS
+            raise SyslinuxError(f"Could not {what}: {e}")
+        if returncode != 0:
+            raise SyslinuxError(f"Could not {what}: {stderr.strip()}")
+
+
+def _can_open_directly(path: str) -> bool:
+    """True if this process can already write the device without elevation."""
+    try:
+        with open(path, 'rb+'):
+            return True
+    except OSError:
+        return False
+
+
+def sync_disks() -> None:
+    """Flush the OS cache so raw writes reach the device."""
+    try:
+        subprocess.run(['sync'], capture_output=True, timeout=30)
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.debug(f"sync failed: {e}")
