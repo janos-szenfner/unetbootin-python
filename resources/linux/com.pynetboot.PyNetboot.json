@@ -107,7 +107,8 @@
             "name": "resources",
             "buildsystem": "simple",
             "build-commands": [
-                "install -Dm644 -t /app/share/pynetboot/resources/bootloader resources/bootloader/*",
+                "find resources/bootloader -maxdepth 1 -type f -exec install -Dm644 -t /app/share/pynetboot/resources/bootloader {} +",
+                "find resources/bootloader/efi64 -maxdepth 1 -type f -exec install -Dm644 -t /app/share/pynetboot/resources/bootloader/efi64 {} +",
                 "install -Dm644 -t /app/share/pynetboot/resources/icons resources/icons/*",
                 "install -Dm644 -t /app/share/pynetboot/resources/logos resources/logos/*"
             ],
