@@ -25,9 +25,23 @@ logger = logging.getLogger(__name__)
 _SUBPROCESS_ERRORS = (subprocess.SubprocessError, OSError)
 _FILE_COPY_ERRORS = (OSError, shutil.Error)
 
-# Syslinux menu modules copied onto the target filesystem so the boot menu
-# renders. Shipped in resources/bootloader/.
-_SYSLINUX_MODULES = ('menu.c32', 'vesamenu.c32')
+# Syslinux modules copied onto the target filesystem so the boot menu
+# renders. Shipped in resources/bootloader/, all from syslinux 6.03.
+#
+# ldlinux.c32 is what the boot sector loads after ldlinux.sys, and the 6.x
+# menu modules are dynamically linked against libcom32/libutil -- shipping
+# menu.c32 alone gets "Failed to load COM32 file" at boot. They must all
+# come from the same syslinux release as ldlinux.sys.
+_SYSLINUX_MODULES = ('ldlinux.c32', 'libcom32.c32', 'libutil.c32',
+                     'menu.c32', 'vesamenu.c32')
+
+# The UEFI counterparts, under resources/bootloader/efi64/. A firmware boots
+# EFI/BOOT/BOOTX64.EFI off the FAT partition, so these are copied rather than
+# installed -- no boot sector or patching involved.
+_EFI_BOOT_DIR = ('EFI', 'BOOT')
+_EFI_LOADER = 'BOOTX64.EFI'
+_EFI_MODULES = ('ldlinux.e64', 'libcom32.c32', 'libutil.c32',
+                'menu.c32', 'vesamenu.c32')
 
 
 class USBInstaller:
@@ -350,14 +364,19 @@ class USBInstaller:
                 logger.info("Secure Boot support enabled")
 
             if self.platform == 'win32':
-                return self._install_bootloader_windows(
+                installed = self._install_bootloader_windows(
                     target_device, params, enable_uefi_only, enable_secure_boot)
             elif self.platform == 'darwin':
-                return self._install_bootloader_macos(
+                installed = self._install_bootloader_macos(
                     target_device, params, enable_uefi_only, enable_secure_boot)
             else:  # Linux and other Unix
-                return self._install_bootloader_linux(
+                installed = self._install_bootloader_linux(
                     target_device, params, enable_uefi_only, enable_secure_boot)
+
+            # Record what ended up on the drive: a stick that does not boot is
+            # usually a missing boot file, and the log is all we get to see.
+            self._log_boot_layout(params.get('mount_point'))
+            return installed
 
         except (OSError, subprocess.SubprocessError) as e:
             logger.error(f"Bootloader installation failed: {e}")
@@ -779,12 +798,11 @@ class USBInstaller:
             f"Secure Boot: {enable_secure_boot})")
 
         try:
-            # Windows: use external tools like syslinux, grub4dos, etc.
-            # This is a simplified implementation
+            # Windows: the menu modules and the root boot config go onto the
+            # drive, then syslinux.exe writes the boot sector and MBR.
+            from pynetboot.platform.windows import drive_root
 
-            # For Windows, we would typically:
-            # 1. Copy bootloader files to the USB drive
-            # 2. Run a tool to make it bootable
+            mount_point = params.get('mount_point') or drive_root(device) or device
 
             if enable_uefi_only:
                 logger.info("Configuring for UEFI-only installation")
@@ -801,39 +819,46 @@ class USBInstaller:
                         logger.error("Failed to install Secure Boot files")
                         return False
 
-                # Use EFISYS for UEFI bootloader installation
-                efisys_path = self._find_executable('efisys')
-                if efisys_path:
-                    if len(device) == 1 and device.isalpha():
-                        device = f"{device}:"
-                    result = subprocess.run(
-                        [efisys_path, device],
-                        capture_output=True, text=True, timeout=60
-                    )
-                    return result.returncode == 0
+                # syslinux.exe cannot install a UEFI bootloader (it only writes
+                # the BIOS boot sector / MBR), so running it here would just
+                # fail. A UEFI machine boots a FAT32 volume straight from
+                # EFI\BOOT\BOOTX64.EFI -- the image's own, or the bundled one.
+                return self._install_uefi_files(mount_point, params)
 
             # Default BIOS/UEFI dual boot installation.
             # Prefer the BUNDLED syslinux.exe; fall back to a system one.
             bundled = bootloader_path('syslinux.exe')
             syslinux_path = str(bundled) if bundled.exists() else self._find_executable('syslinux')
             if syslinux_path:
-                if len(device) == 1 and device.isalpha():
-                    device = f"{device}:"
+                # syslinux.exe takes the drive as "D:" exactly -- "D", "D:\"
+                # or a path make it print its usage and exit non-zero.
+                drive_spec = self._windows_drive_spec(device)
+                if not drive_spec:
+                    logger.error(
+                        f"Cannot derive a drive letter for syslinux from {device!r}")
+                    return False
 
                 # Copy bundled menu modules onto the drive so the menu renders.
-                self._copy_syslinux_modules(params.get('mount_point') or device)
+                self._copy_syslinux_modules(mount_point)
 
                 # As on Linux: syslinux reads its config from the filesystem
                 # root, so the image's own menu has to be chained to.
                 self._write_boot_config(params)
 
-                flag = '--uefi' if enable_uefi_only else '-ma'
+                # The same drive should also boot on UEFI-only firmware.
+                self._install_uefi_files(mount_point, params)
+
+                # -m install the syslinux MBR, -a mark the partition active,
+                # -f skip the removable-media checks (same set UNetbootin uses).
+                cmd = [syslinux_path, '-m', '-a', '-f', drive_spec]
+                logger.info(f"Running syslinux: {' '.join(cmd)}")
                 result = subprocess.run(
-                    [syslinux_path, flag, device],
-                    capture_output=True, text=True, timeout=60
+                    cmd, capture_output=True, text=True, timeout=60
                 )
                 if result.returncode != 0:
-                    logger.error(f"syslinux failed: {result.stderr}")
+                    logger.error(
+                        f"syslinux failed (exit {result.returncode}): "
+                        f"{(result.stderr or result.stdout or '').strip()}")
                     return False
                 return True
 
@@ -859,55 +884,49 @@ class USBInstaller:
 
         try:
             mount_point = params.get('mount_point')
+            whole_disk = self._macos_whole_disk(device)
+            # On macOS the target recorded during preparation is the whole
+            # disk (diskutil erases and repartitions it), so the FAT slice
+            # has to be looked up -- syslinux goes into *its* boot sector.
+            data_slice = self._macos_data_partition(whole_disk)
+            if not data_slice and not enable_uefi_only:
+                logger.error(
+                    f"Could not find the data partition on {whole_disk}; "
+                    f"there is no boot sector to install syslinux into")
+                return False
+            partition = f"/dev/{data_slice}" if data_slice else device
+            logger.info(
+                f"macOS bootloader targets: MBR -> {whole_disk}, "
+                f"syslinux -> {partition}")
 
             if enable_uefi_only:
-                # UEFI path: build the EFI/BOOT tree on the mounted volume and
-                # bless it. (macOS cannot run the bundled Linux/Windows syslinux
-                # binaries, so BIOS booting is best-effort below.)
-                base = mount_point or device
-                efi_dir = os.path.join(base, 'EFI', 'BOOT')
-                os.makedirs(efi_dir, exist_ok=True)
+                # UEFI path: no boot sector is involved -- the firmware loads
+                # EFI/BOOT/BOOTX64.EFI off the FAT volume directly.
+                if not self._install_uefi_files(mount_point, params):
+                    return False
 
                 if enable_secure_boot:
                     logger.info("Configuring Secure Boot on macOS")
+                    efi_dir = os.path.join(mount_point, *_EFI_BOOT_DIR)
                     if not self._copy_secure_boot_files(efi_dir):
                         logger.error("Failed to copy Secure Boot files")
                         return False
+                return True
 
-                result = subprocess.run(
-                    ['bless', '--mount', base, '--setBoot',
-                     '--folder', os.path.join(base, 'EFI'),
-                     '--file', os.path.join(efi_dir, 'BOOTX64.EFI')],
-                    capture_output=True, text=True, timeout=30
-                )
-                return result.returncode == 0
-
-            # BIOS path: write the bundled syslinux MBR to the whole disk and
-            # copy the bundled menu modules onto the volume. Note: finalizing
-            # syslinux on the partition needs a native macOS syslinux binary
-            # (e.g. `brew install syslinux`); the bundled binaries are for
-            # Linux/Windows and cannot run on Darwin.
-            whole_disk = self._macos_whole_disk(device)
-            wrote_mbr = self._write_syslinux_mbr(whole_disk, use_sudo=True)
+            # BIOS path: the syslinux MBR goes to sector 0 of the disk and
+            # syslinux itself into the partition's boot sector. macOS cannot
+            # run the bundled Linux/Windows syslinux binaries, so the install
+            # is done by the built-in installer rather than an external tool.
+            # The MBR is written from there too: macOS will not let sector 0
+            # of the disk be written while the volume is still mounted.
             self._copy_syslinux_modules(mount_point)
+            self._write_boot_config(params)
+            # Also lay down the UEFI loader: the same drive should boot on
+            # firmware that has no BIOS compatibility mode.
+            self._install_uefi_files(mount_point, params)
 
-            syslinux_path = self._find_executable('syslinux')
-            if syslinux_path and mount_point:
-                result = subprocess.run(
-                    ['syslinux', '-i', whole_disk],
-                    capture_output=True, text=True, timeout=60
-                )
-                if result.returncode == 0:
-                    return True
-                logger.warning(f"native syslinux failed: {result.stderr}")
-
-            if wrote_mbr:
-                logger.warning(
-                    "macOS: wrote MBR and copied boot modules, but could not "
-                    "finalize syslinux (no native macOS syslinux found). The "
-                    "USB may not boot on BIOS systems; install `syslinux` via "
-                    "Homebrew, or create the USB on Linux/Windows.")
-            return wrote_mbr
+            return self._install_syslinux_native(
+                partition, params, whole_disk=whole_disk)
 
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"macOS bootloader installation failed: {e}")
@@ -931,59 +950,21 @@ class USBInstaller:
             if enable_uefi_only:
                 logger.info("Configuring UEFI-only bootloader on Linux")
 
-                # For UEFI-only, we need to install to the EFI partition
-                if not device.startswith('/dev/'):
-                    device = f"/dev/{device}"
+                # UEFI needs no bootloader installed into a boot sector: the
+                # firmware loads EFI/BOOT/BOOTX64.EFI from the FAT volume
+                # that is already mounted. grub-install and efibootmgr are
+                # not used, so nothing has to be present on the host.
+                mount_point = params.get('mount_point')
+                if not self._install_uefi_files(mount_point, params):
+                    logger.error("UEFI-only installation failed")
+                    return False
 
-                # Prefer the partition _prepare_installation created; only
-                # guess at naming if that is somehow unavailable.
-                efi_partition = params.get('target_partition') or device
-                if efi_partition == device and not device.endswith(('1', 'p1')):
-                    # Try common EFI partition naming
-                    for suffix in ['1', 'p1']:
-                        test_partition = f"{device}{suffix}"
-                        if os.path.exists(test_partition):
-                            efi_partition = test_partition
-                            break
-
-                # Create EFI directory structure
-                efi_mount = tempfile.mkdtemp(prefix='pynetboot_efi_')
-                if self._mount_device(efi_partition, efi_mount):
-                    try:
-                        efi_boot_dir = os.path.join(efi_mount, 'EFI', 'BOOT')
-                        os.makedirs(efi_boot_dir, exist_ok=True)
-
-                        # Copy bootloader files
-                        self._copy_efi_bootloader_files(efi_boot_dir)
-
-                        if enable_secure_boot:
-                            # Install Secure Boot files
-                            if not self._install_secure_boot_files_linux(efi_boot_dir):
-                                logger.error("Failed to install Secure Boot files")
-                                return False
-
-                        # Install UEFI bootloader
-                        grub_efi_install_path = self._find_executable('grub-install')
-                        if grub_efi_install_path:
-                            result = subprocess.run(
-                                ['sudo', grub_efi_install_path, '--target=x86_64-efi',
-                                 '--efi-directory=' + efi_mount, '--bootloader-id=PyNetboot', device],
-                                capture_output=True, text=True, timeout=30
-                            )
-                            if result.returncode == 0:
-                                return True
-
-                        # Try using efibootmgr
-                        efibootmgr_path = self._find_executable('efibootmgr')
-                        if efibootmgr_path:
-                            # This would need more complex handling
-                            logger.info("efibootmgr available but manual setup needed")
-                    finally:
-                        self._unmount_device(efi_partition)
-                        shutil.rmtree(efi_mount, ignore_errors=True)
-
-                logger.error("UEFI-only installation failed - no suitable method found")
-                return False
+                if enable_secure_boot:
+                    efi_boot_dir = os.path.join(mount_point, *_EFI_BOOT_DIR)
+                    if not self._install_secure_boot_files_linux(efi_boot_dir):
+                        logger.error("Failed to install Secure Boot files")
+                        return False
+                return True
 
             # For USB drives with BIOS/UEFI dual support
             if drive_type == 'USB Drive':
@@ -1002,12 +983,19 @@ class USBInstaller:
                 #    at offset 446 survives.
                 self._write_syslinux_mbr(whole_disk)
 
+                # That MBR boots whichever partition is marked active, so
+                # the target has to carry the boot flag.
+                self._activate_partition(whole_disk, partition)
+
                 # 2) Copy bundled menu modules onto the target filesystem.
                 self._copy_syslinux_modules(params.get('mount_point'))
 
                 # Without a config at the root, syslinux boots to a bare
                 # prompt: it does not find the menu inside the image.
                 self._write_boot_config(params)
+
+                # The same drive should also boot on UEFI-only firmware.
+                self._install_uefi_files(params.get('mount_point'), params)
 
                 # 3) Install syslinux to the partition — prefer the BUNDLED
                 #    binary, fall back to a system syslinux only if missing.
@@ -1033,8 +1021,14 @@ class USBInstaller:
                     logger.warning(
                         f"syslinux install failed on {partition}: "
                         f"{(result.stderr or '').strip()}")
-                    # extlinux works on a mounted directory, so put it back.
+                    # The rest of the fallbacks want the volume mounted.
                     self._remount(params, partition)
+
+                # 4) Built-in installer: no binary to run, so it works where
+                #    the bundled x86 ones cannot (ARM hosts, for instance).
+                logger.info("Falling back to the built-in syslinux installer")
+                if self._install_syslinux_native(partition, params):
+                    return True
 
                 # extlinux fallback (bundled first, then system). extlinux
                 # installs into a mounted directory, not the raw partition.
@@ -1196,8 +1190,18 @@ class USBInstaller:
             logger.warning(f"Writing MBR failed: {e}")
             return False
 
+    @staticmethod
+    def _windows_drive_spec(device: str) -> Optional[str]:
+        """Return the ``D:`` form syslinux.exe expects, or None.
+
+        Callers hand the target around as 'D', 'D:' or 'D:\\'; syslinux.exe
+        accepts only 'D:' and prints its usage for anything else.
+        """
+        letter = (device or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
+        return f"{letter}:" if letter.isalpha() else None
+
     def _copy_syslinux_modules(self, mount_point: Optional[str]) -> None:
-        """Copy bundled syslinux menu modules (menu.c32, vesamenu.c32) to target."""
+        """Copy the bundled syslinux modules the boot menu needs to the target."""
         if not mount_point or not os.path.isdir(mount_point):
             return
         for name in _SYSLINUX_MODULES:
@@ -1208,6 +1212,213 @@ class USBInstaller:
                     logger.info(f"Copied bundled {name} to {mount_point}")
                 except _FILE_COPY_ERRORS as e:
                     logger.warning(f"Failed to copy {name}: {e}")
+            else:
+                logger.warning(f"Bundled {name} is missing from this build")
+
+    def _log_boot_layout(self, mount_point: Optional[str]) -> None:
+        """Log the boot files on the target, so a failure can be diagnosed."""
+        if not mount_point or not os.path.isdir(mount_point):
+            return
+
+        def describe(directory: str, names: List[str]) -> str:
+            parts = []
+            for name in names:
+                path = os.path.join(directory, name)
+                try:
+                    parts.append(f"{name} ({os.path.getsize(path)}B)")
+                except OSError:
+                    parts.append(f"{name} MISSING")
+            return ', '.join(parts)
+
+        root_files = ['ldlinux.sys', 'syslinux.cfg'] + list(_SYSLINUX_MODULES)
+        logger.info(f"Boot files at the drive root: "
+                    f"{describe(mount_point, root_files)}")
+
+        efi_dir = os.path.join(mount_point, *_EFI_BOOT_DIR)
+        if os.path.isdir(efi_dir):
+            try:
+                names = sorted(os.listdir(efi_dir))
+            except OSError as e:
+                logger.warning(f"Could not list {efi_dir}: {e}")
+                return
+            logger.info(f"Boot files in EFI/BOOT: {describe(efi_dir, names)}")
+        else:
+            logger.info("No EFI/BOOT directory on the drive "
+                        "(the drive will only boot in BIOS mode)")
+
+    def _install_uefi_files(self, mount_point: Optional[str],
+                            params: Dict[str, Any]) -> bool:
+        """Make sure the target has a UEFI loader at EFI/BOOT/BOOTX64.EFI.
+
+        An image that carries its own EFI loader keeps it -- it knows where
+        its kernel is. Otherwise the bundled syslinux.efi is installed, so a
+        drive built from a BIOS-only image (an isolinux image, say) still
+        boots on UEFI firmware without anything being installed on the host.
+        """
+        if not mount_point or not os.path.isdir(mount_point):
+            logger.warning("No mounted target; cannot install UEFI files")
+            return False
+
+        efi_dir = os.path.join(mount_point, *_EFI_BOOT_DIR)
+        existing = self._existing_efi_loaders(efi_dir)
+        if existing:
+            logger.info(
+                f"Keeping the image's own UEFI loader: {', '.join(existing)}")
+            return True
+
+        loader = bootloader_path(os.path.join('efi64', 'syslinux.efi'))
+        if not loader.exists():
+            logger.error("Bundled UEFI loader (efi64/syslinux.efi) is missing")
+            return False
+
+        try:
+            os.makedirs(efi_dir, exist_ok=True)
+            shutil.copy2(loader, os.path.join(efi_dir, _EFI_LOADER))
+            for name in _EFI_MODULES:
+                src = bootloader_path(os.path.join('efi64', name))
+                if src.exists():
+                    shutil.copy2(src, os.path.join(efi_dir, name))
+                else:
+                    logger.warning(f"Bundled efi64/{name} is missing")
+        except _FILE_COPY_ERRORS as e:
+            logger.error(f"Could not install the UEFI loader: {e}")
+            return False
+
+        # syslinux.efi reads its config from the directory it was loaded
+        # from, so the menu has to be written there as well as at the root.
+        self.create_syslinux_cfg(efi_dir, params, image_root=mount_point)
+        logger.info(f"Installed the bundled UEFI loader in {efi_dir}")
+        return True
+
+    @staticmethod
+    def _existing_efi_loaders(efi_dir: str) -> List[str]:
+        """Names of BOOT*.EFI files already present in an EFI/BOOT directory."""
+        try:
+            names = os.listdir(efi_dir)
+        except OSError:
+            return []
+        return sorted(n for n in names
+                      if n.upper().startswith('BOOT')
+                      and n.upper().endswith('.EFI'))
+
+    def _install_syslinux_native(self, partition: str,
+                                 params: Dict[str, Any],
+                                 whole_disk: Optional[str] = None) -> bool:
+        """Install syslinux with the built-in installer, no binary needed.
+
+        Used where no syslinux binary can run: macOS, and Linux on an
+        architecture the bundled x86 binaries do not match. The volume has to
+        be unmounted for the raw writes, then put back so the rest of the
+        install still sees it.
+
+        `whole_disk` asks for the MBR and the boot flag to be written in the
+        same unmounted window -- macOS refuses to write sector 0 of a disk
+        while one of its partitions is mounted.
+        """
+        from pynetboot.core import syslinux_native as native
+        from pynetboot.resources import read_bootloader
+
+        ldlinux = read_bootloader('ldlinux.sys')
+        boot_template = read_bootloader('ldlinux.bss')
+        if not ldlinux or not boot_template:
+            logger.error(
+                "Bundled ldlinux.sys/ldlinux.bss are missing from this build")
+            return False
+
+        mount_point = params.get('mount_point')
+        if not mount_point or not os.path.isdir(mount_point):
+            logger.error("No mounted target for the native syslinux install")
+            return False
+
+        payload = native.file_payload(ldlinux)
+        logger.info(
+            f"Installing syslinux on {partition} with the built-in "
+            f"installer: writing ldlinux.sys ({format_size(len(payload))}) "
+            f"to {mount_point}")
+        try:
+            with open(os.path.join(mount_point, 'ldlinux.sys'), 'wb') as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError as e:
+            logger.error(f"Could not write ldlinux.sys to the target: {e}")
+            return False
+
+        # The filesystem cache would write its own copy of the file back over
+        # the patched sectors, so let go of the volume first.
+        self._release_mount(params)
+        try:
+            with native.RawDevice(partition) as device:
+                native.install(device.read, device.write,
+                               ldlinux, boot_template)
+            if whole_disk:
+                self._write_syslinux_mbr(whole_disk)
+                self._activate_partition(whole_disk, partition)
+            native.sync_disks()
+            logger.info(f"Installed syslinux on {partition} (native)")
+            return True
+        except native.SyslinuxError as e:
+            logger.error(f"Native syslinux install failed: {e}")
+            return False
+        except OSError as e:
+            logger.error(f"Native syslinux install could not reach "
+                         f"{partition}: {e}")
+            return False
+        finally:
+            self._remount(params, partition)
+
+    def _activate_partition(self, whole_disk: str, partition: str) -> bool:
+        """Set the MBR boot flag on the target partition.
+
+        The syslinux MBR chains to whichever partition is marked active; with
+        no active partition a BIOS boot stops at "Missing operating system".
+        """
+        from pynetboot.core import syslinux_native as native
+
+        index = self._partition_index(partition)
+        if index is None:
+            logger.warning(
+                f"Could not tell which partition {partition} is; "
+                f"leaving the boot flag alone")
+            return False
+        try:
+            with native.RawDevice(whole_disk) as device:
+                sector = bytearray(device.read(0, 512))
+                if len(sector) < 512:
+                    logger.warning(f"Could not read the MBR of {whole_disk}")
+                    return False
+                for slot in range(4):
+                    entry = 446 + slot * 16
+                    sector[entry] = 0x80 if slot == index - 1 else 0x00
+                device.write(0, bytes(sector))
+            logger.info(f"Marked partition {index} of {whole_disk} active")
+            return True
+        except (native.SyslinuxError, OSError) as e:
+            logger.warning(f"Could not set the boot flag on {partition}: {e}")
+            return False
+
+    @staticmethod
+    def _partition_index(partition: str) -> Optional[int]:
+        """Partition number from a device node, or None if it is a whole disk.
+
+        Handles /dev/sdb1, /dev/nvme0n1p1, /dev/mmcblk0p1 and /dev/disk4s1.
+        Taking the trailing digits alone would read /dev/disk4 as partition 4
+        and put the boot flag on the wrong entry.
+        """
+        name = os.path.basename(partition or '')
+        if re.match(r'^disk\d+$', name):
+            return None                     # macOS whole disk, not a slice
+        # macOS: diskNsM, where only the sM part is the partition.
+        match = re.match(r'^disk\d+s(\d+)$', name)
+        if match is None:
+            # Linux: the partition number follows a letter (sdb1) or an
+            # explicit 'p' separator (nvme0n1p1, mmcblk0p1).
+            match = re.match(
+                r'^(?:[a-z]+\d+n\d+p|[a-z]+\d+p|[a-z]+)(\d+)$', name)
+        if match is None:
+            return None
+        index = int(match.group(1))
+        return index if 1 <= index <= 4 else None
 
     # Where distributions keep the boot menu inside their image. syslinux
     # only reads a config from the filesystem root, so one of these has to be
@@ -1236,10 +1447,15 @@ class USBInstaller:
                 return relative
         return None
 
-    def create_syslinux_cfg(self, target_device: str, params: Dict[str, Any]) -> bool:
+    def create_syslinux_cfg(self, target_device: str, params: Dict[str, Any],
+                            image_root: Optional[str] = None) -> bool:
         """Write the syslinux config at the root of a mounted target.
 
         `target_device` is the mounted filesystem, not a device node.
+        `image_root` is where the image's own menu is looked for when the
+        config is not being written at the root of the volume (the UEFI
+        loader reads its config from EFI/BOOT); the paths written are
+        absolute, so the same content works in either place.
 
         A distribution image carries its own menu, with kernel and initrd
         paths that only it knows. Chaining to that config is what makes the
@@ -1248,7 +1464,7 @@ class USBInstaller:
         when the image supplies no config at all is one generated.
         """
         try:
-            existing = self._find_image_boot_config(target_device)
+            existing = self._find_image_boot_config(image_root or target_device)
             if existing:
                 directory = os.path.dirname(existing)
                 # CONFIG hands over to that file; APPEND sets the directory
@@ -1262,7 +1478,7 @@ class USBInstaller:
                 path = os.path.join(target_device, 'syslinux.cfg')
                 with open(path, 'w') as handle:
                     handle.write(cfg_content)
-                logger.info(f"Boot menu chains to /{existing}")
+                logger.info(f"Wrote {path}: boot menu chains to /{existing}")
                 return True
 
             logger.warning(

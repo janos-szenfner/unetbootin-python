@@ -554,7 +554,11 @@ class TestInstaller(unittest.TestCase):
             self.installer._install_bootloader_linux('/dev/sdb', params)
 
             mock_mbr.assert_called_once_with('/dev/sdb')
-            syslinux_argv = mock_run.call_args_list[0].args[0]
+            # Other privileged commands (marking the partition active) run
+            # through subprocess too, so pick out the syslinux invocation.
+            syslinux_argv = next(
+                call.args[0] for call in mock_run.call_args_list
+                if any('syslinux' in str(part) for part in call.args[0]))
             self.assertEqual(syslinux_argv[-1], '/dev/sdb1')
 
     def test_get_files_to_copy(self):

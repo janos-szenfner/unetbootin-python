@@ -215,14 +215,15 @@ You are prompted for your password only when an install actually begins. On Linu
 - Progress reporting
 
 ### USB Installation
-> ⚠️ **Not yet working end-to-end.** The install pipeline (format → mount → copy → bootloader) still has correctness gaps — see the 🛑 Critical section under *Next Steps*. Key limitations today: it shells out to interactive `sudo` (fails in a no-terminal GUI), requires **system-installed** syslinux/grub (the bundled `resources/bootloader/` binaries are unused), and resolves target disks by fragile text parsing. **Drive safety is handled**, though: only removable USB drives are selectable, and an explicit erase confirmation + installer-level hard guard prevent writing to internal/system/virtual disks. Treat the items below as *implemented code paths*, not verified working features.
+> ⚠️ **Not verified end-to-end on every platform.** The install pipeline (format → mount → copy → bootloader) is implemented and elevation no longer needs a terminal. The bootloader half is now **self-contained**: nothing has to be installed on the host — Windows uses the bundled `syslinux.exe`, Linux the bundled `ubnsylnx*`, and macOS (or any host the bundled binaries cannot run on, such as ARM Linux) uses the built-in installer in `core/syslinux_native.py`, which writes and patches the syslinux boot sector itself. **Drive safety is handled**, though: only removable USB drives are selectable, and an explicit erase confirmation + installer-level hard guard prevent writing to internal/system/virtual disks. Treat the items below as *implemented code paths*, not verified working features.
 
 - File copying from source to target device
-- Bootloader installation support (via **system-installed** tools, not the bundled binaries):
-  - Syslinux (MBR + boot files)
-  - EXTLinux (for ext filesystems)
-  - GRUB/GRUB2 (for BIOS and UEFI)
-  - UEFI-only mode (installs GRUB/syslinux EFI files to EFI partition)
+- Bootloader installation (all payloads bundled — **no host installation required**):
+  - Syslinux for BIOS: MBR to sector 0, boot sector + `ldlinux.sys` on the partition,
+    installed by the bundled binary or the built-in installer
+  - UEFI: `EFI/BOOT/BOOTX64.EFI` from the bundled syslinux.efi, unless the image
+    brings its own EFI loader (which is kept)
+  - EXTLinux / GRUB kept as fallbacks when they happen to be present
   - Secure Boot support (copies signed shim+mmx64.efi when available)
 - Platform-specific bootloader installation
 - Temporary directory management
@@ -247,7 +248,7 @@ You are prompted for your password only when an install actually begins. On Linu
 - Serial number detection using `udevadm`, `sg_vpd`, `hdparm`
 - Mount/unmount using `mount`, `umount`, `findmnt`
 - Drive formatting using `mkfs.*` utilities
-- Bootloader installation using `syslinux`, `extlinux`, `grub-install`
+- Bootloader installation using the bundled syslinux (falls back to `extlinux`/`grub-install` if present)
 - Volume label management using `blkid`, `e2label`, `dosfslabel`
 - Filesystem type detection
 
@@ -659,9 +660,9 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ⚠️ **Not verified end-to-end** — elevation no longer needs an interactive terminal (per-command pkexec/sudo/UAC), but writing a real bootable USB has not been validated on all platforms; still needs system-installed syslinux for some paths. *Drive-safety filtering + erase confirmation are in place.* |
+| Installer | ⚠️ **Not verified end-to-end** — elevation no longer needs an interactive terminal (per-command pkexec/sudo/UAC) and the bootloader install no longer needs anything installed on the host, but writing a real bootable USB has not been validated on every platform. *Drive-safety filtering + erase confirmation are in place.* |
 | Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
-| Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths implemented (including UEFI-only mode via system-installed `grub-install --target=x86_64-efi`, syslinux EFI modules, and Secure Boot via shim+mmx64.efi) but not verified end-to-end on all 3 platforms |
+| Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths implemented (UEFI-only mode installs the bundled `syslinux.efi` as `EFI/BOOT/BOOTX64.EFI`; Secure Boot still needs a distribution-supplied signed shim) but not verified end-to-end on all 3 platforms |
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |
