@@ -54,12 +54,6 @@ def format_drive(drive: str, filesystem: str = "vfat",
     return False
 
 
-def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
-    """Install bootloader to a drive."""
-    _unsupported("Bootloader installation")
-    return False
-
-
 def get_volume_label(drive: str) -> Optional[str]:
     """Get volume label for a drive."""
     _unsupported("Volume label lookup")

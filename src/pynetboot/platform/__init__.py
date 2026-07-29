@@ -32,7 +32,6 @@ _PUBLIC_API = (
     'unmount_drive',
     'mount_drive',
     'format_drive',
-    'install_bootloader',
     'get_volume_label',
     'set_volume_label',
     'get_device_size',

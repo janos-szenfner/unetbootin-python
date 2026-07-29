@@ -2,9 +2,7 @@
 macOS-specific functionality for PyNetboot.
 """
 
-import os
 import re
-import shutil
 import logging
 import plistlib
 import subprocess
@@ -323,92 +321,6 @@ def format_drive(drive: str, filesystem: str = "vfat",
 
     except _SUBPROCESS_ERRORS as e:
         logger.error(f"Failed to format {drive} as {filesystem}: {e}")
-        return False
-
-
-def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
-    """Install bootloader to a drive on macOS."""
-    try:
-        if not drive.startswith('/dev/'):
-            drive = f'/dev/{drive}'
-
-        if bootloader_type.lower() == 'syslinux':
-            # For macOS, syslinux is typically used for FAT32 formatted USB
-            # We need to install syslinux bootloader files
-
-            # First, ensure syslinux is installed
-            syslinux_dir = '/usr/local/share/syslinux'
-            if not os.path.exists(syslinux_dir):
-                syslinux_dir = '/usr/share/syslinux'
-
-            if not os.path.exists(syslinux_dir):
-                logger.error("syslinux files not found")
-                return False
-
-            # Copy syslinux files
-            mount_point = get_mount_point(drive)
-            if not mount_point:
-                logger.error(f"Cannot find mount point for {drive}")
-                return False
-
-            # Copy bootloader files
-            boot_files = ['ldlinux.sys', 'libcom32.c32', 'libutil.c32', 'mboot.c32',
-                         'menu.c32', 'vesamenu.c32', 'hdt.c32', 'poweroff.com', 'reboot.com']
-
-            for file in boot_files:
-                src = os.path.join(syslinux_dir, file)
-                if os.path.exists(src):
-                    dst = os.path.join(mount_point, file)
-                    shutil.copy2(src, dst)
-
-            # Install MBR
-            mbr_file = os.path.join(syslinux_dir, 'mbr.bin')
-            if os.path.exists(mbr_file):
-                result = subprocess.run(
-                    ['dd', f'if={mbr_file}', f'of={drive}', 'bs=440', 'count=1'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                return result.returncode == 0
-
-        elif bootloader_type.lower() == 'grub':
-            # For GRUB on macOS, we typically use bless
-            mount_point = get_mount_point(drive)
-            if not mount_point:
-                logger.error(f"Cannot find mount point for {drive}")
-                return False
-
-            # Check for EFI boot
-            efi_dir = os.path.join(mount_point, 'EFI', 'BOOT')
-            if os.path.exists(efi_dir):
-                bootx64_path = os.path.join(efi_dir, 'BOOTX64.EFI')
-                if os.path.exists(bootx64_path):
-                    result = subprocess.run(
-                        ['bless', '--mount', mount_point, '--setBoot',
-                         '--folder', efi_dir, '--file', bootx64_path],
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    return result.returncode == 0
-
-            # For BIOS boot
-            grub_cfg_path = os.path.join(mount_point, 'grub.cfg')
-            if os.path.exists(grub_cfg_path):
-                result = subprocess.run(
-                    ['bless', '--mount', mount_point, '--setBoot', '--folder', mount_point],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                return result.returncode == 0
-
-        logger.error(f"Unsupported bootloader type: {bootloader_type}")
-        return False
-
-    except _SUBPROCESS_ERRORS as e:
-        logger.error(f"Failed to install bootloader to {drive}: {e}")
         return False
 
 

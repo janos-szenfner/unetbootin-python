@@ -428,21 +428,6 @@ def format_drive(drive: str, filesystem: str = "FAT32",
         return False
 
 
-def install_bootloader(drive: str, bootloader_type: str = "syslinux") -> bool:
-    """Install bootloader to a drive on Windows.
-
-    Not implemented at the platform layer. The installer module handles
-    Windows bootloader installation via syslinux.exe when available; this
-    stub reports failure so callers never assume a bootable result.
-    """
-    logger.warning(
-        f"Platform-level bootloader installation ({bootloader_type}) is not "
-        f"implemented on Windows; install syslinux.exe and use the installer "
-        f"module instead"
-    )
-    return False
-
-
 def get_volume_label(drive: str) -> Optional[str]:
     """Get volume label for a drive on Windows."""
     try:
