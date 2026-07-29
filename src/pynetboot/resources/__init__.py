@@ -108,6 +108,16 @@ def find_bundled_syslinux(prefer_64bit: bool = True) -> Optional[Path]:
     return None
 
 
+def read_bootloader(name: str) -> Optional[bytes]:
+    """Read a bundled bootloader payload, or None if it is missing."""
+    path = bootloader_path(name)
+    try:
+        return path.read_bytes()
+    except OSError as e:
+        logger.warning(f"Could not read bundled {name} ({path}): {e}")
+        return None
+
+
 def find_bundled_extlinux(prefer_64bit: bool = True) -> Optional[Path]:
     """Return the bundled Linux extlinux binary, made executable, or None.
 

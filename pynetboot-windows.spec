@@ -13,6 +13,9 @@ datas += [
     ('src/pynetboot/resources/icons/*', 'pynetboot/resources/icons/'),
     ('src/pynetboot/resources/logos/*', 'pynetboot/resources/logos/'),
     ('src/pynetboot/resources/bootloader/*', 'pynetboot/resources/bootloader/'),
+    # The UEFI payloads live in a subdirectory, which the glob above does
+    # not reach; without this a build has no BOOTX64.EFI to install.
+    ('src/pynetboot/resources/bootloader/efi64/*', 'pynetboot/resources/bootloader/efi64/'),
     ('src/pynetboot/resources/translations/*', 'pynetboot/resources/translations/'),
 ]
 

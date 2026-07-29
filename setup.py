@@ -99,6 +99,7 @@ setup(
     package_data={
         "pynetboot": [
             "resources/bootloader/*",
+            "resources/bootloader/efi64/*",
             "resources/icons/*",
             "resources/logos/*",
             "resources/translations/*.ts",
