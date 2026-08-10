@@ -200,6 +200,40 @@ def get_drive_info(drive: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def device_mountpoints(device: str) -> List[str]:
+    """Every mount point held by a device *and its slices*.
+
+    ``diskutil info disk5`` reports no mount point for a whole disk even when
+    its volumes are mounted, so asking it whether a stick is in use always
+    answered no. Reading the mount table catches both shapes.
+    """
+    ident = re.sub(r'^/dev/', '', device or '').strip()
+    if not ident:
+        return []
+    # disk5 and disk5s1, but not disk50.
+    pattern = re.compile(rf'^/dev/{re.escape(ident)}(s\d+)*\s')
+
+    try:
+        result = subprocess.run(['mount'], capture_output=True, text=True,
+                                timeout=10)
+    except _SUBPROCESS_ERRORS as e:
+        logger.debug(f"Could not read the mount table: {e}")
+        return []
+    if result.returncode != 0:
+        return []
+
+    points = []
+    for line in result.stdout.splitlines():
+        if not pattern.match(line):
+            continue
+        # "/dev/disk5s1 on /Volumes/NAME (msdos, local, nodev, ...)"
+        _node, _, rest = line.partition(' on ')
+        point = rest.rsplit(' (', 1)[0].strip()
+        if point:
+            points.append(point)
+    return points
+
+
 def unmount_drive(drive: str) -> bool:
     """Unmount a drive, and every partition on it, on macOS."""
     try:

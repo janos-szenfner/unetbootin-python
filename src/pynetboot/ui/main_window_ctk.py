@@ -210,6 +210,45 @@ def resolve_drawing_method(available: Optional[set] = None) -> Optional[str]:
     return "polygon_shapes"
 
 
+def mark_mouse_inside(widget) -> bool:
+    """Tell the CustomTkinter widget owning `widget` that the mouse is in it.
+
+    A press lands on a button's canvas or on one of its labels, while the flag
+    lives on the widget that owns them, so walk up to it.
+    """
+    for _ in range(4):
+        if widget is None:
+            return False
+        if hasattr(widget, '_mouse_inside'):
+            widget._mouse_inside = True
+            return True
+        widget = getattr(widget, 'master', None)
+    return False
+
+
+def enable_press_to_click(root) -> None:
+    """Make a mouse press count as "the pointer is inside this widget".
+
+    CustomTkinter runs a button's command only if it believes the mouse is
+    inside it, and the only thing that sets that belief is an `<Enter>` event
+    (`CTkButton._mouse_inside`). Tk on macOS does not reliably deliver
+    crossing events -- the click that brings a window to the front is the
+    worst case -- so buttons and the tab strip look dead, and respond only if
+    the pointer happens to cross an inner boundary on the way in. That is the
+    "you have to find the one spot that works" behaviour.
+
+    A press is proof that the pointer is inside, so record it. The release,
+    which CustomTkinter already handles, then runs the command as it should.
+    Harmless everywhere else: it states something that is true by definition.
+    """
+    try:
+        root.bind_all('<Button-1>',
+                      lambda event: mark_mouse_inside(event.widget), add='+')
+        logger.info("Press-to-click enabled: a press marks the widget as hovered")
+    except Exception as e:  # noqa: BLE001 - a missing binding is not fatal
+        logger.warning(f"Could not install the press-to-click handler: {e}")
+
+
 def log_render_environment(root) -> Dict[str, Any]:
     """Log what actually decides how the interface looks.
 
@@ -226,6 +265,7 @@ def log_render_environment(root) -> Dict[str, Any]:
     info: Dict[str, Any] = {}
     try:
         info['tk'] = tkinter.TkVersion
+        info['tk_patchlevel'] = root.tk.call('info', 'patchlevel')
         info['tk_scaling'] = round(float(root.tk.call('tk', 'scaling')), 3)
         info['screen_dpi'] = round(root.winfo_fpixels('1i'), 1)
         info['screen'] = f"{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
@@ -609,6 +649,7 @@ class MainWindowCTk:
         # creation, and each one draws itself with the method chosen here.
         self._font_family = apply_font_family()
         self._drawing_method = resolve_drawing_method()
+        enable_press_to_click(self.root)
         log_render_environment(self.root)
         self.root.geometry("900x680")
         self.root.minsize(760, 560)

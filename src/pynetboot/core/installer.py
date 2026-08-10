@@ -471,73 +471,47 @@ class USBInstaller:
             return False
 
     def _is_device_mounted(self, device: str) -> bool:
-        """Check if device is mounted."""
+        """True if anything on `device` is mounted.
+
+        The macOS check used to be `device in diskutil list`, which is true of
+        every disk attached to the machine whether or not it is mounted -- so
+        an unmount was always attempted, and a failure there stopped the
+        install before it began.
+        """
         try:
             if self.platform == 'win32':
                 # On Windows, drives are always "mounted"
                 return True
-            elif self.platform == 'darwin':
-                result = subprocess.run(
-                    ['diskutil', 'list'],
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0:
-                    return device in result.stdout
-            else:  # Linux
-                result = subprocess.run(
-                    ['mount'],
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0:
-                    return device in result.stdout
-        except _SUBPROCESS_ERRORS:
-            pass
-
+            if self.platform == 'darwin':
+                from pynetboot.platform.macos import device_mountpoints
+                points = device_mountpoints(device)
+                if points:
+                    logger.info(f"{device} is mounted at {', '.join(points)}")
+                return bool(points)
+            from pynetboot.platform.linux import device_mountpoints
+            return bool(device_mountpoints(
+                device if device.startswith('/dev/') else f"/dev/{device}"))
+        except _SUBPROCESS_ERRORS as e:
+            logger.debug(f"Could not tell whether {device} is mounted: {e}")
         return False
 
     def _unmount_device(self, device: str) -> bool:
-        """Unmount device."""
-        try:
-            if self.platform == 'win32':
-                # Windows doesn't need unmounting for this purpose
-                return True
-            elif self.platform == 'darwin':
-                # macOS: find the disk identifier for the device
-                result = subprocess.run(
-                    ['diskutil', 'list'],
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0:
-                    # Parse to find the correct disk identifier
-                    # This is simplified
-                    disk_identifier = device
-                    result = subprocess.run(
-                        ['diskutil', 'unmount', disk_identifier],
-                        capture_output=True, text=True, timeout=10
-                    )
-                    return result.returncode == 0
-            else:  # Linux
-                if not device.startswith('/dev/'):
-                    device = f"/dev/{device}"
+        """Unmount `device` and everything on it.
 
-                # Find mount point
-                result = subprocess.run(
-                    ['mount'],
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.split('\n'):
-                        if device in line:
-                            mount_point = line.split()[2]
-                            result = subprocess.run(
-                                ['umount', mount_point],
-                                capture_output=True, text=True, timeout=10
-                            )
-                            return result.returncode == 0
+        Delegates to the platform layer, which knows that a macOS whole disk
+        needs `diskutil unmountDisk` -- plain `diskutil unmount` refuses it
+        with "it has a partitioning scheme so use diskutil unmountDisk
+        instead", which is what stopped an install on a USB stick.
+        """
+        if self.platform == 'win32':
+            # Windows doesn't need unmounting for this purpose
+            return True
+        try:
+            from pynetboot.platform import unmount_drive
+            return unmount_drive(device)
         except _SUBPROCESS_ERRORS as e:
             logger.error(f"Failed to unmount {device}: {e}")
-
-        return False
+            return False
 
     def _macos_whole_disk(self, device: str) -> str:
         """Resolve the whole-disk node (e.g. /dev/disk4) via ``diskutil info -plist``.

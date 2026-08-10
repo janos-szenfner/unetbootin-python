@@ -924,6 +924,68 @@ class TestFontFallback(unittest.TestCase):
         self.assertIn('/app/share/fonts', commands)
 
 
+class TestPressToClick(unittest.TestCase):
+    """A press must count as "the mouse is inside", or buttons look dead.
+
+    CustomTkinter runs a button's command only when it has seen an <Enter>
+    event first. Tk on macOS does not reliably deliver crossing events, so
+    without this the buttons responded only in the odd spot where a crossing
+    happened to fire.
+    """
+
+    def setUp(self):
+        if not HAS_CTK:
+            self.skipTest("customtkinter is not installed")
+        import customtkinter as ctk
+        try:
+            self.root = ctk.CTk()
+        except Exception as e:            # no display, e.g. headless CI
+            self.skipTest(f"no Tk display: {e}")
+        self.root.withdraw()
+        self.addCleanup(self.root.destroy)
+        self.button = ctk.CTkButton(self.root, text="OK", command=lambda: None)
+        self.button.pack()
+        self.root.update_idletasks()
+
+    def test_press_on_the_canvas_marks_the_button(self):
+        from pynetboot.ui.main_window_ctk import mark_mouse_inside
+        self.button._mouse_inside = False
+        self.assertTrue(mark_mouse_inside(self.button._canvas))
+        self.assertTrue(self.button._mouse_inside)
+
+    def test_press_on_the_label_marks_the_button(self):
+        from pynetboot.ui.main_window_ctk import mark_mouse_inside
+        self.button._mouse_inside = False
+        self.assertTrue(mark_mouse_inside(self.button._text_label))
+        self.assertTrue(self.button._mouse_inside)
+
+    def test_a_release_without_the_flag_does_nothing(self):
+        """The behaviour being worked around, pinned so it stays understood."""
+        fired = []
+        self.button.configure(command=lambda: fired.append(1))
+        self.button._mouse_inside = False
+        self.button._on_release()
+        self.assertEqual(fired, [], "CustomTkinter still gates on _mouse_inside")
+
+        from pynetboot.ui.main_window_ctk import mark_mouse_inside
+        mark_mouse_inside(self.button._canvas)
+        self.button._on_release()
+        self.assertEqual(fired, [1])
+
+    def test_a_widget_with_no_customtkinter_owner_is_ignored(self):
+        import tkinter
+
+        from pynetboot.ui.main_window_ctk import mark_mouse_inside
+        plain = tkinter.Frame(self.root)
+        self.assertFalse(mark_mouse_inside(plain))
+        self.assertFalse(mark_mouse_inside(None))
+
+    def test_the_handler_is_bound_for_the_whole_application(self):
+        from pynetboot.ui.main_window_ctk import enable_press_to_click
+        enable_press_to_click(self.root)
+        self.assertIn('<Button-1>', self.root.bind_all())
+
+
 class TestDrawingMethodFallback(unittest.TestCase):
     """Corners are glyphs; without the font they render as stray letters."""
 

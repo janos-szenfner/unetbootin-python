@@ -874,6 +874,84 @@ class TestMacOSPlatform(unittest.TestCase):
             self.assertFalse(macos.is_safe_target('/dev/disk4'))
 
 
+class TestMacOSMountDetection(unittest.TestCase):
+    """A USB stick's mount state, and unmounting a whole disk."""
+
+    MOUNT_OUTPUT = (
+        "/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)\n"
+        "/dev/disk5s1 on /Volumes/PYNETBOOT (msdos, local, nodev, nosuid, "
+        "noowners)\n"
+        "/dev/disk50s1 on /Volumes/OTHER (msdos, local)\n"
+    )
+
+    def _with_mount_output(self, output):
+        from unittest.mock import MagicMock, patch
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = output
+        return patch('pynetboot.platform.macos.subprocess.run',
+                     return_value=result)
+
+    def test_a_whole_disk_reports_its_volumes(self):
+        """`diskutil info disk5` shows no mount point even when it is mounted,
+        so the check has to look at the mount table."""
+        from pynetboot.platform import macos
+        with self._with_mount_output(self.MOUNT_OUTPUT):
+            self.assertEqual(macos.device_mountpoints('disk5'),
+                             ['/Volumes/PYNETBOOT'])
+            self.assertEqual(macos.device_mountpoints('/dev/disk5'),
+                             ['/Volumes/PYNETBOOT'])
+
+    def test_a_slice_reports_its_own_mount(self):
+        from pynetboot.platform import macos
+        with self._with_mount_output(self.MOUNT_OUTPUT):
+            self.assertEqual(macos.device_mountpoints('disk5s1'),
+                             ['/Volumes/PYNETBOOT'])
+
+    def test_a_similar_name_is_not_matched(self):
+        """disk5 must not pick up disk50."""
+        from pynetboot.platform import macos
+        with self._with_mount_output(self.MOUNT_OUTPUT):
+            self.assertNotIn('/Volumes/OTHER', macos.device_mountpoints('disk5'))
+
+    def test_an_unmounted_disk_reports_nothing(self):
+        from pynetboot.platform import macos
+        with self._with_mount_output(self.MOUNT_OUTPUT):
+            self.assertEqual(macos.device_mountpoints('disk9'), [])
+
+    def test_a_whole_disk_is_unmounted_with_unmountDisk(self):
+        """`diskutil unmount disk5` refuses a disk with a partition scheme --
+        which is what stopped an install before it began."""
+        from unittest.mock import MagicMock, patch
+
+        from pynetboot.platform import macos
+        ok = MagicMock()
+        ok.returncode = 0
+        ok.stdout = ok.stderr = ''
+        with patch('pynetboot.platform.macos.is_whole_disk',
+                   return_value=True), \
+                patch('pynetboot.platform.macos.subprocess.run',
+                      return_value=ok) as run:
+            self.assertTrue(macos.unmount_drive('disk5'))
+        self.assertEqual(run.call_args.args[0],
+                         ['diskutil', 'unmountDisk', '/dev/disk5'])
+
+    def test_a_slice_is_unmounted_with_unmount(self):
+        from unittest.mock import MagicMock, patch
+
+        from pynetboot.platform import macos
+        ok = MagicMock()
+        ok.returncode = 0
+        ok.stdout = ok.stderr = ''
+        with patch('pynetboot.platform.macos.is_whole_disk',
+                   return_value=False), \
+                patch('pynetboot.platform.macos.subprocess.run',
+                      return_value=ok) as run:
+            self.assertTrue(macos.unmount_drive('disk5s1'))
+        self.assertEqual(run.call_args.args[0],
+                         ['diskutil', 'unmount', '/dev/disk5s1'])
+
+
 class TestPlatformDetection(unittest.TestCase):
     """Test platform detection and imports."""
 
