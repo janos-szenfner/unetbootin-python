@@ -23,7 +23,7 @@ import os
 import struct
 import subprocess
 import tempfile
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple
 
 from pynetboot.core.fat import FatVolume, FatError, SECTOR_SIZE
 
@@ -237,9 +237,7 @@ def install(read: Callable[[int, int], bytes],
             write: Callable[[int, bytes], None],
             ldlinux: bytes, boot_template: bytes,
             filename: str = 'LDLINUX SYS',
-            prefetch: Optional[Callable[[int, int], None]] = None,
-            flush: Optional[Callable[[], None]] = None,
-            verify_read: Optional[Callable[[int, int], bytes]] = None) -> None:
+            prefetch: Optional[Callable[[int, int], None]] = None) -> 'Written':
     """Finish a syslinux install on a FAT volume reached via read/write.
 
     ``ldlinux.sys`` (with its ADV) must already have been copied onto the
@@ -250,8 +248,10 @@ def install(read: Callable[[int, int], bytes],
     FAT and the root directory in one go turns a handful of password prompts
     into one.
 
-    `flush` commits buffered writes, and `verify_read` reads straight from the
-    device: given both, the result is read back off the drive and checked.
+    Returns what the drive must now hold, for the caller to read back and
+    check with `Written.check`. Verifying is left to the caller so the
+    read-back can ride along with the write instead of costing its own
+    elevation.
     """
     try:
         volume = FatVolume(read)
@@ -308,48 +308,39 @@ def install(read: Callable[[int, int], bytes],
     write(0, expected_boot)
     logger.info("Wrote the syslinux boot sector")
 
-    if flush is not None:
-        flush()
-    if verify_read is not None:
-        _verify(verify_read, expected_boot, sectors[0],
-                on_disk[:SECTOR_SIZE])
+    return Written(first_sector=sectors[0], boot_sector=expected_boot,
+                   first_ldlinux_sector=on_disk[:SECTOR_SIZE])
 
 
-def _verify_spans(first_sector: int) -> List[Tuple[int, int]]:
-    """The two sectors that decide whether the drive boots at all."""
-    return [(0, SECTOR_SIZE), (first_sector * SECTOR_SIZE, SECTOR_SIZE)]
+class Written(NamedTuple):
+    """What the drive must hold once an install has been written.
 
-
-def _verify(read, boot_sector: bytes,
-            first_sector: int, first_ldlinux_sector: bytes) -> None:
-    """Read back what was written, so a bad drive is caught here and not at boot.
-
-    Only the two sectors that decide whether the drive boots at all: the boot
-    sector the BIOS jumps into, and the first sector of ldlinux.sys that it
-    loads next. `read` may be a plain read(offset, length) or an object with
-    a read_many(), which fetches both under one elevation.
+    Only the two sectors that decide whether it boots at all: the boot sector
+    the BIOS jumps into, and the first sector of ldlinux.sys that it loads
+    next.
     """
-    read_many = getattr(read, 'read_many', None)
-    if read_many is not None:
-        written, loaded = read_many(_verify_spans(first_sector))
-    elif callable(read):
-        written = read(0, SECTOR_SIZE)
-        loaded = read(first_sector * SECTOR_SIZE, SECTOR_SIZE)
-    else:
-        raise SyslinuxError(
-            "Verification needs a read(offset, length) callable or an object "
-            "with read_many()")
 
-    if written != boot_sector:
-        raise SyslinuxError(
-            "The boot sector read back differently from what was written; "
-            "the drive did not accept the write")
+    first_sector: int
+    boot_sector: bytes
+    first_ldlinux_sector: bytes
 
-    if loaded != first_ldlinux_sector:
-        raise SyslinuxError(
-            f"Sector {first_sector} does not hold the patched ldlinux.sys; "
-            f"the filesystem may have moved the file")
-    logger.info("Verified the boot sector and the first sector of ldlinux.sys")
+    def spans(self) -> List[Tuple[int, int]]:
+        """Where to read from, to check what was written."""
+        return [(0, SECTOR_SIZE),
+                (self.first_sector * SECTOR_SIZE, SECTOR_SIZE)]
+
+    def check(self, boot: bytes, first_ldlinux: bytes) -> None:
+        """Compare what the drive returned; raise if it is not what we wrote."""
+        if boot != self.boot_sector:
+            raise SyslinuxError(
+                "The boot sector read back differently from what was "
+                "written; the drive did not accept the write")
+        if first_ldlinux != self.first_ldlinux_sector:
+            raise SyslinuxError(
+                f"Sector {self.first_sector} does not hold the patched "
+                f"ldlinux.sys; the filesystem may have moved the file")
+        logger.info(
+            "Verified the boot sector and the first sector of ldlinux.sys")
 
 
 def _runs(sectors: List[int]) -> List[Tuple[int, int]]:
@@ -366,6 +357,99 @@ def _runs(sectors: List[int]) -> List[Tuple[int, int]]:
 
 # --- device access ---------------------------------------------------------
 
+class ElevatedBatch:
+    """Commands from several devices, run together under one elevation.
+
+    macOS authorises each elevated command separately -- the admin right is
+    not shared between processes -- so a password prompt per dd would mean
+    about ten for one install. Collecting the reads into one batch and the
+    writes into another brings it down to two.
+
+    Results are handed back through tokens because nothing can be read until
+    the batch has actually run.
+    """
+
+    def __init__(self) -> None:
+        self._commands: List[List[str]] = []
+        self._reads: List[Tuple[str, int, int, Optional[Callable]]] = []
+        self._temps: List[str] = []
+        self._results: dict = {}
+
+    def __enter__(self) -> 'ElevatedBatch':
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.discard()
+
+    @property
+    def pending(self) -> int:
+        return len(self._commands)
+
+    def _temp_file(self, data: Optional[bytes] = None) -> str:
+        handle = tempfile.NamedTemporaryFile(prefix='pynetboot_dd_',
+                                             delete=False)
+        if data is not None:
+            handle.write(data)
+        handle.close()
+        self._temps.append(handle.name)
+        return handle.name
+
+    def add_read(self, path: str, offset: int, length: int,
+                 into: Optional[Callable[[int, bytes], None]] = None) -> int:
+        """Queue a read; returns a token for `result` once the batch has run."""
+        first = offset // SECTOR_SIZE
+        last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
+        target = self._temp_file()
+        token = len(self._reads)
+        self._reads.append((target, first * SECTOR_SIZE,
+                            offset - first * SECTOR_SIZE, into))
+        self._commands.append(
+            ['dd', f'if={path}', f'of={target}', f'bs={SECTOR_SIZE}',
+             f'skip={first}', f'count={last - first}', 'conv=notrunc'])
+        return token
+
+    def add_write(self, path: str, sector: int, data: bytes) -> None:
+        """Queue a whole-sector write."""
+        source = self._temp_file(data)
+        self._commands.append(
+            ['dd', f'if={source}', f'of={path}', f'bs={SECTOR_SIZE}',
+             f'seek={sector}', f'count={len(data) // SECTOR_SIZE}',
+             'conv=notrunc'])
+
+    def run(self, what: str) -> None:
+        """Run everything queued so far as a single elevated script."""
+        if not self._commands:
+            return
+        commands, self._commands = self._commands, []
+        reads, self._reads = self._reads, []
+        logger.info(f"Elevating once to {what} ({len(commands)} commands)")
+        _run_elevated_script(commands, what)
+
+        for token, (path, base, start, into) in enumerate(reads):
+            with open(path, 'rb') as handle:
+                data = handle.read()
+            self._results[token] = data[start:] if start else data
+            if into is not None:
+                into(base, data)
+
+    def result(self, token: int) -> bytes:
+        """The bytes a queued read returned."""
+        if token not in self._results:
+            raise SyslinuxError("That read has not been run yet")
+        return self._results[token]
+
+    def discard(self) -> None:
+        """Drop anything still queued and remove the temporary files."""
+        self._commands.clear()
+        self._reads.clear()
+        for path in self._temps:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        self._temps.clear()
+
+
 class RawDevice:
     """Sector-level access to a partition, direct or through elevation.
 
@@ -381,11 +465,16 @@ class RawDevice:
     collected and issued as a single elevated script when the device closes.
     """
 
-    def __init__(self, path: str, elevated: Optional[bool] = None):
+    def __init__(self, path: str, elevated: Optional[bool] = None,
+                 batch: Optional['ElevatedBatch'] = None):
         self.path = path
         if elevated is None:
             elevated = not _can_open_directly(path)
         self.elevated = elevated
+        # With a batch, reads and writes are queued for the caller to run
+        # alongside every other device's; without one they go out as they
+        # come.
+        self._batch = batch if elevated else None
         self._handle = None
         # Spans already read from the device: (offset, data).
         self._cache: List[Tuple[int, bytes]] = []
@@ -420,19 +509,31 @@ class RawDevice:
     # -- reading ------------------------------------------------------------
 
     def prefetch(self, offset: int, length: int) -> None:
-        """Read a span up front so later reads inside it cost nothing."""
+        """Read a span up front so later reads inside it cost nothing.
+
+        With a batch attached the read is queued instead, and lands in the
+        cache when the batch runs.
+        """
         if self._handle is not None or length <= 0:
             return
         if self._from_cache(offset, length) is not None:
+            return
+        if self._batch is not None:
+            self._batch.add_read(self.path, offset, length,
+                                 into=self._cache_span)
             return
         first = offset // SECTOR_SIZE
         last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
         data = self._dd_read(first, last - first)
         if data:
-            self._cache.append((first * SECTOR_SIZE, data))
-            logger.info(
-                f"Prefetched {len(data) // SECTOR_SIZE} sectors from "
-                f"{self.path} at sector {first}")
+            self._cache_span(first * SECTOR_SIZE, data)
+
+    def _cache_span(self, base: int, data: bytes) -> None:
+        if not data:
+            return
+        self._cache.append((base, data))
+        logger.info(f"Holding {len(data) // SECTOR_SIZE} sectors of "
+                    f"{self.path} from sector {base // SECTOR_SIZE}")
 
     def read(self, offset: int, length: int) -> bytes:
         if self._handle is not None:
@@ -532,10 +633,20 @@ class RawDevice:
         self._cache.append((offset, data))
 
     def flush(self) -> None:
-        """Issue every pending write as one elevated command."""
+        """Issue every pending write as one elevated command.
+
+        With a batch attached the writes are queued into it instead; the
+        caller runs the batch, which is what keeps the whole install down to
+        one elevation for reading and one for writing.
+        """
         if not self._pending:
             return
         pending, self._pending = self._pending, []
+
+        if self._batch is not None:
+            for sector, data in pending:
+                self._batch.add_write(self.path, sector, data)
+            return
 
         paths = []
         commands = []

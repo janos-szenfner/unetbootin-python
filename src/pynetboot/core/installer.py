@@ -5,6 +5,7 @@ USB installation functionality for PyNetboot.
 import os
 import re
 import sys
+import contextlib
 import time
 import logging
 import shutil
@@ -1404,18 +1405,39 @@ class USBInstaller:
             return False
 
         try:
-            with native.RawDevice(partition) as device:
-                # One read up front covers the boot sector, the FAT and the
-                # root directory on any normal drive. Each elevated command
-                # is a separate password prompt on macOS.
-                device.prefetch(0, self._PREFETCH_BYTES)
-                native.install(device.read, device.write,
-                               ldlinux, boot_template,
-                               prefetch=device.prefetch,
-                               flush=device.flush,
-                               verify_read=device)
-            if whole_disk:
-                self._write_mbr_and_activate(whole_disk, partition)
+            # Two elevations for the whole thing: one to read the drive, one
+            # to write it and read the result back. Every dd in between is
+            # queued into the batch rather than run on its own, because each
+            # elevated command is its own password prompt on macOS.
+            with native.ElevatedBatch() as batch:
+                with native.RawDevice(partition, batch=batch) as device, \
+                        self._mbr_device(whole_disk, batch) as disk:
+                    # One read covers the boot sector, the FAT and the root
+                    # directory on any normal drive; the MBR rides along.
+                    device.prefetch(0, self._PREFETCH_BYTES)
+                    if disk is not None:
+                        disk.prefetch(0, 512)
+                    batch.run(f"read {partition}"
+                              + (f" and {whole_disk}" if disk else ""))
+
+                    written = native.install(
+                        device.read, device.write, ldlinux, boot_template,
+                        prefetch=device.prefetch)
+                    if disk is not None:
+                        self._stage_mbr(disk, whole_disk, partition)
+
+                    # Queue the writes, then the read-back that checks them,
+                    # so both happen under the same elevation.
+                    device.flush()
+                    if disk is not None:
+                        disk.flush()
+                    tokens = [batch.add_read(partition, offset, length)
+                              for offset, length in written.spans()]
+                    batch.run(f"write the bootloader to {partition}"
+                              + (f" and {whole_disk}" if disk else "")
+                              + " and read it back")
+                    written.check(*[batch.result(token) for token in tokens])
+
             native.sync_disks()
             logger.info(f"Installed syslinux on {partition} (native)")
             return True
@@ -1429,53 +1451,72 @@ class USBInstaller:
         finally:
             self._remount(params, partition)
 
-    def _write_mbr_and_activate(self, whole_disk: str,
-                                partition: str) -> bool:
-        """Write the syslinux MBR and mark the target partition active.
+    @contextlib.contextmanager
+    def _mbr_device(self, whole_disk: Optional[str], batch):
+        """The disk holding the MBR, joined to the same batch, or None."""
+        from pynetboot.core import syslinux_native as native
 
-        Both live in sector 0 -- the boot code in the first 440 bytes, the
-        boot flag in the partition table at 446 -- so they are done as one
-        read-modify-write. Two separate writes cost two elevations and can
-        leave an MBR whose partition table says nothing is bootable, which a
-        BIOS reports as "Missing operating system".
+        if not whole_disk:
+            yield None
+            return
+        with native.RawDevice(whole_disk, batch=batch) as device:
+            yield device
+
+    def _stage_mbr(self, device, whole_disk: str, partition: str) -> None:
+        """Queue sector 0: the syslinux MBR plus the active-partition flag.
+
+        Both live there -- the boot code in the first 440 bytes, the boot flag
+        in the partition table at 446 -- so they go down as one write. Two
+        separate ones can leave a disk whose table says nothing is bootable,
+        which a BIOS reports as "Missing operating system".
         """
         from pynetboot.core import syslinux_native as native
 
         code = read_bootloader('mbr.bin')
         if not code:
-            logger.error("Bundled mbr.bin is missing from this build")
-            return False
+            raise native.SyslinuxError(
+                "Bundled mbr.bin is missing from this build")
         if len(code) > 440:
-            logger.error(f"Bundled mbr.bin is {len(code)} bytes, "
-                         f"which would overwrite the partition table")
-            return False
+            raise native.SyslinuxError(
+                f"Bundled mbr.bin is {len(code)} bytes, which would "
+                f"overwrite the partition table")
 
+        sector = bytearray(device.read(0, 512))
+        if len(sector) < 512:
+            raise native.SyslinuxError(
+                f"Could not read the MBR of {whole_disk}")
+
+        sector[0:len(code)] = code
         index = self._partition_index(partition)
         if index is None:
             logger.warning(
                 f"Could not tell which partition {partition} is; "
                 f"leaving the boot flag alone")
+        else:
+            for slot in range(4):
+                entry = 446 + slot * 16
+                sector[entry] = 0x80 if slot == index - 1 else 0x00
+        # A drive with no signature here is not booted at all.
+        sector[510:512] = b'\x55\xaa'
+        device.write(0, bytes(sector))
+        logger.info(
+            f"Sector 0 of {whole_disk}: syslinux MBR"
+            + (f", partition {index} marked active"
+               if index is not None else ""))
+
+    def _write_mbr_and_activate(self, whole_disk: str,
+                                partition: str) -> bool:
+        """Write the syslinux MBR and mark the target partition active.
+
+        The batched install stages the same sector inside its own write; this
+        is for the path that has no batch to join -- the Linux install that
+        ran the syslinux binary.
+        """
+        from pynetboot.core import syslinux_native as native
 
         try:
             with native.RawDevice(whole_disk) as device:
-                sector = bytearray(device.read(0, 512))
-                if len(sector) < 512:
-                    logger.error(f"Could not read the MBR of {whole_disk}")
-                    return False
-
-                sector[0:len(code)] = code
-                if index is not None:
-                    for slot in range(4):
-                        entry = 446 + slot * 16
-                        sector[entry] = 0x80 if slot == index - 1 else 0x00
-                # A drive with no signature here is not booted at all.
-                sector[510:512] = b'\x55\xaa'
-                device.write(0, bytes(sector))
-
-            logger.info(
-                f"Wrote the syslinux MBR to {whole_disk}"
-                + (f" and marked partition {index} active"
-                   if index is not None else ""))
+                self._stage_mbr(device, whole_disk, partition)
             return True
         except (native.SyslinuxError, OSError) as e:
             logger.error(f"Could not write the MBR of {whole_disk}: {e}")

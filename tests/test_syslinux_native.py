@@ -387,9 +387,11 @@ class TestRawDevice(unittest.TestCase):
             handle.write(image.data)
 
         with native.RawDevice(self.path, elevated=True) as device:
-            native.install(device.read, device.write, ldlinux, bss,
-                           prefetch=device.prefetch, flush=device.flush,
-                           verify_read=device.read_uncached)
+            result = native.install(device.read, device.write, ldlinux, bss,
+                                    prefetch=device.prefetch)
+            device.flush()
+            result.check(*[device.read_uncached(offset, length)
+                           for offset, length in result.spans()])
 
         with open(self.path, 'rb') as handle:
             written = handle.read()
@@ -398,8 +400,12 @@ class TestRawDevice(unittest.TestCase):
         self.assertEqual(written[11:90], bytes(image.data[11:90]))
         self.assertEqual(written[510:512], b'\x55\xaa')
 
-    def test_a_full_install_costs_few_elevations(self):
-        """Each one is a password prompt on macOS, so they have to be rare."""
+    def test_a_full_install_costs_two_elevations(self):
+        """Each one is a password prompt on macOS.
+
+        One batch reads the drive, the other writes it and reads the result
+        back -- the shape the installer uses, including the MBR device.
+        """
         ldlinux = _payload('ldlinux.sys')
         bss = _payload('ldlinux.bss')
         payload = native.file_payload(ldlinux)
@@ -410,14 +416,22 @@ class TestRawDevice(unittest.TestCase):
         with open(self.path, 'wb') as handle:
             handle.write(image.data)
 
-        with native.RawDevice(self.path, elevated=True) as device:
-            native.install(device.read, device.write, ldlinux, bss,
-                           prefetch=device.prefetch, flush=device.flush,
-                           verify_read=device.read_uncached)
+        with native.ElevatedBatch() as batch:
+            with native.RawDevice(self.path, elevated=True,
+                                  batch=batch) as device:
+                device.prefetch(0, 4 * 1024 * 1024)
+                batch.run("read the drive")
+                result = native.install(device.read, device.write,
+                                        ldlinux, bss,
+                                        prefetch=device.prefetch)
+                device.write(0, device.read(0, SECTOR_SIZE))   # stands in
+                device.flush()                                 # for the MBR
+                tokens = [batch.add_read(self.path, offset, length)
+                          for offset, length in result.spans()]
+                batch.run("write it back")
+                result.check(*[batch.result(token) for token in tokens])
 
-        # boot sector, prefetch, the batched write, and two verification
-        # reads -- and nothing per sector.
-        self.assertLessEqual(len(self.commands), 6, self.commands)
+        self.assertEqual(len(self.commands), 2, self.commands)
 
     def test_writes_are_issued_as_one_command(self):
         with native.RawDevice(self.path, elevated=True) as device:
