@@ -347,7 +347,7 @@ class TestRawDevice(unittest.TestCase):
 
     def test_reads_match_the_file_including_unaligned_ranges(self):
         with open(self.path, 'rb') as handle:
-            with native.RawDevice(self.path, elevated=True) as device:
+            with native.RawDevice(self.path, elevated=True, authopen=False) as device:
                 for offset, length in [(0, 512), (11, 79), (4099, 4100),
                                        (1234567, 33)]:
                     handle.seek(offset)
@@ -361,14 +361,14 @@ class TestRawDevice(unittest.TestCase):
 
     def test_writes_land_at_the_right_offset(self):
         payload = bytes([0x5A]) * 1024
-        with native.RawDevice(self.path, elevated=True) as device:
+        with native.RawDevice(self.path, elevated=True, authopen=False) as device:
             device.write(8192, payload)
         with open(self.path, 'rb') as handle:
             handle.seek(8192)
             self.assertEqual(handle.read(1024), payload)
 
     def test_unaligned_writes_are_refused(self):
-        with native.RawDevice(self.path, elevated=True) as device:
+        with native.RawDevice(self.path, elevated=True, authopen=False) as device:
             with self.assertRaises(native.SyslinuxError):
                 device.write(100, b'\0' * 512)
             with self.assertRaises(native.SyslinuxError):
@@ -386,7 +386,7 @@ class TestRawDevice(unittest.TestCase):
         with open(self.path, 'wb') as handle:
             handle.write(image.data)
 
-        with native.RawDevice(self.path, elevated=True) as device:
+        with native.RawDevice(self.path, elevated=True, authopen=False) as device:
             result = native.install(device.read, device.write, ldlinux, bss,
                                     prefetch=device.prefetch)
             device.flush()
@@ -417,7 +417,7 @@ class TestRawDevice(unittest.TestCase):
             handle.write(image.data)
 
         with native.ElevatedBatch() as batch:
-            with native.RawDevice(self.path, elevated=True,
+            with native.RawDevice(self.path, elevated=True, authopen=False,
                                   batch=batch) as device:
                 device.prefetch(0, 4 * 1024 * 1024)
                 batch.run("read the drive")
@@ -434,7 +434,7 @@ class TestRawDevice(unittest.TestCase):
         self.assertEqual(len(self.commands), 2, self.commands)
 
     def test_writes_are_issued_as_one_command(self):
-        with native.RawDevice(self.path, elevated=True) as device:
+        with native.RawDevice(self.path, elevated=True, authopen=False) as device:
             device.write(0, b'\xAA' * 512)
             device.write(8192, b'\xBB' * 1024)
             self.assertEqual(len(self.commands), 0,
@@ -450,14 +450,14 @@ class TestRawDevice(unittest.TestCase):
         """Half a bootloader is worse than none."""
         original = open(self.path, 'rb').read(512)
         with self.assertRaises(RuntimeError):
-            with native.RawDevice(self.path, elevated=True) as device:
+            with native.RawDevice(self.path, elevated=True, authopen=False) as device:
                 device.write(0, b'\xAA' * 512)
                 raise RuntimeError("something failed mid-install")
         self.assertEqual(len(self.commands), 0)
         self.assertEqual(open(self.path, 'rb').read(512), original)
 
     def test_prefetched_span_serves_later_reads(self):
-        with native.RawDevice(self.path, elevated=True) as device:
+        with native.RawDevice(self.path, elevated=True, authopen=False) as device:
             device.prefetch(0, 64 * 1024)
             calls = len(self.commands)
             with open(self.path, 'rb') as handle:
@@ -469,10 +469,87 @@ class TestRawDevice(unittest.TestCase):
                              "reads inside the prefetched span must be free")
 
     def test_pending_writes_are_visible_to_reads(self):
-        with native.RawDevice(self.path, elevated=True) as device:
+        with native.RawDevice(self.path, elevated=True, authopen=False) as device:
             device.prefetch(0, 4096)
             device.write(0, b'\xCD' * 512)
             self.assertEqual(device.read(0, 512), b'\xCD' * 512)
+
+
+class TestAuthopenBackend(unittest.TestCase):
+    """macOS refuses raw drive access to dd; authopen is the sanctioned way.
+
+    These run against a file this user owns, so authopen opens it without
+    asking anything -- the mechanism is what is under test, not the prompt.
+    """
+
+    def setUp(self):
+        if sys.platform != 'darwin':
+            self.skipTest("authopen is macOS-only")
+        if not os.path.exists(native.AUTHOPEN):
+            self.skipTest(f"{native.AUTHOPEN} is not present")
+        import tempfile
+        handle = tempfile.NamedTemporaryFile(prefix='pynetboot_authopen_',
+                                             delete=False)
+        handle.write(bytes(range(256)) * 64)          # 16 KiB
+        handle.close()
+        self.path = handle.name
+        self.addCleanup(os.unlink, self.path)
+
+    def test_a_descriptor_comes_back_and_reads(self):
+        fd, process = native.authopen_device(self.path)
+        try:
+            with open(self.path, 'rb') as handle:
+                self.assertEqual(os.pread(fd, 512, 0), handle.read(512))
+        finally:
+            os.close(fd)
+            process.wait(timeout=10)
+
+    def test_the_device_reads_and_writes_through_it(self):
+        with native.RawDevice(self.path, elevated=True,
+                              authopen=True) as device:
+            self.assertTrue(device.authopen)
+            original = device.read(0, 512)
+            device.write(512, b'\xC3' * 512)
+            self.assertEqual(device.read(512, 512), b'\xC3' * 512)
+            # Unaligned reads must work: the FAT walk makes them, which is
+            # why the buffered node is the one opened.
+            self.assertEqual(device.read(3, 9), original[3:12])
+
+        with open(self.path, 'rb') as handle:
+            handle.seek(512)
+            self.assertEqual(handle.read(512), b'\xC3' * 512)
+
+    def test_the_descriptor_is_released_afterwards(self):
+        """A slice left open blocks writes to the disk that contains it."""
+        device = native.RawDevice(self.path, elevated=True, authopen=True)
+        with device:
+            self.assertIsNotNone(device._fd)
+        self.assertIsNone(device._fd)
+
+    def test_a_full_install_over_authopen(self):
+        ldlinux = _payload('ldlinux.sys')
+        bss = _payload('ldlinux.bss')
+        payload = native.file_payload(ldlinux)
+        nsectors = -(-len(payload) // SECTOR_SIZE)
+
+        image = FatImage()
+        image.add_file('LDLINUX SYS', payload, list(range(10, 10 + nsectors)))
+        with open(self.path, 'wb') as handle:
+            handle.write(image.data)
+
+        with native.RawDevice(self.path, elevated=True,
+                              authopen=True) as device:
+            written = native.install(device.read, device.write, ldlinux, bss,
+                                     prefetch=device.prefetch)
+            device.flush()
+            written.check(*[device.read_uncached(offset, length)
+                            for offset, length in written.spans()])
+
+        with open(self.path, 'rb') as handle:
+            boot = handle.read(512)
+        self.assertEqual(boot[0:11], bss[0:11])
+        self.assertEqual(boot[11:90], bytes(image.data[11:90]))
+        self.assertEqual(boot[510:512], b'\x55\xaa')
 
 
 class TestMacOSDeviceNodes(unittest.TestCase):

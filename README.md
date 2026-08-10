@@ -155,10 +155,10 @@ using the mechanism the OS already provides:
 | macOS | `osascript` with administrator privileges (Authorization Services) | None |
 | Windows | UAC (`ShellExecute` `runas`; the EXE also embeds a `uac_admin` manifest) | None |
 
-On macOS the app also needs **Full Disk Access** (System Settings > Privacy &
-Security), because reading and writing a drive's sectors is a privacy-protected
-operation there. Without it the file copy succeeds and the bootloader step stops
-with "Operation not permitted"; the log says so explicitly.
+On macOS, writing a drive's sectors is a protected operation that is refused
+even to root -- `dd` gets "Operation not permitted" -- so the app opens the
+drive through **authopen**, Apple's setuid helper for exactly this. You get a
+standard authorisation dialog and nothing has to be granted in System Settings.
 
 You are prompted for your password only when an install actually begins, and each
 platform asks as few times as it can:

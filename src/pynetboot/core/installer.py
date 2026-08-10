@@ -1482,34 +1482,41 @@ class USBInstaller:
             # to write it and read the result back. Every dd in between is
             # queued into the batch rather than run on its own, because each
             # elevated command is its own password prompt on macOS.
+            # The partition is finished with, and released, before the disk
+            # that contains it is touched: holding a slice open blocks writes
+            # to its disk, which macOS reports as "Resource busy".
             with native.ElevatedBatch() as batch:
-                with native.RawDevice(partition, batch=batch) as device, \
-                        self._mbr_device(whole_disk, batch) as disk:
+                with native.RawDevice(partition, batch=batch) as device:
                     # One read covers the boot sector, the FAT and the root
-                    # directory on any normal drive; the MBR rides along.
+                    # directory on any normal drive.
                     device.prefetch(0, self._PREFETCH_BYTES)
-                    if disk is not None:
-                        disk.prefetch(0, 512)
-                    batch.run(f"read {partition}"
-                              + (f" and {whole_disk}" if disk else ""))
+                    batch.run(f"read {partition}")
 
                     written = native.install(
                         device.read, device.write, ldlinux, boot_template,
                         prefetch=device.prefetch)
-                    if disk is not None:
-                        self._stage_mbr(disk, whole_disk, partition)
 
                     # Queue the writes, then the read-back that checks them,
                     # so both happen under the same elevation.
                     device.flush()
-                    if disk is not None:
-                        disk.flush()
-                    tokens = [batch.add_read(partition, offset, length)
+                    tokens = [batch.add_read(device.path, offset, length)
                               for offset, length in written.spans()]
-                    batch.run(f"write the bootloader to {partition}"
-                              + (f" and {whole_disk}" if disk else "")
-                              + " and read it back")
-                    written.check(*[batch.result(token) for token in tokens])
+                    batch.run(f"write the bootloader to {partition} "
+                              f"and read it back")
+                    if tokens:
+                        written.check(*[batch.result(t) for t in tokens])
+                    else:
+                        written.check(*[device.read_uncached(offset, length)
+                                        for offset, length in written.spans()])
+
+            if whole_disk:
+                with native.ElevatedBatch() as batch:
+                    with native.RawDevice(whole_disk, batch=batch) as disk:
+                        disk.prefetch(0, 512)
+                        batch.run(f"read the MBR of {whole_disk}")
+                        self._stage_mbr(disk, whole_disk, partition)
+                        disk.flush()
+                        batch.run(f"write the MBR of {whole_disk}")
 
             native.sync_disks()
             logger.info(f"Installed syslinux on {partition} (native)")
@@ -1523,17 +1530,6 @@ class USBInstaller:
             return False
         finally:
             self._remount(params, partition)
-
-    @contextlib.contextmanager
-    def _mbr_device(self, whole_disk: Optional[str], batch):
-        """The disk holding the MBR, joined to the same batch, or None."""
-        from pynetboot.core import syslinux_native as native
-
-        if not whole_disk:
-            yield None
-            return
-        with native.RawDevice(whole_disk, batch=batch) as device:
-            yield device
 
     def _stage_mbr(self, device, whole_disk: str, partition: str) -> None:
         """Queue sector 0: the syslinux MBR plus the active-partition flag.

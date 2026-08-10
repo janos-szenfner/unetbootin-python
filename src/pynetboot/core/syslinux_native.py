@@ -359,6 +359,54 @@ def _runs(sectors: List[int]) -> List[Tuple[int, int]]:
 
 # --- device access ---------------------------------------------------------
 
+AUTHOPEN = '/usr/libexec/authopen'
+
+
+def authopen_device(path: str):
+    """Open a device through macOS's authopen; returns (fd, process).
+
+    Reading or writing a drive's sectors is refused on current macOS even to
+    root -- `dd` gets "Operation not permitted" -- unless the app has been
+    granted Full Disk Access. `authopen` is Apple's own setuid helper for this:
+    it asks the user to authorise, opens the file itself, and passes the
+    descriptor back over a socket, so the permission belongs to the helper
+    rather than to us. It is what Apple's and other vendors' imaging tools use.
+
+    The descriptor is a normal one: seek, read and write all work on it.
+    """
+    import array
+    import socket
+
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        process = subprocess.Popen(
+            [AUTHOPEN, '-stdoutpipe', '-o', str(os.O_RDWR), path],
+            stdout=child, stderr=subprocess.PIPE)
+    except OSError as e:
+        parent.close()
+        child.close()
+        raise SyslinuxError(f"Could not run {AUTHOPEN}: {e}")
+    child.close()
+
+    try:
+        _data, ancillary, _flags, _addr = parent.recvmsg(
+            1, socket.CMSG_SPACE(array.array('i').itemsize))
+        descriptors = array.array('i')
+        for level, kind, payload in ancillary:
+            if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                descriptors.frombytes(
+                    payload[:len(payload) - (len(payload) % descriptors.itemsize)])
+    finally:
+        parent.close()
+
+    if not descriptors:
+        process.wait(timeout=30)
+        detail = (process.stderr.read() or b'').decode('utf-8', 'replace').strip()
+        raise SyslinuxError(
+            f"Could not open {path}: {detail or 'authorisation was refused'}")
+    return descriptors[0], process
+
+
 class ElevatedBatch:
     """Commands from several devices, run together under one elevation.
 
@@ -468,29 +516,39 @@ class RawDevice:
     """
 
     def __init__(self, path: str, elevated: Optional[bool] = None,
-                 batch: Optional['ElevatedBatch'] = None):
+                 batch: Optional['ElevatedBatch'] = None,
+                 authopen: Optional[bool] = None):
         if elevated is None:
             elevated = not _can_open_directly(path)
         self.elevated = elevated
-        # Under elevation everything goes through dd in whole sectors, which
-        # is what the raw node requires and prefers; it is also the node macOS
-        # expects this kind of work to use. Direct access keeps the buffered
-        # node, since that one tolerates unaligned reads.
-        self.path = raw_node(path) if elevated else path
-        self.buffered_path = path
+        # macOS refuses raw drive access to dd even as root, so ask authopen
+        # for the descriptor instead. The buffered node is used with it: it
+        # tolerates the unaligned reads the FAT walk makes, which the raw node
+        # would reject.
+        if authopen is None:
+            authopen = (elevated and sys.platform == 'darwin'
+                        and os.path.exists(AUTHOPEN))
+        self.authopen = bool(authopen)
+        self.path = path
+        self._fd = None
+        self._authopen_process = None
         # With a batch, reads and writes are queued for the caller to run
         # alongside every other device's; without one they go out as they
-        # come.
-        self._batch = batch if elevated else None
+        # come. authopen holds a descriptor, so it needs neither.
+        self._batch = batch if elevated and not self.authopen else None
         # Spans already read from the device: (offset, data).
         self._cache: List[Tuple[int, bytes]] = []
         # Whole-sector writes waiting to be issued: (sector, data).
         self._pending: List[Tuple[int, bytes]] = []
 
     def __enter__(self) -> 'RawDevice':
-        logger.info(
-            f"Raw access to {self.path}: "
-            f"{'elevated (dd)' if self.elevated else 'direct'}")
+        how = ('authopen' if self.authopen
+               else 'elevated (dd)' if self.elevated else 'direct')
+        logger.info(f"Raw access to {self.path}: {how}")
+        if self.authopen:
+            logger.info(
+                f"Asking macOS for permission to write {self.path}")
+            self._fd, self._authopen_process = authopen_device(self.path)
         return self
 
     @contextlib.contextmanager
@@ -511,14 +569,33 @@ class RawDevice:
             handle.close()
 
     def __exit__(self, exc_type, *exc_info) -> None:
-        # A failed install must not leave half its sectors on the drive.
-        if exc_type is None:
-            self.flush()
-        elif self._pending:
-            logger.warning(
-                f"Discarding {len(self._pending)} pending writes to "
-                f"{self.path} after an error")
-            self._pending.clear()
+        try:
+            # A failed install must not leave half its sectors on the drive.
+            if exc_type is None:
+                self.flush()
+            elif self._pending:
+                logger.warning(
+                    f"Discarding {len(self._pending)} pending writes to "
+                    f"{self.path} after an error")
+                self._pending.clear()
+        finally:
+            self._close_descriptor()
+
+    def _close_descriptor(self) -> None:
+        """Let the device go: holding a slice open blocks writes to its disk."""
+        if self._fd is not None:
+            try:
+                os.fsync(self._fd)
+            except OSError as e:
+                logger.debug(f"fsync on {self.path} failed: {e}")
+            os.close(self._fd)
+            self._fd = None
+        if self._authopen_process is not None:
+            try:
+                self._authopen_process.wait(timeout=10)
+            except subprocess.SubprocessError:
+                self._authopen_process.kill()
+            self._authopen_process = None
 
     # -- reading ------------------------------------------------------------
 
@@ -528,7 +605,7 @@ class RawDevice:
         With a batch attached the read is queued instead, and lands in the
         cache when the batch runs.
         """
-        if not self.elevated or length <= 0:
+        if self._fd is not None or not self.elevated or length <= 0:
             return
         if self._from_cache(offset, length) is not None:
             return
@@ -550,6 +627,8 @@ class RawDevice:
                     f"{self.path} from sector {base // SECTOR_SIZE}")
 
     def read(self, offset: int, length: int) -> bytes:
+        if self._fd is not None:
+            return os.pread(self._fd, length, offset)
         if not self.elevated:
             with self._open() as handle:
                 handle.seek(offset)
@@ -574,7 +653,7 @@ class RawDevice:
         this exists to see what the drive actually holds.
         """
         self.flush()
-        if not self.elevated:
+        if self._fd is not None or not self.elevated:
             return [self.read(offset, length) for offset, length in spans]
 
         commands, temps, sectors = [], [], []
@@ -621,7 +700,7 @@ class RawDevice:
         store, so pending writes are committed and the cache is skipped.
         """
         self.flush()
-        if not self.elevated:
+        if self._fd is not None or not self.elevated:
             return self.read(offset, length)
         first = offset // SECTOR_SIZE
         last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
@@ -632,6 +711,9 @@ class RawDevice:
     # -- writing ------------------------------------------------------------
 
     def write(self, offset: int, data: bytes) -> None:
+        if self._fd is not None:
+            os.pwrite(self._fd, data, offset)
+            return
         if not self.elevated:
             with self._open() as handle:
                 handle.seek(offset)
@@ -658,6 +740,10 @@ class RawDevice:
             return
         pending, self._pending = self._pending, []
 
+        if self._fd is not None:
+            for sector, data in pending:
+                os.pwrite(self._fd, data, sector * SECTOR_SIZE)
+            return
         if not self.elevated:
             with self._open() as handle:
                 for sector, data in pending:
@@ -785,11 +871,12 @@ def permission_hint(message: str) -> Optional[str]:
     if 'not permitted' not in (message or '').lower():
         return None
     return (
-        "macOS blocked access to the drive's sectors. Grant PyNetboot Full "
-        "Disk Access -- System Settings > Privacy & Security > Full Disk "
-        "Access, add PyNetboot, then quit and reopen the app -- and run the "
-        "install again. Writing a boot sector needs it; copying files does "
-        "not, which is why everything up to this point worked.")
+        "macOS blocked access to the drive's sectors. This should not happen "
+        "-- the drive is opened through authopen, which asks you to authorise "
+        "and then opens it itself. If authopen is missing or was declined, "
+        "granting PyNetboot Full Disk Access (System Settings > Privacy & "
+        "Security > Full Disk Access, then quit and reopen the app) is the "
+        "way round it.")
 
 
 def _can_open_directly(path: str) -> bool:
