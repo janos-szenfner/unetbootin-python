@@ -12,7 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: '3.10'
+  # Match the release builds, so tests run against what ships.
+  PYTHON_VERSION: '3.12'
 
 jobs:
   test:

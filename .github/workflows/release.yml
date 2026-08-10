@@ -15,7 +15,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: '3.10'
+  # Every build bundles its own Python and Tk, so they all use the same one.
+  # 3.12 rather than 3.10 because 3.10 ships Tk 8.6.12 (2021), whose Aqua
+  # mouse handling breaks clicks on current macOS; the same version everywhere
+  # keeps the platforms comparable when something has to be diagnosed.
+  PYTHON_VERSION: '3.12'
   APP_NAME: 'pynetboot'
   
 jobs:
@@ -90,11 +94,34 @@ jobs:
           pip install pyinstaller==6.0.0
 
       - name: Verify GUI toolkit is bundled and usable
+        shell: bash
         # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python - <<'PYEOF'
+          import os, platform, sys, tkinter
+          import customtkinter
+          patchlevel = tkinter.Tcl().call('info', 'patchlevel')
+          python_version = platform.python_version()
+          print(f"python {python_version}  Tk {patchlevel}  "
+                f"customtkinter {customtkinter.__version__}")
+          # Every job writes the same row, so one glance at the run summary
+          # shows whether the platforms bundled the same libraries.
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a') as handle:
+                  handle.write(
+                      f"### Toolkit bundled on {os.environ.get('RUNNER_OS', '?')}\n\n"
+                      f"| python | Tk | customtkinter |\n|---|---|---|\n"
+                      f"| {python_version} | {patchlevel} "
+                      f"| {customtkinter.__version__} |\n")
+          if tuple(int(n) for n in patchlevel.split('.')) < (8, 6, 13):
+              print(f"::warning::Bundled Tk is {patchlevel}; 8.6.13+ is wanted "
+                    f"for Aqua mouse handling on macOS")
+          if float(tkinter.TkVersion) < 8.6:
+              sys.exit(f"Tk 8.6+ required, found {tkinter.TkVersion}")
+          PYEOF
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -121,12 +148,6 @@ jobs:
     name: Build macOS App (Apple Silicon)
     runs-on: macos-latest
     needs: test
-    env:
-      # The bundled Tk comes from this Python, and Tk is where macOS mouse
-      # handling lives. 3.10 ships Tk 8.6.12 (2021), whose Aqua event
-      # handling misbehaves on current macOS: buttons respond only where the
-      # pointer happened to generate a crossing event. Newer Python, newer Tk.
-      PYTHON_VERSION: '3.12'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -157,11 +178,34 @@ jobs:
           pip install pyinstaller==6.0.0
 
       - name: Verify GUI toolkit is bundled and usable
+        shell: bash
         # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python - <<'PYEOF'
+          import os, platform, sys, tkinter
+          import customtkinter
+          patchlevel = tkinter.Tcl().call('info', 'patchlevel')
+          python_version = platform.python_version()
+          print(f"python {python_version}  Tk {patchlevel}  "
+                f"customtkinter {customtkinter.__version__}")
+          # Every job writes the same row, so one glance at the run summary
+          # shows whether the platforms bundled the same libraries.
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a') as handle:
+                  handle.write(
+                      f"### Toolkit bundled on {os.environ.get('RUNNER_OS', '?')}\n\n"
+                      f"| python | Tk | customtkinter |\n|---|---|---|\n"
+                      f"| {python_version} | {patchlevel} "
+                      f"| {customtkinter.__version__} |\n")
+          if tuple(int(n) for n in patchlevel.split('.')) < (8, 6, 13):
+              print(f"::warning::Bundled Tk is {patchlevel}; 8.6.13+ is wanted "
+                    f"for Aqua mouse handling on macOS")
+          if float(tkinter.TkVersion) < 8.6:
+              sys.exit(f"Tk 8.6+ required, found {tkinter.TkVersion}")
+          PYEOF
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -256,11 +300,34 @@ jobs:
           sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Verify GUI toolkit is bundled and usable
+        shell: bash
         # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python - <<'PYEOF'
+          import os, platform, sys, tkinter
+          import customtkinter
+          patchlevel = tkinter.Tcl().call('info', 'patchlevel')
+          python_version = platform.python_version()
+          print(f"python {python_version}  Tk {patchlevel}  "
+                f"customtkinter {customtkinter.__version__}")
+          # Every job writes the same row, so one glance at the run summary
+          # shows whether the platforms bundled the same libraries.
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a') as handle:
+                  handle.write(
+                      f"### Toolkit bundled on {os.environ.get('RUNNER_OS', '?')}\n\n"
+                      f"| python | Tk | customtkinter |\n|---|---|---|\n"
+                      f"| {python_version} | {patchlevel} "
+                      f"| {customtkinter.__version__} |\n")
+          if tuple(int(n) for n in patchlevel.split('.')) < (8, 6, 13):
+              print(f"::warning::Bundled Tk is {patchlevel}; 8.6.13+ is wanted "
+                    f"for Aqua mouse handling on macOS")
+          if float(tkinter.TkVersion) < 8.6:
+              sys.exit(f"Tk 8.6+ required, found {tkinter.TkVersion}")
+          PYEOF
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -362,11 +429,34 @@ jobs:
           sudo gem install fpm -v 1.15.1
 
       - name: Verify GUI toolkit is bundled and usable
+        shell: bash
         # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python - <<'PYEOF'
+          import os, platform, sys, tkinter
+          import customtkinter
+          patchlevel = tkinter.Tcl().call('info', 'patchlevel')
+          python_version = platform.python_version()
+          print(f"python {python_version}  Tk {patchlevel}  "
+                f"customtkinter {customtkinter.__version__}")
+          # Every job writes the same row, so one glance at the run summary
+          # shows whether the platforms bundled the same libraries.
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a') as handle:
+                  handle.write(
+                      f"### Toolkit bundled on {os.environ.get('RUNNER_OS', '?')}\n\n"
+                      f"| python | Tk | customtkinter |\n|---|---|---|\n"
+                      f"| {python_version} | {patchlevel} "
+                      f"| {customtkinter.__version__} |\n")
+          if tuple(int(n) for n in patchlevel.split('.')) < (8, 6, 13):
+              print(f"::warning::Bundled Tk is {patchlevel}; 8.6.13+ is wanted "
+                    f"for Aqua mouse handling on macOS")
+          if float(tkinter.TkVersion) < 8.6:
+              sys.exit(f"Tk 8.6+ required, found {tkinter.TkVersion}")
+          PYEOF
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -454,11 +544,34 @@ jobs:
           sudo gem install fpm -v 1.15.1
 
       - name: Verify GUI toolkit is bundled and usable
+        shell: bash
         # CustomTkinter paints on canvases that need Tk 8.6; on older Tk the
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python - <<'PYEOF'
+          import os, platform, sys, tkinter
+          import customtkinter
+          patchlevel = tkinter.Tcl().call('info', 'patchlevel')
+          python_version = platform.python_version()
+          print(f"python {python_version}  Tk {patchlevel}  "
+                f"customtkinter {customtkinter.__version__}")
+          # Every job writes the same row, so one glance at the run summary
+          # shows whether the platforms bundled the same libraries.
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a') as handle:
+                  handle.write(
+                      f"### Toolkit bundled on {os.environ.get('RUNNER_OS', '?')}\n\n"
+                      f"| python | Tk | customtkinter |\n|---|---|---|\n"
+                      f"| {python_version} | {patchlevel} "
+                      f"| {customtkinter.__version__} |\n")
+          if tuple(int(n) for n in patchlevel.split('.')) < (8, 6, 13):
+              print(f"::warning::Bundled Tk is {patchlevel}; 8.6.13+ is wanted "
+                    f"for Aqua mouse handling on macOS")
+          if float(tkinter.TkVersion) < 8.6:
+              sys.exit(f"Tk 8.6+ required, found {tkinter.TkVersion}")
+          PYEOF
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"

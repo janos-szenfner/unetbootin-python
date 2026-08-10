@@ -76,7 +76,8 @@
                 "find /app -type d -path '*/customtkinter/assets/fonts' -exec cp -r {}/. /app/share/fonts/customtkinter/ \\;",
                 "test -n \"$(find /app/share/fonts -name '*.ttf' -print -quit)\" || (echo 'FATAL: Roboto was not bundled into /app/share/fonts' >&2; exit 1)",
                 "test -f /app/share/fonts/customtkinter/CustomTkinter_shapes_font.otf || (echo 'FATAL: the shapes font was not bundled; every rounded corner would be drawn as a letter' >&2; exit 1)",
-                "fc-cache -f /app/share/fonts || true"
+                "fc-cache -f /app/share/fonts || true",
+                "python3 -c \"import platform, tkinter; print('flatpak runtime: python', platform.python_version(), 'Tk', tkinter.Tcl().call('info', 'patchlevel'))\""
             ],
             "build-options": {
                 "build-args": [

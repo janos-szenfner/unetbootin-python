@@ -292,6 +292,8 @@ def log_render_environment(root) -> Dict[str, Any]:
     try:
         info['tk'] = tkinter.TkVersion
         info['tk_patchlevel'] = root.tk.call('info', 'patchlevel')
+        if HAS_CTK:
+            info['customtkinter'] = getattr(ctk, '__version__', 'unknown')
         info['tk_scaling'] = round(float(root.tk.call('tk', 'scaling')), 3)
         info['screen_dpi'] = round(root.winfo_fpixels('1i'), 1)
         info['screen'] = f"{root.winfo_screenwidth()}x{root.winfo_screenheight()}"
