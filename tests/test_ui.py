@@ -924,6 +924,69 @@ class TestFontFallback(unittest.TestCase):
         self.assertIn('/app/share/fonts', commands)
 
 
+class TestDrawingMethodFallback(unittest.TestCase):
+    """Corners are glyphs; without the font they render as stray letters."""
+
+    def setUp(self):
+        try:
+            from customtkinter.windows.widgets.core_rendering import DrawEngine
+        except ImportError:
+            self.skipTest("customtkinter is not installed")
+        self.engine = DrawEngine
+        self.original = DrawEngine.preferred_drawing_method
+        self.addCleanup(
+            setattr, DrawEngine, 'preferred_drawing_method', self.original)
+
+    def _resolve(self, available, platform='linux'):
+        from unittest.mock import patch
+
+        from pynetboot.ui.main_window_ctk import resolve_drawing_method
+        with patch('pynetboot.ui.main_window_ctk.sys.platform', platform):
+            return resolve_drawing_method(available=available)
+
+    def test_missing_shapes_font_falls_back_to_polygons(self):
+        self.engine.preferred_drawing_method = "font_shapes"
+        chosen = self._resolve({"DejaVu Sans", "Noto Sans"})
+        self.assertEqual(chosen, "polygon_shapes")
+        self.assertEqual(self.engine.preferred_drawing_method, "polygon_shapes")
+
+    def test_present_shapes_font_keeps_font_shapes(self):
+        from pynetboot.ui.main_window_ctk import SHAPES_FONT
+        self.engine.preferred_drawing_method = "font_shapes"
+        chosen = self._resolve({SHAPES_FONT, "DejaVu Sans"})
+        self.assertEqual(chosen, "font_shapes")
+
+    def test_installed_font_recovers_from_customtkinters_own_fallback(self):
+        """CustomTkinter downgrades when its ~/.fonts copy fails, even though
+        the Flatpak ships the font system-wide."""
+        from pynetboot.ui.main_window_ctk import SHAPES_FONT
+        self.engine.preferred_drawing_method = "circle_shapes"
+        self.assertEqual(self._resolve({SHAPES_FONT}), "font_shapes")
+        self.assertEqual(self.engine.preferred_drawing_method, "font_shapes")
+
+    def test_other_platforms_are_left_alone(self):
+        """Windows loads the font privately, so it is absent from the list."""
+        for platform in ('win32', 'darwin'):
+            self.engine.preferred_drawing_method = "font_shapes"
+            self.assertIsNone(self._resolve({"Segoe UI"}, platform=platform))
+            self.assertEqual(self.engine.preferred_drawing_method,
+                             "font_shapes")
+
+    def test_flatpak_does_not_hide_its_own_fonts(self):
+        """Mounting the host's /etc/fonts replaces the runtime's fontconfig,
+        whose config is what makes /app/share/fonts visible."""
+        import json
+        path = os.path.join(os.path.dirname(__file__), '..', 'resources',
+                            'linux', 'com.pynetboot.PyNetboot.json')
+        manifest = json.load(open(path))
+        self.assertNotIn('/etc/fonts',
+                         ' '.join(manifest['finish-args']))
+        app_module = next(m for m in manifest['modules']
+                          if m['name'] == 'pynetboot')
+        commands = ' '.join(app_module['build-commands'])
+        self.assertIn('CustomTkinter_shapes_font.otf', commands)
+
+
 class TestLogWindow(unittest.TestCase):
     """The Log button must expose the captured log."""
 

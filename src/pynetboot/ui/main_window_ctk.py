@@ -147,6 +147,69 @@ def apply_font_family(family: Optional[str] = None) -> Optional[str]:
     return family
 
 
+# CustomTkinter draws every rounded corner, dropdown arrow and checkmark as a
+# glyph from this font rather than as a shape.
+SHAPES_FONT = "CustomTkinter_shapes_font"
+
+
+def resolve_drawing_method(available: Optional[set] = None) -> Optional[str]:
+    """Pick a drawing method whose shapes Tk can actually render.
+
+    On Linux CustomTkinter "installs" its shapes font by copying the file into
+    ``~/.fonts`` and trusting fontconfig to notice. Inside a Flatpak sandbox
+    that directory is a read-only mount of the host's, so the copy cannot
+    work; the glyphs then resolve to whatever font Tk substitutes and the
+    interface is drawn with stray letters where its corners and arrows should
+    be -- which is what the tab strip and the dropdowns looked like.
+
+    Polygon shapes need no font at all. They lose a little antialiasing on
+    X11, which is a far better trade than letters in place of every corner.
+
+    Only Linux is inspected: on Windows the font is loaded privately and is
+    deliberately absent from the family list, so the same check there would
+    downgrade a UI that renders correctly.
+    """
+    if not HAS_CTK or not sys.platform.startswith('linux'):
+        return None
+
+    try:
+        from customtkinter.windows.widgets.core_rendering import DrawEngine
+    except ImportError as e:
+        logger.debug(f"Could not reach the CustomTkinter draw engine: {e}")
+        return None
+
+    if available is None:
+        if getattr(tkinter, '_default_root', None) is None:
+            logger.debug("No Tk root yet; leaving the drawing method alone")
+            return None
+        try:
+            import tkinter.font as tkfont
+            available = {f.strip() for f in tkfont.families()}
+        except Exception as e:  # noqa: BLE001 - cosmetic only
+            logger.debug(f"Could not enumerate fonts: {e}")
+            return None
+
+    current = DrawEngine.preferred_drawing_method
+    if SHAPES_FONT in available:
+        # Also covers the case where CustomTkinter already gave up on the
+        # font because its copy into ~/.fonts failed, even though the font is
+        # installed system-wide (the Flatpak ships it in /app/share/fonts).
+        if current != "font_shapes":
+            DrawEngine.preferred_drawing_method = "font_shapes"
+            logger.info(f"Drawing method: font_shapes ({SHAPES_FONT} is "
+                        f"available; was {current})")
+        else:
+            logger.info("Drawing method: font_shapes")
+        return "font_shapes"
+
+    DrawEngine.preferred_drawing_method = "polygon_shapes"
+    logger.info(
+        f"Drawing method: polygon_shapes ({SHAPES_FONT} is not available to "
+        f"Tk, so glyph-drawn corners would render as stray letters; was "
+        f"{current})")
+    return "polygon_shapes"
+
+
 def log_render_environment(root) -> Dict[str, Any]:
     """Log what actually decides how the interface looks.
 
@@ -175,6 +238,17 @@ def log_render_environment(root) -> Dict[str, Any]:
         info['window_scaling'] = ScalingTracker.get_window_scaling(root)
     except Exception as e:  # noqa: BLE001 - diagnostics only
         logger.debug(f"Could not read CustomTkinter scaling: {e}")
+    try:
+        # How corners and arrows get drawn, and whether the font they are
+        # drawn from is actually there: the difference between a clean window
+        # and one covered in stray letters.
+        from customtkinter.windows.widgets.core_rendering import DrawEngine
+        import tkinter.font as tkfont
+        info['drawing'] = DrawEngine.preferred_drawing_method
+        info['shapes_font'] = SHAPES_FONT in {f.strip()
+                                              for f in tkfont.families()}
+    except Exception as e:  # noqa: BLE001 - diagnostics only
+        logger.debug(f"Could not read the drawing method: {e}")
     logger.info("Render environment: "
                 + ", ".join(f"{k}={v}" for k, v in info.items()))
     return info
@@ -531,8 +605,10 @@ class MainWindowCTk:
         self.root = ctk.CTk(className=WM_CLASS)
         self.root.title(APP_TITLE)
         self.root.configure(fg_color=BACKGROUND)
-        # Do this before building widgets: they pick the family up at creation.
+        # Do both before building widgets: they pick the family up at
+        # creation, and each one draws itself with the method chosen here.
         self._font_family = apply_font_family()
+        self._drawing_method = resolve_drawing_method()
         log_render_environment(self.root)
         self.root.geometry("900x680")
         self.root.minsize(760, 560)
