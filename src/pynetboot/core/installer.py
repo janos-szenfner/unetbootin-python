@@ -1028,8 +1028,12 @@ class USBInstaller:
                 if syslinux_bin:
                     # syslinux -i patches the boot sector and writes
                     # ldlinux.sys; on a mounted filesystem the kernel's cache
-                    # can write back over it, so flush and unmount first.
-                    self._release_mount(params)
+                    # can write back over it, so the volume has to go first.
+                    if not self._release_mount(params):
+                        logger.error(
+                            "Not writing the boot sector: the drive could "
+                            "not be unmounted")
+                        return False
                     result = subprocess.run(
                         ['sudo', syslinux_bin, '-i', partition],
                         capture_output=True, text=True, timeout=60

@@ -332,9 +332,13 @@ def _verify(read, boot_sector: bytes,
     read_many = getattr(read, 'read_many', None)
     if read_many is not None:
         written, loaded = read_many(_verify_spans(first_sector))
-    else:
+    elif callable(read):
         written = read(0, SECTOR_SIZE)
         loaded = read(first_sector * SECTOR_SIZE, SECTOR_SIZE)
+    else:
+        raise SyslinuxError(
+            "Verification needs a read(offset, length) callable or an object "
+            "with read_many()")
 
     if written != boot_sector:
         raise SyslinuxError(
@@ -448,7 +452,12 @@ class RawDevice:
         return data[start:start + length]
 
     def read_many(self, spans: List[Tuple[int, int]]) -> List[bytes]:
-        """Read several spans under a single elevation."""
+        """Read several spans from the device under a single elevation.
+
+        Buffered writes are committed first and the cache is not consulted:
+        this exists to see what the drive actually holds.
+        """
+        self.flush()
         if self._handle is not None:
             return [self.read(offset, length) for offset, length in spans]
 
@@ -493,8 +502,9 @@ class RawDevice:
         """Read from the device itself, ignoring anything already held.
 
         Verification has to see what the drive stored, not what we meant to
-        store, so it cannot be served from the cache.
+        store, so pending writes are committed and the cache is skipped.
         """
+        self.flush()
         if self._handle is not None:
             return self.read(offset, length)
         first = offset // SECTOR_SIZE
