@@ -23,6 +23,7 @@ import logging
 import os
 import struct
 import subprocess
+import sys
 import tempfile
 from typing import Callable, List, NamedTuple, Optional, Tuple
 
@@ -468,10 +469,15 @@ class RawDevice:
 
     def __init__(self, path: str, elevated: Optional[bool] = None,
                  batch: Optional['ElevatedBatch'] = None):
-        self.path = path
         if elevated is None:
             elevated = not _can_open_directly(path)
         self.elevated = elevated
+        # Under elevation everything goes through dd in whole sectors, which
+        # is what the raw node requires and prefers; it is also the node macOS
+        # expects this kind of work to use. Direct access keeps the buffered
+        # node, since that one tolerates unaligned reads.
+        self.path = raw_node(path) if elevated else path
+        self.buffered_path = path
         # With a batch, reads and writes are queued for the caller to run
         # alongside every other device's; without one they go out as they
         # come.
@@ -734,8 +740,56 @@ def _run_elevated_script(commands: List[List[str]], what: str) -> None:
         except OSError:
             pass
 
+    # The raw node is the right one to ask for, but if this system refuses it
+    # the buffered node is worth one try before giving up.
+    if returncode != 0 and any('/dev/r' in part
+                               for command in commands for part in command):
+        buffered = [[part.replace('/dev/r', '/dev/') for part in command]
+                    for command in commands]
+        logger.info(f"Retrying on the buffered device nodes: {what}")
+        return _run_elevated_script(buffered, what)
+
     if returncode != 0:
-        raise SyslinuxError(f"Could not {what}: {(stderr or '').strip()}")
+        detail = (stderr or '').strip()
+        hint = permission_hint(detail)
+        raise SyslinuxError(
+            f"Could not {what}: {detail}" + (f"\n{hint}" if hint else ""))
+
+
+def raw_node(path: str) -> str:
+    """/dev/disk5s1 -> /dev/rdisk5s1 on macOS; anything else unchanged.
+
+    The raw node bypasses the buffer cache and is the one Apple's own tools
+    use for whole-device work. It only accepts whole-sector, sector-aligned
+    I/O, which is all this module does.
+    """
+    if sys.platform != 'darwin':
+        return path
+    name = os.path.basename(path)
+    if name.startswith('disk') and os.path.dirname(path) == '/dev':
+        return f"/dev/r{name}"
+    return path
+
+
+def permission_hint(message: str) -> Optional[str]:
+    """Explain a macOS refusal to touch a drive, if that is what happened.
+
+    Reading or writing a drive's sectors is a privacy-protected operation on
+    current macOS: the request is refused with "Operation not permitted" even
+    as root, and no prompt appears when the refusal happens inside a
+    privileged helper. Nothing the app can do from inside fixes it -- the
+    permission belongs to the app as a whole.
+    """
+    if sys.platform != 'darwin':
+        return None
+    if 'not permitted' not in (message or '').lower():
+        return None
+    return (
+        "macOS blocked access to the drive's sectors. Grant PyNetboot Full "
+        "Disk Access -- System Settings > Privacy & Security > Full Disk "
+        "Access, add PyNetboot, then quit and reopen the app -- and run the "
+        "install again. Writing a boot sector needs it; copying files does "
+        "not, which is why everything up to this point worked.")
 
 
 def _can_open_directly(path: str) -> bool:

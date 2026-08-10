@@ -246,11 +246,9 @@ def enable_press_to_click(root) -> None:
     which CustomTkinter already handles, then runs the command as it should.
     Harmless everywhere else: it states something that is true by definition.
     """
-    # Clicks that go astray are invisible in a log, and this behaviour differs
-    # between Tk builds and macOS versions, so record the first few: which
-    # widget Tk delivered them to, where the pointer was, and whether that
-    # widget belongs to a control. A report of "the buttons do not work" can
-    # then be answered from the log instead of guessed at.
+    # Kept at debug level: this answered "the buttons only work in one spot"
+    # once (the bundled Tk was four years old), and is here for the next time
+    # something similar is reported -- without a line per click in every log.
     reported = []
 
     def on_press(event) -> None:
@@ -263,7 +261,7 @@ def enable_press_to_click(root) -> None:
                           f"+{widget.winfo_rootx()}+{widget.winfo_rooty()}")
             except Exception:  # noqa: BLE001 - diagnostics only
                 bounds = 'unknown'
-            logger.info(
+            logger.debug(
                 f"Click {len(reported)}: on {event.widget.winfo_class()} "
                 f"at ({event.x}, {event.y}) in the widget, "
                 f"({event.x_root}, {event.y_root}) on screen; "

@@ -475,6 +475,41 @@ class TestRawDevice(unittest.TestCase):
             self.assertEqual(device.read(0, 512), b'\xCD' * 512)
 
 
+class TestMacOSDeviceNodes(unittest.TestCase):
+    """The raw node, and explaining a refusal that no retry can fix."""
+
+    def test_raw_node_is_used_for_disks(self):
+        from unittest.mock import patch
+        with patch('pynetboot.core.syslinux_native.sys.platform', 'darwin'):
+            self.assertEqual(native.raw_node('/dev/disk5s1'), '/dev/rdisk5s1')
+            self.assertEqual(native.raw_node('/dev/disk5'), '/dev/rdisk5')
+            # Not a device path, so not rewritten.
+            self.assertEqual(native.raw_node('/tmp/image.img'), '/tmp/image.img')
+
+    def test_other_platforms_keep_their_paths(self):
+        from unittest.mock import patch
+        for platform in ('linux', 'win32'):
+            with patch('pynetboot.core.syslinux_native.sys.platform', platform):
+                self.assertEqual(native.raw_node('/dev/sdb1'), '/dev/sdb1')
+
+    def test_a_refusal_is_explained(self):
+        from unittest.mock import patch
+        with patch('pynetboot.core.syslinux_native.sys.platform', 'darwin'):
+            hint = native.permission_hint(
+                'dd: /dev/rdisk5s1: Operation not permitted')
+            self.assertIsNotNone(hint)
+            self.assertIn('Full Disk Access', hint)
+            # Other failures must not be mislabelled as a permission problem.
+            self.assertIsNone(native.permission_hint('Resource busy'))
+            self.assertIsNone(native.permission_hint(''))
+
+    def test_no_hint_on_other_platforms(self):
+        from unittest.mock import patch
+        with patch('pynetboot.core.syslinux_native.sys.platform', 'linux'):
+            self.assertIsNone(
+                native.permission_hint('dd: Operation not permitted'))
+
+
 class TestPartitionIndex(unittest.TestCase):
     """The boot flag has to land on the target's own partition table entry."""
 

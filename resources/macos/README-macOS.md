@@ -8,6 +8,25 @@ Since PyNetboot is **not code-signed** with an Apple Developer certificate (we a
 
 ---
 
+## Also required: Full Disk Access
+
+Writing a boot sector means reading and writing a drive's raw sectors, and on
+current macOS that is a privacy-protected operation. Without permission the
+install copies every file successfully and then stops with **"Operation not
+permitted"** at the bootloader step -- even though it asked for your password.
+
+Grant it once:
+
+1. Open **System Settings > Privacy & Security > Full Disk Access**
+2. Click **+**, choose **PyNetboot** from Applications
+3. Make sure its switch is on
+4. **Quit and reopen PyNetboot** -- the permission only applies to a fresh start
+
+Nothing to install; this is a macOS permission, and the app tells you in the
+log if it is missing.
+
+---
+
 ## Installation Methods
 
 ### Method 1: ZIP File (Recommended)

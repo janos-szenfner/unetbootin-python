@@ -968,6 +968,9 @@ class USBInstaller:
             # Also lay down the UEFI loader: the same drive should boot on
             # firmware that has no BIOS compatibility mode.
             self._install_uefi_files(mount_point, params)
+            # Do this before ldlinux.sys is written, so that file is laid down
+            # last and stays in one piece.
+            self._tidy_target(mount_point)
 
             return self._install_syslinux_native(
                 partition, params, whole_disk=whole_disk)
@@ -1399,6 +1402,28 @@ class USBInstaller:
     # root directory in one go: 4 MiB spans them on any FAT32 volume with a
     # sane cluster size.
     _PREFETCH_BYTES = 4 * 1024 * 1024
+
+    def _tidy_target(self, mount_point: Optional[str]) -> None:
+        """Remove the metadata sidecars macOS leaves on a FAT volume.
+
+        Files created on a FAT filesystem pick up extended attributes -- the
+        quarantine flag among them -- which macOS stores as a `._name` file
+        beside each one. They are dead weight on a boot drive and clutter the
+        boot directory listing.
+        """
+        if not mount_point or not os.path.isdir(mount_point):
+            return
+        removed = 0
+        for root, _dirs, names in os.walk(mount_point):
+            for name in names:
+                if name.startswith('._') or name == '.DS_Store':
+                    try:
+                        os.unlink(os.path.join(root, name))
+                        removed += 1
+                    except OSError as e:
+                        logger.debug(f"Could not remove {name}: {e}")
+        if removed:
+            logger.info(f"Removed {removed} macOS metadata files from the drive")
 
     def _install_syslinux_native(self, partition: str,
                                  params: Dict[str, Any],
