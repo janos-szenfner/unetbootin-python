@@ -236,17 +236,35 @@ def merge_boot_sector(existing: bytes, template: bytes) -> bytes:
 def install(read: Callable[[int, int], bytes],
             write: Callable[[int, bytes], None],
             ldlinux: bytes, boot_template: bytes,
-            filename: str = 'LDLINUX SYS') -> None:
+            filename: str = 'LDLINUX SYS',
+            prefetch: Optional[Callable[[int, int], None]] = None,
+            flush: Optional[Callable[[], None]] = None,
+            verify_read: Optional[Callable[[int, int], bytes]] = None) -> None:
     """Finish a syslinux install on a FAT volume reached via read/write.
 
     ``ldlinux.sys`` (with its ADV) must already have been copied onto the
     volume; this maps it, patches it in place and writes the boot sector.
+
+    `prefetch(offset, length)` is an optional hint that the given span is
+    about to be read. Where each read costs an elevated command, fetching the
+    FAT and the root directory in one go turns a handful of password prompts
+    into one.
+
+    `flush` commits buffered writes, and `verify_read` reads straight from the
+    device: given both, the result is read back off the drive and checked.
     """
     try:
         volume = FatVolume(read)
     except FatError as e:
         raise SyslinuxError(f"Target is not a usable FAT volume: {e}")
     logger.info(f"Native syslinux install on {volume}")
+
+    if prefetch is not None:
+        # Everything the sector map needs lives between the first FAT and the
+        # start of the data area, plus the first root directory clusters.
+        start = volume.fat_start * SECTOR_SIZE
+        end = (volume.data_start + volume.sectors_per_cluster * 8) * SECTOR_SIZE
+        prefetch(start, end - start)
 
     entry = volume.find_in_root(filename)
     if entry is None:
@@ -286,8 +304,48 @@ def install(read: Callable[[int, int], bytes],
     # Re-read the boot sector: copying files may have changed it (FAT32
     # keeps a dirty flag there).
     current = read(0, SECTOR_SIZE)
-    write(0, merge_boot_sector(current, boot_code))
+    expected_boot = merge_boot_sector(current, boot_code)
+    write(0, expected_boot)
     logger.info("Wrote the syslinux boot sector")
+
+    if flush is not None:
+        flush()
+    if verify_read is not None:
+        _verify(verify_read, expected_boot, sectors[0],
+                on_disk[:SECTOR_SIZE])
+
+
+def _verify_spans(first_sector: int) -> List[Tuple[int, int]]:
+    """The two sectors that decide whether the drive boots at all."""
+    return [(0, SECTOR_SIZE), (first_sector * SECTOR_SIZE, SECTOR_SIZE)]
+
+
+def _verify(read, boot_sector: bytes,
+            first_sector: int, first_ldlinux_sector: bytes) -> None:
+    """Read back what was written, so a bad drive is caught here and not at boot.
+
+    Only the two sectors that decide whether the drive boots at all: the boot
+    sector the BIOS jumps into, and the first sector of ldlinux.sys that it
+    loads next. `read` may be a plain read(offset, length) or an object with
+    a read_many(), which fetches both under one elevation.
+    """
+    read_many = getattr(read, 'read_many', None)
+    if read_many is not None:
+        written, loaded = read_many(_verify_spans(first_sector))
+    else:
+        written = read(0, SECTOR_SIZE)
+        loaded = read(first_sector * SECTOR_SIZE, SECTOR_SIZE)
+
+    if written != boot_sector:
+        raise SyslinuxError(
+            "The boot sector read back differently from what was written; "
+            "the drive did not accept the write")
+
+    if loaded != first_ldlinux_sector:
+        raise SyslinuxError(
+            f"Sector {first_sector} does not hold the patched ldlinux.sys; "
+            f"the filesystem may have moved the file")
+    logger.info("Verified the boot sector and the first sector of ldlinux.sys")
 
 
 def _runs(sectors: List[int]) -> List[Tuple[int, int]]:
@@ -309,9 +367,14 @@ class RawDevice:
 
     A partition device is only writable by root. When the process is already
     root (Linux run under pkexec, Windows running elevated, or a plain image
-    file in a test) it is opened directly; otherwise every access goes
-    through ``dd`` under the app's normal elevation, which reuses the single
-    password prompt the rest of the install already asked for.
+    file in a test) it is opened directly; otherwise every access goes through
+    ``dd`` under the app's normal elevation.
+
+    On macOS each elevated command is its own authorization -- the
+    ``system.privilege.admin`` right is not shared between processes -- so one
+    command per sector would mean a password prompt per sector. Reads are
+    therefore served from a prefetched span where possible, and writes are
+    collected and issued as a single elevated script when the device closes.
     """
 
     def __init__(self, path: str, elevated: Optional[bool] = None):
@@ -320,6 +383,10 @@ class RawDevice:
             elevated = not _can_open_directly(path)
         self.elevated = elevated
         self._handle = None
+        # Spans already read from the device: (offset, data).
+        self._cache: List[Tuple[int, bytes]] = []
+        # Whole-sector writes waiting to be issued: (sector, data).
+        self._pending: List[Tuple[int, bytes]] = []
 
     def __enter__(self) -> 'RawDevice':
         if not self.elevated:
@@ -329,24 +396,114 @@ class RawDevice:
             f"{'elevated (dd)' if self.elevated else 'direct'}")
         return self
 
-    def __exit__(self, *exc_info) -> None:
-        if self._handle is not None:
-            self._handle.flush()
-            os.fsync(self._handle.fileno())
-            self._handle.close()
-            self._handle = None
+    def __exit__(self, exc_type, *exc_info) -> None:
+        try:
+            # A failed install must not leave half its sectors on the drive.
+            if exc_type is None:
+                self.flush()
+            elif self._pending:
+                logger.warning(
+                    f"Discarding {len(self._pending)} pending writes to "
+                    f"{self.path} after an error")
+                self._pending.clear()
+        finally:
+            if self._handle is not None:
+                self._handle.flush()
+                os.fsync(self._handle.fileno())
+                self._handle.close()
+                self._handle = None
+
+    # -- reading ------------------------------------------------------------
+
+    def prefetch(self, offset: int, length: int) -> None:
+        """Read a span up front so later reads inside it cost nothing."""
+        if self._handle is not None or length <= 0:
+            return
+        if self._from_cache(offset, length) is not None:
+            return
+        first = offset // SECTOR_SIZE
+        last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
+        data = self._dd_read(first, last - first)
+        if data:
+            self._cache.append((first * SECTOR_SIZE, data))
+            logger.info(
+                f"Prefetched {len(data) // SECTOR_SIZE} sectors from "
+                f"{self.path} at sector {first}")
 
     def read(self, offset: int, length: int) -> bytes:
         if self._handle is not None:
             self._handle.seek(offset)
             return self._handle.read(length)
 
+        cached = self._from_cache(offset, length)
+        if cached is not None:
+            return cached
+
         # dd works in whole sectors, so read the sectors that cover the range.
+        first = offset // SECTOR_SIZE
+        last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
+        data = self._dd_read(first, last - first)
+        self._cache.append((first * SECTOR_SIZE, data))
+        start = offset - first * SECTOR_SIZE
+        return data[start:start + length]
+
+    def read_many(self, spans: List[Tuple[int, int]]) -> List[bytes]:
+        """Read several spans under a single elevation."""
+        if self._handle is not None:
+            return [self.read(offset, length) for offset, length in spans]
+
+        commands, temps, sectors = [], [], []
+        for offset, length in spans:
+            first = offset // SECTOR_SIZE
+            last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
+            handle = tempfile.NamedTemporaryFile(
+                prefix='pynetboot_dd_', delete=False)
+            handle.close()
+            temps.append(handle.name)
+            sectors.append((first, offset - first * SECTOR_SIZE, length))
+            commands.append(
+                ['dd', f'if={self.path}', f'of={handle.name}',
+                 f'bs={SECTOR_SIZE}', f'skip={first}', f'count={last - first}',
+                 'conv=notrunc'])
+        try:
+            _run_elevated_script(
+                commands, f"read {len(spans)} spans from {self.path}")
+            out = []
+            for path, (_first, start, length) in zip(temps, sectors):
+                with open(path, 'rb') as fh:
+                    out.append(fh.read()[start:start + length])
+            return out
+        finally:
+            for path in temps:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    def _from_cache(self, offset: int, length: int) -> Optional[bytes]:
+        # Newest first: a pending write must win over the sectors a prefetch
+        # captured before it.
+        for base, data in reversed(self._cache):
+            if base <= offset and offset + length <= base + len(data):
+                start = offset - base
+                return data[start:start + length]
+        return None
+
+    def read_uncached(self, offset: int, length: int) -> bytes:
+        """Read from the device itself, ignoring anything already held.
+
+        Verification has to see what the drive stored, not what we meant to
+        store, so it cannot be served from the cache.
+        """
+        if self._handle is not None:
+            return self.read(offset, length)
         first = offset // SECTOR_SIZE
         last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
         data = self._dd_read(first, last - first)
         start = offset - first * SECTOR_SIZE
         return data[start:start + length]
+
+    # -- writing ------------------------------------------------------------
 
     def write(self, offset: int, data: bytes) -> None:
         if self._handle is not None:
@@ -359,45 +516,89 @@ class RawDevice:
             raise SyslinuxError(
                 "Elevated writes must be whole sectors "
                 f"(offset {offset}, {len(data)} bytes)")
-        self._dd_write(offset // SECTOR_SIZE, data)
+        self._pending.append((offset // SECTOR_SIZE, data))
+        # Anything read back later must see what was written, not the stale
+        # sectors a prefetch captured.
+        self._cache.append((offset, data))
+
+    def flush(self) -> None:
+        """Issue every pending write as one elevated command."""
+        if not self._pending:
+            return
+        pending, self._pending = self._pending, []
+
+        paths = []
+        commands = []
+        try:
+            for sector, data in pending:
+                handle = tempfile.NamedTemporaryFile(
+                    prefix='pynetboot_dd_', delete=False)
+                handle.write(data)
+                handle.close()
+                paths.append(handle.name)
+                commands.append(
+                    ['dd', f'if={handle.name}', f'of={self.path}',
+                     f'bs={SECTOR_SIZE}', f'seek={sector}',
+                     f'count={len(data) // SECTOR_SIZE}', 'conv=notrunc'])
+            sectors = sum(len(d) // SECTOR_SIZE for _s, d in pending)
+            _run_elevated_script(
+                commands,
+                f"write {sectors} sectors to {self.path} "
+                f"in {len(commands)} runs")
+        finally:
+            for path in paths:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
     # -- dd plumbing --------------------------------------------------------
 
     def _dd_read(self, sector: int, count: int) -> bytes:
+        if count <= 0:
+            return b''
         with tempfile.NamedTemporaryFile(prefix='pynetboot_dd_') as tmp:
-            self._run_elevated([
-                'dd', f'if={self.path}', f'of={tmp.name}',
-                f'bs={SECTOR_SIZE}', f'skip={sector}', f'count={count}',
-                'conv=notrunc',
-            ], f"read {count} sectors at {sector}")
+            _run_elevated_script([
+                ['dd', f'if={self.path}', f'of={tmp.name}',
+                 f'bs={SECTOR_SIZE}', f'skip={sector}', f'count={count}',
+                 'conv=notrunc'],
+            ], f"read {count} sectors at {sector} from {self.path}")
             with open(tmp.name, 'rb') as fh:
                 return fh.read()
 
-    def _dd_write(self, sector: int, data: bytes) -> None:
-        with tempfile.NamedTemporaryFile(prefix='pynetboot_dd_',
-                                         delete=False) as tmp:
-            tmp.write(data)
-            tmp.flush()
-            path = tmp.name
-        try:
-            self._run_elevated([
-                'dd', f'if={path}', f'of={self.path}',
-                f'bs={SECTOR_SIZE}', f'seek={sector}',
-                f'count={len(data) // SECTOR_SIZE}', 'conv=notrunc',
-            ], f"write {len(data) // SECTOR_SIZE} sectors at {sector}")
-        finally:
-            os.unlink(path)
 
-    @staticmethod
-    def _run_elevated(command: List[str], what: str) -> None:
-        from pynetboot.core.elevation import run_elevated
+def _run_elevated_script(commands: List[List[str]], what: str) -> None:
+    """Run several commands under a single elevation.
 
+    They go into a shell script that is run as one elevated command: on macOS
+    that is one password prompt for the batch instead of one per command, and
+    the elevated command line stays two fixed arguments regardless of what is
+    being run.
+    """
+    from pynetboot.core.elevation import run_elevated
+    import shlex
+
+    script = "#!/bin/sh\nset -e\n" + "".join(
+        shlex.join(command) + "\n" for command in commands)
+    handle = tempfile.NamedTemporaryFile(
+        prefix='pynetboot_batch_', suffix='.sh', mode='w', delete=False)
+    handle.write(script)
+    handle.close()
+    os.chmod(handle.name, 0o755)
+
+    try:
+        returncode, _stdout, stderr = run_elevated(
+            ['/bin/sh', handle.name], timeout=300)
+    except Exception as e:                    # elevation errors vary by OS
+        raise SyslinuxError(f"Could not {what}: {e}")
+    finally:
         try:
-            returncode, _stdout, stderr = run_elevated(command, timeout=120)
-        except Exception as e:                # elevation errors vary by OS
-            raise SyslinuxError(f"Could not {what}: {e}")
-        if returncode != 0:
-            raise SyslinuxError(f"Could not {what}: {stderr.strip()}")
+            os.unlink(handle.name)
+        except OSError:
+            pass
+
+    if returncode != 0:
+        raise SyslinuxError(f"Could not {what}: {(stderr or '').strip()}")
 
 
 def _can_open_directly(path: str) -> bool:

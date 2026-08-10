@@ -13,7 +13,7 @@ import tempfile
 from typing import Optional, Callable, Dict, Any, List, Tuple
 
 from pynetboot.resources import (
-    bootloader_path,
+    bootloader_path, read_bootloader,
     find_bundled_syslinux, find_bundled_extlinux,
 )
 from pynetboot.core.utils import directory_stats, find_tool, format_size
@@ -228,6 +228,25 @@ class USBInstaller:
             if not self._format_device(target_partition):
                 logger.error(f"Failed to format {target_partition}")
                 return False
+
+            if self.platform == 'darwin':
+                # diskutil erased and repartitioned the whole disk, so the
+                # slice to mount and install into only exists now. Record
+                # both, so 'target_partition' means a partition here too --
+                # the bootloader has to go into *its* boot sector, not the
+                # disk's.
+                params['target_disk'] = self._macos_whole_disk(target_partition)
+                data_slice = self._macos_data_partition(params['target_disk'])
+                if data_slice:
+                    target_partition = f"/dev/{data_slice}"
+                    params['target_partition'] = target_partition
+                    logger.info(
+                        f"Target partition on {params['target_disk']}: "
+                        f"{target_partition}")
+                else:
+                    logger.warning(
+                        f"No data partition found on {params['target_disk']} "
+                        f"after formatting")
 
             # Create temporary working directory
             params['temp_dir'] = tempfile.mkdtemp(prefix='pynetboot_install_')
@@ -884,17 +903,20 @@ class USBInstaller:
 
         try:
             mount_point = params.get('mount_point')
-            whole_disk = self._macos_whole_disk(device)
-            # On macOS the target recorded during preparation is the whole
-            # disk (diskutil erases and repartitions it), so the FAT slice
-            # has to be looked up -- syslinux goes into *its* boot sector.
-            data_slice = self._macos_data_partition(whole_disk)
-            if not data_slice and not enable_uefi_only:
+            whole_disk = params.get('target_disk') or self._macos_whole_disk(device)
+            # syslinux goes into the boot sector of the FAT slice, not the
+            # disk's. Preparation records it; look it up again if a caller
+            # skipped that step.
+            partition = params.get('target_partition') or ''
+            if self._partition_index(partition) is None:
+                data_slice = self._macos_data_partition(whole_disk)
+                partition = f"/dev/{data_slice}" if data_slice else ''
+            if not partition and not enable_uefi_only:
                 logger.error(
                     f"Could not find the data partition on {whole_disk}; "
                     f"there is no boot sector to install syslinux into")
                 return False
-            partition = f"/dev/{data_slice}" if data_slice else device
+            partition = partition or device
             logger.info(
                 f"macOS bootloader targets: MBR -> {whole_disk}, "
                 f"syslinux -> {partition}")
@@ -978,14 +1000,11 @@ class USBInstaller:
                 whole_disk = self._linux_parent_disk(device)
                 partition = params.get('target_partition') or device
 
-                # 1) Write the syslinux MBR from the BUNDLED mbr.bin. Only
-                #    the first 440 bytes are touched, so the partition table
-                #    at offset 446 survives.
-                self._write_syslinux_mbr(whole_disk)
-
-                # That MBR boots whichever partition is marked active, so
-                # the target has to carry the boot flag.
-                self._activate_partition(whole_disk, partition)
+                # 1) Write the syslinux MBR from the BUNDLED mbr.bin into
+                #    the first 440 bytes of sector 0, and mark the target
+                #    partition active in the same write -- that MBR boots
+                #    whichever partition carries the boot flag.
+                self._write_mbr_and_activate(whole_disk, partition)
 
                 # 2) Copy bundled menu modules onto the target filesystem.
                 self._copy_syslinux_modules(params.get('mount_point'))
@@ -1114,29 +1133,73 @@ class USBInstaller:
     # does not depend on a system-installed syslinux. They fall back to
     # system tools only if a bundled binary is missing.
 
-    def _release_mount(self, params: Dict[str, Any]) -> None:
+    # Unmounting can lose a race with whatever is still touching a volume
+    # 25 MB of files were just copied onto -- Spotlight indexes it on macOS,
+    # desktop indexers do the same on Linux -- so give it a few tries.
+    _UNMOUNT_ATTEMPTS = 4
+    _UNMOUNT_PAUSE_SECONDS = 2
+
+    def _unmount_commands(self, mount_point: str, force: bool) -> List[List[str]]:
+        """Ways to unmount `mount_point`, best first, for this platform."""
+        if self.platform == 'darwin':
+            # The volume was mounted by this user, so no elevation is needed;
+            # diskutil goes through Disk Arbitration, which unmounts cleanly
+            # where a plain umount reports the volume busy.
+            commands = [['diskutil', 'unmount', mount_point],
+                        ['umount', mount_point]]
+            if force:
+                commands.insert(0, ['diskutil', 'unmount', 'force', mount_point])
+            return commands
+        commands = [['sudo', 'umount', mount_point]]
+        if force:
+            commands.insert(0, ['sudo', 'umount', '-l', mount_point])
+        return commands
+
+    def _release_mount(self, params: Dict[str, Any]) -> bool:
         """Flush and unmount the target so raw writes are not overwritten.
+
+        Returns True once nothing is mounted there. Callers must not write raw
+        sectors otherwise: the filesystem would write its cached copy back
+        over them, and macOS refuses the write outright while the volume is
+        mounted.
 
         The mount point directory is kept so _cleanup_installation can still
         remove it, and remains recorded so _remount can restore it.
         """
         mount_point = params.get('mount_point')
         if not mount_point or not os.path.isdir(mount_point):
-            return
-        try:
-            subprocess.run(['sync'], capture_output=True, timeout=60)
-            result = subprocess.run(
-                ['sudo', 'umount', mount_point],
-                capture_output=True, text=True, timeout=60
-            )
-            if result.returncode == 0:
-                logger.info(f"Unmounted {mount_point} before raw write")
-            else:
-                logger.warning(
-                    f"Could not unmount {mount_point} before raw write: "
-                    f"{(result.stderr or '').strip()}")
-        except _SUBPROCESS_ERRORS as e:
-            logger.warning(f"Could not unmount {mount_point}: {e}")
+            return True
+        if not os.path.ismount(mount_point):
+            return True
+
+        last_error = ''
+        for attempt in range(self._UNMOUNT_ATTEMPTS):
+            try:
+                subprocess.run(['sync'], capture_output=True, timeout=60)
+                for command in self._unmount_commands(
+                        mount_point, force=attempt > 0):
+                    result = subprocess.run(
+                        command, capture_output=True, text=True, timeout=60)
+                    if result.returncode == 0 or not os.path.ismount(mount_point):
+                        logger.info(
+                            f"Unmounted {mount_point} before raw write")
+                        return True
+                    last_error = ((result.stderr or result.stdout or '')
+                                  .strip())
+                    logger.debug(
+                        f"{' '.join(command)} failed: {last_error}")
+            except _SUBPROCESS_ERRORS as e:
+                last_error = str(e)
+            if attempt + 1 < self._UNMOUNT_ATTEMPTS:
+                logger.info(
+                    f"{mount_point} is still busy; retrying the unmount "
+                    f"({attempt + 1}/{self._UNMOUNT_ATTEMPTS})")
+                time.sleep(self._UNMOUNT_PAUSE_SECONDS)
+
+        logger.error(
+            f"Could not unmount {mount_point}: {last_error}. Close anything "
+            f"using the drive (Finder windows, a terminal in it) and retry.")
+        return False
 
     def _remount(self, params: Dict[str, Any], device: str) -> None:
         """Re-mount the target after a raw write, for tools that need a path."""
@@ -1167,28 +1230,6 @@ class USBInstaller:
         except _SUBPROCESS_ERRORS as e:
             logger.debug(f"lsblk pkname lookup failed for {device}: {e}")
         return device  # already a whole disk (or unknown -> use as-is)
-
-    def _write_syslinux_mbr(self, whole_disk: str, use_sudo: bool = True) -> bool:
-        """Write the bundled syslinux ``mbr.bin`` to a disk's MBR (440 bytes)."""
-        mbr = bootloader_path('mbr.bin')
-        if not mbr.exists():
-            logger.warning(f"Bundled mbr.bin not found at {mbr}")
-            return False
-        cmd = (['sudo'] if use_sudo else []) + [
-            'dd', f'if={mbr}', f'of={whole_disk}',
-            'bs=440', 'count=1', 'conv=notrunc',
-        ]
-        try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                logger.warning(f"Writing MBR failed: {result.stderr}")
-                return False
-            logger.info(f"Wrote bundled syslinux MBR to {whole_disk}")
-            return True
-        except _SUBPROCESS_ERRORS as e:
-            logger.warning(f"Writing MBR failed: {e}")
-            return False
 
     @staticmethod
     def _windows_drive_spec(device: str) -> Optional[str]:
@@ -1301,6 +1342,11 @@ class USBInstaller:
                       if n.upper().startswith('BOOT')
                       and n.upper().endswith('.EFI'))
 
+    # Read up front to cover the boot sector, both FATs and the start of the
+    # root directory in one go: 4 MiB spans them on any FAT32 volume with a
+    # sane cluster size.
+    _PREFETCH_BYTES = 4 * 1024 * 1024
+
     def _install_syslinux_native(self, partition: str,
                                  params: Dict[str, Any],
                                  whole_disk: Optional[str] = None) -> bool:
@@ -1345,15 +1391,27 @@ class USBInstaller:
             return False
 
         # The filesystem cache would write its own copy of the file back over
-        # the patched sectors, so let go of the volume first.
-        self._release_mount(params)
+        # the patched sectors, so let go of the volume first. Writing raw
+        # sectors under a live filesystem corrupts it, so this is a hard stop.
+        if not self._release_mount(params):
+            logger.error(
+                "Not writing the boot sector: the drive could not be unmounted")
+            self._remount(params, partition)
+            return False
+
         try:
             with native.RawDevice(partition) as device:
+                # One read up front covers the boot sector, the FAT and the
+                # root directory on any normal drive. Each elevated command
+                # is a separate password prompt on macOS.
+                device.prefetch(0, self._PREFETCH_BYTES)
                 native.install(device.read, device.write,
-                               ldlinux, boot_template)
+                               ldlinux, boot_template,
+                               prefetch=device.prefetch,
+                               flush=device.flush,
+                               verify_read=device)
             if whole_disk:
-                self._write_syslinux_mbr(whole_disk)
-                self._activate_partition(whole_disk, partition)
+                self._write_mbr_and_activate(whole_disk, partition)
             native.sync_disks()
             logger.info(f"Installed syslinux on {partition} (native)")
             return True
@@ -1367,34 +1425,56 @@ class USBInstaller:
         finally:
             self._remount(params, partition)
 
-    def _activate_partition(self, whole_disk: str, partition: str) -> bool:
-        """Set the MBR boot flag on the target partition.
+    def _write_mbr_and_activate(self, whole_disk: str,
+                                partition: str) -> bool:
+        """Write the syslinux MBR and mark the target partition active.
 
-        The syslinux MBR chains to whichever partition is marked active; with
-        no active partition a BIOS boot stops at "Missing operating system".
+        Both live in sector 0 -- the boot code in the first 440 bytes, the
+        boot flag in the partition table at 446 -- so they are done as one
+        read-modify-write. Two separate writes cost two elevations and can
+        leave an MBR whose partition table says nothing is bootable, which a
+        BIOS reports as "Missing operating system".
         """
         from pynetboot.core import syslinux_native as native
+
+        code = read_bootloader('mbr.bin')
+        if not code:
+            logger.error("Bundled mbr.bin is missing from this build")
+            return False
+        if len(code) > 440:
+            logger.error(f"Bundled mbr.bin is {len(code)} bytes, "
+                         f"which would overwrite the partition table")
+            return False
 
         index = self._partition_index(partition)
         if index is None:
             logger.warning(
                 f"Could not tell which partition {partition} is; "
                 f"leaving the boot flag alone")
-            return False
+
         try:
             with native.RawDevice(whole_disk) as device:
                 sector = bytearray(device.read(0, 512))
                 if len(sector) < 512:
-                    logger.warning(f"Could not read the MBR of {whole_disk}")
+                    logger.error(f"Could not read the MBR of {whole_disk}")
                     return False
-                for slot in range(4):
-                    entry = 446 + slot * 16
-                    sector[entry] = 0x80 if slot == index - 1 else 0x00
+
+                sector[0:len(code)] = code
+                if index is not None:
+                    for slot in range(4):
+                        entry = 446 + slot * 16
+                        sector[entry] = 0x80 if slot == index - 1 else 0x00
+                # A drive with no signature here is not booted at all.
+                sector[510:512] = b'\x55\xaa'
                 device.write(0, bytes(sector))
-            logger.info(f"Marked partition {index} of {whole_disk} active")
+
+            logger.info(
+                f"Wrote the syslinux MBR to {whole_disk}"
+                + (f" and marked partition {index} active"
+                   if index is not None else ""))
             return True
         except (native.SyslinuxError, OSError) as e:
-            logger.warning(f"Could not set the boot flag on {partition}: {e}")
+            logger.error(f"Could not write the MBR of {whole_disk}: {e}")
             return False
 
     @staticmethod

@@ -353,10 +353,11 @@ class TestRawDevice(unittest.TestCase):
                     handle.seek(offset)
                     self.assertEqual(device.read(offset, length),
                                      handle.read(length))
+        # Every elevated call is a generated script, so the command line
+        # itself is fixed; the dd invocations are inside it.
         first = self.commands[0]
-        self.assertEqual(first[0], 'dd')
-        self.assertIn(f'if={self.path}', first)
-        self.assertIn('bs=512', first)
+        self.assertEqual(first[0], '/bin/sh')
+        self.assertEqual(len(first), 2)
 
     def test_writes_land_at_the_right_offset(self):
         payload = bytes([0x5A]) * 1024
@@ -386,7 +387,9 @@ class TestRawDevice(unittest.TestCase):
             handle.write(image.data)
 
         with native.RawDevice(self.path, elevated=True) as device:
-            native.install(device.read, device.write, ldlinux, bss)
+            native.install(device.read, device.write, ldlinux, bss,
+                           prefetch=device.prefetch, flush=device.flush,
+                           verify_read=device.read_uncached)
 
         with open(self.path, 'rb') as handle:
             written = handle.read()
@@ -394,6 +397,68 @@ class TestRawDevice(unittest.TestCase):
         self.assertEqual(written[0:11], bss[0:11])
         self.assertEqual(written[11:90], bytes(image.data[11:90]))
         self.assertEqual(written[510:512], b'\x55\xaa')
+
+    def test_a_full_install_costs_few_elevations(self):
+        """Each one is a password prompt on macOS, so they have to be rare."""
+        ldlinux = _payload('ldlinux.sys')
+        bss = _payload('ldlinux.bss')
+        payload = native.file_payload(ldlinux)
+        nsectors = -(-len(payload) // SECTOR_SIZE)
+
+        image = FatImage()
+        image.add_file('LDLINUX SYS', payload, list(range(10, 10 + nsectors)))
+        with open(self.path, 'wb') as handle:
+            handle.write(image.data)
+
+        with native.RawDevice(self.path, elevated=True) as device:
+            native.install(device.read, device.write, ldlinux, bss,
+                           prefetch=device.prefetch, flush=device.flush,
+                           verify_read=device.read_uncached)
+
+        # boot sector, prefetch, the batched write, and two verification
+        # reads -- and nothing per sector.
+        self.assertLessEqual(len(self.commands), 6, self.commands)
+
+    def test_writes_are_issued_as_one_command(self):
+        with native.RawDevice(self.path, elevated=True) as device:
+            device.write(0, b'\xAA' * 512)
+            device.write(8192, b'\xBB' * 1024)
+            self.assertEqual(len(self.commands), 0,
+                             "writes must wait for the flush")
+        self.assertEqual(len(self.commands), 1)
+
+        with open(self.path, 'rb') as handle:
+            self.assertEqual(handle.read(512), b'\xAA' * 512)
+            handle.seek(8192)
+            self.assertEqual(handle.read(1024), b'\xBB' * 1024)
+
+    def test_a_failed_install_writes_nothing(self):
+        """Half a bootloader is worse than none."""
+        original = open(self.path, 'rb').read(512)
+        with self.assertRaises(RuntimeError):
+            with native.RawDevice(self.path, elevated=True) as device:
+                device.write(0, b'\xAA' * 512)
+                raise RuntimeError("something failed mid-install")
+        self.assertEqual(len(self.commands), 0)
+        self.assertEqual(open(self.path, 'rb').read(512), original)
+
+    def test_prefetched_span_serves_later_reads(self):
+        with native.RawDevice(self.path, elevated=True) as device:
+            device.prefetch(0, 64 * 1024)
+            calls = len(self.commands)
+            with open(self.path, 'rb') as handle:
+                for offset, length in [(0, 512), (4096, 100), (60000, 512)]:
+                    handle.seek(offset)
+                    self.assertEqual(device.read(offset, length),
+                                     handle.read(length))
+            self.assertEqual(len(self.commands), calls,
+                             "reads inside the prefetched span must be free")
+
+    def test_pending_writes_are_visible_to_reads(self):
+        with native.RawDevice(self.path, elevated=True) as device:
+            device.prefetch(0, 4096)
+            device.write(0, b'\xCD' * 512)
+            self.assertEqual(device.read(0, 512), b'\xCD' * 512)
 
 
 class TestPartitionIndex(unittest.TestCase):

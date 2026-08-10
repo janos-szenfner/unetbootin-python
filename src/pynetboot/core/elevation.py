@@ -504,11 +504,15 @@ def _run_elevated_macos(
     """
     import shlex
 
-    # Build the shell command
+    # Two levels of quoting, and they are not the same: shlex protects the
+    # command from the shell, then the whole thing becomes an AppleScript
+    # string literal, where only \ and " need escaping. Interpolating the
+    # shell-quoted form straight into the literal breaks on either character.
     cmd_str = shlex.join(command)
+    literal = '"' + cmd_str.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
     # Use osascript to run with admin privileges
-    script = f'do shell script "{cmd_str}" with administrator privileges'
+    script = f'do shell script {literal} with administrator privileges'
 
     try:
         result = subprocess.run(

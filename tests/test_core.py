@@ -409,6 +409,57 @@ class TestInstaller(unittest.TestCase):
 
         self.assertIn('Administrator', params['failure_reason'])
 
+    def test_macos_elevation_quotes_for_applescript_not_just_the_shell(self):
+        """The command is a shell string inside an AppleScript literal.
+
+        Interpolating the shell-quoted form straight into the literal makes
+        osascript fail to compile as soon as an argument contains a quote.
+        """
+        import pynetboot.core.elevation as elevation
+
+        captured = {}
+
+        class Result:
+            returncode = 0
+            stdout = ''
+            stderr = ''
+
+        def fake_run(argv, **kwargs):
+            captured['script'] = argv[2]
+            return Result()
+
+        with patch('pynetboot.core.elevation.subprocess.run', fake_run):
+            elevation._run_elevated_macos(
+                ['echo', 'a "quoted" path'], None, True, True)
+
+        script = captured['script']
+        self.assertTrue(script.startswith('do shell script "'))
+        self.assertTrue(script.endswith('" with administrator privileges'))
+        # Every quote inside the literal must be escaped.
+        body = script[len('do shell script '):-len(' with administrator privileges')]
+        inner = body[1:-1]
+        for index, char in enumerate(inner):
+            if char == '"':
+                self.assertEqual(inner[index - 1], '\\',
+                                 f"unescaped quote at {index} in {inner!r}")
+
+    def test_a_busy_drive_stops_the_native_install(self):
+        """Raw sectors must never be written under a live filesystem."""
+        self.installer.platform = 'darwin'
+        params = {'mount_point': self.temp_dir}
+
+        with patch.object(self.installer, '_release_mount',
+                          return_value=False) as release, \
+                patch.object(self.installer, '_remount') as remount, \
+                patch('pynetboot.core.syslinux_native.RawDevice') as device:
+            ok = self.installer._install_syslinux_native(
+                '/dev/disk4s1', params, whole_disk='/dev/disk4')
+
+        self.assertFalse(ok)
+        release.assert_called_once()
+        device.assert_not_called()
+        remount.assert_called_once()
+
     def test_the_failure_reason_reaches_the_caller(self):
         """The dialog must show the cause, not just "Preparation failed"."""
         self.installer.platform = 'win32'
@@ -536,7 +587,7 @@ class TestInstaller(unittest.TestCase):
 
         with patch.object(self.installer, '_linux_parent_disk',
                           return_value='/dev/sdb'), \
-                patch.object(self.installer, '_write_syslinux_mbr',
+                patch.object(self.installer, '_write_mbr_and_activate',
                              return_value=True) as mock_mbr, \
                 patch.object(self.installer, '_copy_syslinux_modules'), \
                 patch.object(self.installer, '_release_mount'), \
@@ -553,7 +604,7 @@ class TestInstaller(unittest.TestCase):
 
             self.installer._install_bootloader_linux('/dev/sdb', params)
 
-            mock_mbr.assert_called_once_with('/dev/sdb')
+            mock_mbr.assert_called_once_with('/dev/sdb', '/dev/sdb1')
             # Other privileged commands (marking the partition active) run
             # through subprocess too, so pick out the syslinux invocation.
             syslinux_argv = next(
