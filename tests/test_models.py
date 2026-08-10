@@ -248,6 +248,34 @@ class TestDistributionManager(unittest.TestCase):
             self.assertIn(distro_name, distro_names,
                          f"Distribution {distro_name} not found in the list")
 
+    def test_opensuse_offers_arm_builds_with_checksums(self):
+        """The ARM images are only useful if they can be verified.
+
+        openSUSE publishes a checksum for the dated snapshot behind the
+        Tumbleweed alias, and for Leap only against the build-numbered file --
+        so each version has to point at a companion file that actually exists.
+        """
+        opensuse = self.manager.get_distribution('opensuse')
+        names = [version.name for version in opensuse.versions]
+        self.assertIn('Tumbleweed ARM (Rolling)', names)
+        self.assertIn('Leap 16.0 ARM (Stable)', names)
+
+        for version in opensuse.versions:
+            if 'ARM' not in version.name:
+                continue
+            self.assertIn('aarch64', version.url, version.name)
+            digest_url = (getattr(version, 'sha256_url', None)
+                          or getattr(version, 'sha512_url', None))
+            self.assertIsNotNone(
+                digest_url, f"{version.name} has no checksum to verify against")
+            # A companion file is matched by name, so it has to be named after
+            # the image it covers.
+            import os
+            self.assertTrue(
+                os.path.basename(digest_url).startswith(
+                    os.path.basename(version.url)),
+                f"{version.name}: {digest_url} does not name {version.url}")
+
     def test_distribution_categories(self):
         """Test that distributions are properly categorized."""
         categories = self.manager.get_categories()

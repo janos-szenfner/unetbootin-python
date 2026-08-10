@@ -435,8 +435,7 @@ class USBInstaller:
                     # Windows: no explicit unmount needed for drive letters
                     pass
                 elif os.path.ismount(mount_point):
-                    if self._release_mount(params):
-                        logger.info(f"Unmounted {mount_point}")
+                    self._release_mount(params)
 
                 # Removing the directory is only safe once nothing is mounted
                 # on it. While it is still a mount point it *is* the drive, so
@@ -1210,8 +1209,7 @@ class USBInstaller:
                     result = subprocess.run(
                         command, capture_output=True, text=True, timeout=60)
                     if result.returncode == 0 or not os.path.ismount(mount_point):
-                        logger.info(
-                            f"Unmounted {mount_point} before raw write")
+                        logger.info(f"Unmounted {mount_point}")
                         return True
                     last_error = ((result.stderr or result.stdout or '')
                                   .strip())

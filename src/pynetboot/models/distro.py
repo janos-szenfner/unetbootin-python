@@ -319,12 +319,12 @@ class DistributionManager:
                 'versions': [
                     {
     'name': 'Leap 16.1 (Stable)',
-    'url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64-Build37.2.install.iso',
+    'url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64-Build41.1.install.iso',
                      # openSUSE publishes checksums only for the
                      # build-numbered image, not the unversioned
                      # alias, and only as SHA512.
-                     'sha512_url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64-Build37.2.install.iso.sha512',
-     'size': 4552916992},
+                     'sha512_url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-x86_64-Build41.1.install.iso.sha512',
+     'size': 4564451328},
                     {
     'name': 'Leap 16.0 (Stable)',
     'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-x86_64-Build178.27.install.iso',
@@ -337,7 +337,36 @@ class DistributionManager:
     'name': 'Tumbleweed (Rolling)',
     'url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso',
                      'sha256_url': 'https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso.sha256',
-     'size': 4469030912},
+                     # A rolling alias, so this drifts with every snapshot.
+                     # It is shown to the user, never verified against.
+     'size': 4536139776},
+                    # ARM64 builds. These boot on aarch64 machines through
+                    # the EFI loader in the image itself, which the install
+                    # keeps; the x86 boot sector written alongside is simply
+                    # never used there.
+                    {
+    'name': 'Tumbleweed ARM (Rolling)',
+    'url': 'https://download.opensuse.org/ports/aarch64/tumbleweed/iso/openSUSE-Tumbleweed-DVD-aarch64-Current.iso',
+                     # The companion file names the dated snapshot hiding
+                     # behind the Current alias, and carries one hash.
+                     'sha256_url': 'https://download.opensuse.org/ports/aarch64/tumbleweed/iso/openSUSE-Tumbleweed-DVD-aarch64-Current.iso.sha256',
+     'size': 4131106816},
+                    {
+    'name': 'Leap 16.1 ARM (Stable)',
+    'url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-aarch64-Build41.1.install.iso',
+                     # The ARM build number differs from the x86_64 one for
+                     # the same Leap release.
+                     'sha512_url': 'https://download.opensuse.org/distribution/leap/16.1/offline/Leap-16.1-offline-installer-aarch64-Build41.1.install.iso.sha512',
+     'size': 4672454656},
+                    {
+    'name': 'Leap 16.0 ARM (Stable)',
+    'url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-aarch64-Build178.27.install.iso',
+                     # As with the x86_64 Leap images: openSUSE publishes a
+                     # checksum only for the build-numbered file, and only as
+                     # SHA512. The unversioned alias has none, so it is the
+                     # build-numbered image that is offered and verified.
+                     'sha512_url': 'https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-offline-installer-aarch64-Build178.27.install.iso.sha512',
+     'size': 4642045952},
                 ],
                 'icon': 'opensuse',
             },

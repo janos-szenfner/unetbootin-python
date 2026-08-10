@@ -253,9 +253,9 @@ drops writes is reported during the install rather than at boot.
 - Progress reporting
 
 ### USB Installation
-> ✅ **Verified on Windows and Linux; macOS not yet.** The install pipeline (format → mount → copy → bootloader) produces bootable drives on Windows and Linux, and elevation no longer needs a terminal. The bootloader half is **self-contained**: nothing has to be installed on the host — Windows uses the bundled `syslinux.exe`, Linux the bundled `ubnsylnx*`, and macOS (or any host the bundled binaries cannot run on, such as ARM Linux) uses the built-in installer in `core/syslinux_native.py`, which writes and patches the syslinux boot sector itself.
+> ✅ **Verified on all three platforms.** The install pipeline (format → mount → copy → bootloader) runs to completion on Windows, Linux and macOS, and elevation no longer needs a terminal. The bootloader half is **self-contained**: nothing has to be installed on the host — Windows uses the bundled `syslinux.exe`, Linux the bundled `ubnsylnx*`, and macOS (or any host the bundled binaries cannot run on, such as ARM Linux) uses the built-in installer in `core/syslinux_native.py`, which writes and patches the syslinux boot sector itself.
 >
-> The macOS path is the one still unproven on hardware: it is the only platform where the boot sector is written by that Python installer rather than by a syslinux binary. Its output is checked against real FAT32/FAT16 images and a fragmented in-memory volume, which shows the bytes are correct and self-consistent — not that a BIOS has accepted them. **Drive safety** is in place everywhere: only removable USB drives are selectable, and an explicit erase confirmation plus an installer-level hard guard prevent writing to internal/system/virtual disks.
+> On macOS the boot sector is written by that Python installer rather than by a syslinux binary, and the drive is opened through `authopen` — macOS refuses raw drive access to `dd` even as root. A macOS install has been run end to end on a USB stick: the boot sector, the sector map of `ldlinux.sys` and the MBR were written and then read back off the medium and checked. What no verification here can establish is whether a machine boots the result, on any platform. **Drive safety** is in place everywhere: only removable USB drives are selectable, and an explicit erase confirmation plus an installer-level hard guard prevent writing to internal/system/virtual disks.
 
 - File copying from source to target device
 - Bootloader installation (all payloads bundled — **no host installation required**):
@@ -271,7 +271,7 @@ drops writes is reported during the install rather than at boot.
 - Configuration file generation (syslinux.cfg, grub.cfg)
 
 ### Platform Support
-> Drive **listing/info/detection** is solid on all three platforms. The **format / mount / bootloader-install** paths are confirmed working on Windows and Linux; on macOS they are implemented but not yet exercised on real hardware.
+> Drive **listing/info/detection** is solid on all three platforms, and the **format / mount / bootloader-install** paths are confirmed working on all three.
 
 #### macOS
 - Drive listing using `diskutil`
@@ -700,14 +700,14 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ✅ Working on Windows and Linux — writes bootable drives with no host tools installed; elevation needs no interactive terminal (pkexec/sudo/UAC). ⚠️ macOS unverified on hardware. *Drive-safety filtering + erase confirmation are in place.* |
+| Installer | ✅ Working on Windows, Linux and macOS — writes drives with no host tools installed, verifying the boot sector and MBR off the medium afterwards; elevation needs no interactive terminal (pkexec/sudo/UAC/authopen). ⚠️ Booting the result has not been tested on any platform. *Drive-safety filtering + erase confirmation are in place.* |
 | Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
-| Platform Support | ✅ Windows and Linux verified end-to-end; ⚠️ macOS implemented but untested on hardware. Drive listing/info solid everywhere. UEFI-only mode installs the bundled `syslinux.efi` as `EFI/BOOT/BOOTX64.EFI`; Secure Boot still needs a distribution-supplied signed shim |
+| Platform Support | ✅ Verified end-to-end on all three. Drive listing/info solid everywhere. UEFI-only mode installs the bundled `syslinux.efi` as `EFI/BOOT/BOOTX64.EFI`; Secure Boot still needs a distribution-supplied signed shim |
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |
 | Resources | ✅ Bundled and used — bootloader binaries in `resources/bootloader/` are now referenced via `pynetboot.resources` resolver; icons and logos are also properly bundled |
-| Full Distribution List | ✅ Complete (21 distros; checksums dynamically fetched) |
+| Full Distribution List | ✅ Complete (22 distros, including ARM64 builds of openSUSE; checksums dynamically fetched) |
 | Translations | ✅ Implemented — `core/i18n.py` parses bundled Qt `.ts` catalogs (de/es/fr/it/hu) into gettext-style `_()`; wired in `main.load_translations()` |
 | Checksum Verification | ✅ Dynamic — downloads and verifies distro checksums from published checksum files (wired for Ubuntu, Debian, Fedora) |
 | Packaging | ✅ Complete — CI builds Windows EXE, macOS ZIP + DMG, AppImage, DEB, RPM and Flatpak on every `v*` tag and publishes them as raw release assets. DEB/RPM/Flatpak ship `.desktop` + AppStream metadata and icons, so the app appears in the GNOME/KDE menus with its icon and GPL license. *macOS build is not yet codesigned/notarized.* |

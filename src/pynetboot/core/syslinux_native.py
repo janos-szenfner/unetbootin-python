@@ -537,6 +537,7 @@ class RawDevice:
         self.path = path
         self._fd = None
         self._authopen_process = None
+        self._uncached = False
         # With a batch, reads and writes are queued for the caller to run
         # alongside every other device's; without one they go out as they
         # come. authopen holds a descriptor, so it needs neither.
@@ -721,11 +722,12 @@ class RawDevice:
             os.fsync(self._fd)
         except OSError as e:
             logger.debug(f"fsync on {self.path} failed: {e}")
-        if sys.platform != 'darwin':
+        if sys.platform != 'darwin' or self._uncached:
             return
         try:
             import fcntl
             fcntl.fcntl(self._fd, _F_NOCACHE, 1)
+            self._uncached = True
             logger.info(f"Reading {self.path} past the cache to check it")
         except (OSError, ValueError) as e:
             logger.debug(f"Could not disable caching on {self.path}: {e}")
