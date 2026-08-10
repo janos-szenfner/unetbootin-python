@@ -361,6 +361,11 @@ def _runs(sectors: List[int]) -> List[Tuple[int, int]]:
 
 AUTHOPEN = '/usr/libexec/authopen'
 
+# fcntl(2) F_NOCACHE on macOS: stop serving this descriptor's reads from the
+# buffer cache. Without it a read-back returns what we just wrote whether or
+# not the drive ever accepted it.
+_F_NOCACHE = 48
+
 
 def authopen_device(path: str):
     """Open a device through macOS's authopen; returns (fd, process).
@@ -703,6 +708,28 @@ class RawDevice:
                 return data[start:start + length]
         return None
 
+    def bypass_cache(self) -> None:
+        """Make later reads on this device come from the medium.
+
+        Everything written so far is pushed out, and on macOS the descriptor
+        is switched to uncached access. A read-back that the buffer cache
+        could answer proves nothing about what reached the drive.
+        """
+        if self._fd is None:
+            return
+        try:
+            os.fsync(self._fd)
+        except OSError as e:
+            logger.debug(f"fsync on {self.path} failed: {e}")
+        if sys.platform != 'darwin':
+            return
+        try:
+            import fcntl
+            fcntl.fcntl(self._fd, _F_NOCACHE, 1)
+            logger.info(f"Reading {self.path} past the cache to check it")
+        except (OSError, ValueError) as e:
+            logger.debug(f"Could not disable caching on {self.path}: {e}")
+
     def read_uncached(self, offset: int, length: int) -> bytes:
         """Read from the device itself, ignoring anything already held.
 
@@ -710,6 +737,7 @@ class RawDevice:
         store, so pending writes are committed and the cache is skipped.
         """
         self.flush()
+        self.bypass_cache()
         if self._fd is not None or not self.elevated:
             return self.read(offset, length)
         first = offset // SECTOR_SIZE

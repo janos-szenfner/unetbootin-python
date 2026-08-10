@@ -552,6 +552,49 @@ class TestAuthopenBackend(unittest.TestCase):
         self.assertEqual(boot[510:512], b'\x55\xaa')
 
 
+class TestFinalCheck(unittest.TestCase):
+    """The read-back has to come from the drive, not from the cache."""
+
+    def setUp(self):
+        import tempfile
+        handle = tempfile.NamedTemporaryFile(prefix='pynetboot_check_',
+                                             delete=False)
+        handle.write(b'\0' * 8192)
+        handle.close()
+        self.path = handle.name
+        self.addCleanup(os.unlink, self.path)
+
+    def test_reads_still_work_past_the_cache(self):
+        if sys.platform != 'darwin' or not os.path.exists(native.AUTHOPEN):
+            self.skipTest("authopen is macOS-only")
+        with native.RawDevice(self.path, elevated=True,
+                              authopen=True) as device:
+            device.write(0, b'\x5A' * 512)
+            device.bypass_cache()
+            # Both a whole sector and an unaligned slice of one.
+            self.assertEqual(device.read_uncached(0, 512), b'\x5A' * 512)
+            self.assertEqual(device.read_uncached(3, 9), b'\x5A' * 9)
+
+    def test_bypass_is_harmless_without_a_descriptor(self):
+        device = native.RawDevice(self.path, elevated=False)
+        device.bypass_cache()          # must not raise
+
+    def test_a_dropped_write_is_caught(self):
+        """What the check exists for: the drive returning something else."""
+        ldlinux = _payload('ldlinux.sys')
+        bss = _payload('ldlinux.bss')
+        payload = native.file_payload(ldlinux)
+        nsectors = -(-len(payload) // SECTOR_SIZE)
+        image = FatImage()
+        image.add_file('LDLINUX SYS', payload, list(range(10, 10 + nsectors)))
+
+        written = native.install(image.read, image.write, ldlinux, bss)
+        # The drive quietly keeps its old boot sector.
+        with self.assertRaises(native.SyslinuxError) as caught:
+            written.check(b'\x00' * 512, written.first_ldlinux_sector)
+        self.assertIn('did not accept', str(caught.exception))
+
+
 class TestBackendRouting(unittest.TestCase):
     """Work must not be handed to dd when the device is already open.
 

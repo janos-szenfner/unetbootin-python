@@ -1518,10 +1518,11 @@ class USBInstaller:
                         if disk.batched:
                             disk.prefetch(0, 512)
                             batch.run(f"read the MBR of {whole_disk}")
-                        self._stage_mbr(disk, whole_disk, partition)
+                        expected = self._stage_mbr(disk, whole_disk, partition)
                         disk.flush()
                         if disk.batched:
                             batch.run(f"write the MBR of {whole_disk}")
+                        self._check_mbr(disk, whole_disk, expected)
 
             native.sync_disks()
             logger.info(f"Installed syslinux on {partition} (native)")
@@ -1536,7 +1537,8 @@ class USBInstaller:
         finally:
             self._remount(params, partition)
 
-    def _stage_mbr(self, device, whole_disk: str, partition: str) -> None:
+    def _stage_mbr(self, device, whole_disk: str,
+                   partition: str) -> bytes:
         """Queue sector 0: the syslinux MBR plus the active-partition flag.
 
         Both live there -- the boot code in the first 440 bytes, the boot flag
@@ -1577,6 +1579,38 @@ class USBInstaller:
             f"Sector 0 of {whole_disk}: syslinux MBR"
             + (f", partition {index} marked active"
                if index is not None else ""))
+        return bytes(sector)
+
+    def _check_mbr(self, device, whole_disk: str, expected: bytes) -> None:
+        """Read sector 0 back off the disk and confirm what it holds.
+
+        Checked past the buffer cache, so a drive that accepted the write in
+        memory and dropped it is caught here rather than at the boot prompt.
+        """
+        from pynetboot.core import syslinux_native as native
+
+        try:
+            written = device.read_uncached(0, 512)
+        except (native.SyslinuxError, OSError) as e:
+            logger.warning(f"Could not read the MBR of {whole_disk} back: {e}")
+            return
+
+        if written == expected:
+            active = [slot + 1 for slot in range(4)
+                      if written[446 + slot * 16] == 0x80]
+            logger.info(
+                f"Verified the MBR of {whole_disk}: syslinux boot code, "
+                f"partition {active[0] if active else 'none'} active, "
+                f"signature {written[510:512].hex()}")
+            return
+
+        if written[:440] != expected[:440]:
+            raise native.SyslinuxError(
+                f"The MBR read back from {whole_disk} is not the one that was "
+                f"written; the drive did not accept it")
+        raise native.SyslinuxError(
+            f"The partition table on {whole_disk} is not what was written; "
+            f"the drive may have been changed underneath the install")
 
     def _write_mbr_and_activate(self, whole_disk: str,
                                 partition: str) -> bool:

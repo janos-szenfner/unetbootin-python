@@ -460,6 +460,41 @@ class TestInstaller(unittest.TestCase):
         device.assert_not_called()
         remount.assert_called_once()
 
+    def test_the_mbr_is_checked_after_it_is_written(self):
+        """A disk that accepts the write and keeps its old sector 0 must not
+        pass for installed."""
+        from pynetboot.core import syslinux_native as native
+
+        expected = bytearray(512)
+        expected[0:440] = b'\xEB' * 440
+        expected[446] = 0x80
+        expected[510:512] = b'\x55\xaa'
+
+        class Device:
+            def __init__(self, returns):
+                self.returns = returns
+
+            def read_uncached(self, offset, length):
+                return self.returns[offset:offset + length]
+
+        # Matches: no complaint.
+        self.installer._check_mbr(Device(bytes(expected)), '/dev/disk5',
+                                  bytes(expected))
+
+        # The boot code never landed.
+        with self.assertRaises(native.SyslinuxError) as caught:
+            self.installer._check_mbr(Device(b'\x00' * 512), '/dev/disk5',
+                                      bytes(expected))
+        self.assertIn('did not accept', str(caught.exception))
+
+        # The code landed but the partition table came back different.
+        changed = bytearray(expected)
+        changed[446] = 0x00
+        with self.assertRaises(native.SyslinuxError) as caught:
+            self.installer._check_mbr(Device(bytes(changed)), '/dev/disk5',
+                                      bytes(expected))
+        self.assertIn('partition table', str(caught.exception))
+
     def test_the_failure_reason_reaches_the_caller(self):
         """The dialog must show the cause, not just "Preparation failed"."""
         self.installer.platform = 'win32'
