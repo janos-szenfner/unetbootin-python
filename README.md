@@ -215,7 +215,9 @@ You are prompted for your password only when an install actually begins. On Linu
 - Progress reporting
 
 ### USB Installation
-> ⚠️ **Not verified end-to-end on every platform.** The install pipeline (format → mount → copy → bootloader) is implemented and elevation no longer needs a terminal. The bootloader half is now **self-contained**: nothing has to be installed on the host — Windows uses the bundled `syslinux.exe`, Linux the bundled `ubnsylnx*`, and macOS (or any host the bundled binaries cannot run on, such as ARM Linux) uses the built-in installer in `core/syslinux_native.py`, which writes and patches the syslinux boot sector itself. **Drive safety is handled**, though: only removable USB drives are selectable, and an explicit erase confirmation + installer-level hard guard prevent writing to internal/system/virtual disks. Treat the items below as *implemented code paths*, not verified working features.
+> ✅ **Verified on Windows and Linux; macOS not yet.** The install pipeline (format → mount → copy → bootloader) produces bootable drives on Windows and Linux, and elevation no longer needs a terminal. The bootloader half is **self-contained**: nothing has to be installed on the host — Windows uses the bundled `syslinux.exe`, Linux the bundled `ubnsylnx*`, and macOS (or any host the bundled binaries cannot run on, such as ARM Linux) uses the built-in installer in `core/syslinux_native.py`, which writes and patches the syslinux boot sector itself.
+>
+> The macOS path is the one still unproven on hardware: it is the only platform where the boot sector is written by that Python installer rather than by a syslinux binary. Its output is checked against real FAT32/FAT16 images and a fragmented in-memory volume, which shows the bytes are correct and self-consistent — not that a BIOS has accepted them. **Drive safety** is in place everywhere: only removable USB drives are selectable, and an explicit erase confirmation plus an installer-level hard guard prevent writing to internal/system/virtual disks.
 
 - File copying from source to target device
 - Bootloader installation (all payloads bundled — **no host installation required**):
@@ -231,7 +233,7 @@ You are prompted for your password only when an install actually begins. On Linu
 - Configuration file generation (syslinux.cfg, grub.cfg)
 
 ### Platform Support
-> ⚠️ Drive **listing/info/detection** is solid on all three platforms. The **format / mount / bootloader-install** paths below are implemented but incomplete and not verified on real hardware.
+> Drive **listing/info/detection** is solid on all three platforms. The **format / mount / bootloader-install** paths are confirmed working on Windows and Linux; on macOS they are implemented but not yet exercised on real hardware.
 
 #### macOS
 - Drive listing using `diskutil`
@@ -660,9 +662,9 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Configuration | ✅ Complete |
 | Downloader | ✅ Complete (with resume & mirrors) |
 | Extractor | ✅ Complete |
-| Installer | ⚠️ **Not verified end-to-end** — elevation no longer needs an interactive terminal (per-command pkexec/sudo/UAC) and the bootloader install no longer needs anything installed on the host, but writing a real bootable USB has not been validated on every platform. *Drive-safety filtering + erase confirmation are in place.* |
+| Installer | ✅ Working on Windows and Linux — writes bootable drives with no host tools installed; elevation needs no interactive terminal (pkexec/sudo/UAC). ⚠️ macOS unverified on hardware. *Drive-safety filtering + erase confirmation are in place.* |
 | Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
-| Platform Support | ⚠️ Partial — drive listing/info solid; format/mount/bootloader paths implemented (UEFI-only mode installs the bundled `syslinux.efi` as `EFI/BOOT/BOOTX64.EFI`; Secure Boot still needs a distribution-supplied signed shim) but not verified end-to-end on all 3 platforms |
+| Platform Support | ✅ Windows and Linux verified end-to-end; ⚠️ macOS implemented but untested on hardware. Drive listing/info solid everywhere. UEFI-only mode installs the bundled `syslinux.efi` as `EFI/BOOT/BOOTX64.EFI`; Secure Boot still needs a distribution-supplied signed shim |
 | Core Utilities | ✅ Complete |
 | Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
 | Documentation | ⚠️ Partial |

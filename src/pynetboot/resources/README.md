@@ -105,9 +105,9 @@ https://mirrors.edge.kernel.org/pub/linux/utils/boot/syslinux/syslinux-6.03.tar.
 sha256  250b9bd90945d361596a7a69943d0bdc5fc0c0917aa562609f8d3058a2c36b3a
 ```
 
-`menu.c32`, `vesamenu.c32` and `mbr.bin` were already in this repository
-(from UNetbootin) and are **byte-identical** to that tarball, which is how
-the rest were matched to it.
+`menu.c32`, `vesamenu.c32`, `mbr.bin` and `syslinux.exe` were already in this
+repository (from UNetbootin) and are **byte-identical** to that tarball, which
+is how the rest were matched to it.
 
 They must all stay on the same syslinux version: `ldlinux.sys` carries a
 patch-area layout that `core/syslinux_native.py` writes to by offset, and the
@@ -122,22 +122,34 @@ uses the built-in installer in `core/syslinux_native.py`.
 
 ## Security
 
-⚠️ **IMPORTANT**: Binary files in `bootloader/` (ubnldr.exe, syslinux.exe) are committed to the repository without cryptographic verification.
+Everything under *Bootloader provenance* is traced to the official syslinux
+6.03 release by the tarball checksum, and four files that predate this
+project — `menu.c32`, `vesamenu.c32`, `mbr.bin` and the Windows installer
+`syslinux.exe` — were confirmed **byte-identical** to it. `syslinux.exe` is
+therefore the only executable that runs during an install whose origin is
+established.
 
-### Verification Recommended
+⚠️ The remaining binaries are UNetbootin's and carry no such record:
+`ubnsylnx`, `ubnsylnx64`, `ubnexlnx`, `ubnexlnx64` (`ubnsylnx64` reports
+syslinux 4.03), plus `ubnldr`, `ubnldr.exe` and `ubnldr.mbr`, which no code
+path references at all.
 
-Before using these binaries in production:
-1. Verify their SHA256 checksums against trusted sources
-2. Replace them with binaries from official distributions
-3. Consider using Python-based alternatives (py7zr, pycdlib) instead
+Running a bundled binary is the part worth removing, and most of it already
+is: `core/syslinux_native.py` performs the whole BIOS install in Python, so
+nothing has to be executed on macOS, or on a Linux host whose architecture the
+x86 ELF binaries do not match. What still executes one is the Windows install
+(`syslinux.exe`, verified above) and the Linux fast path (`ubnsylnx*`, with
+the Python installer as the fallback when it fails).
 
-### Official Sources
+### Official sources
 
-- **Syslinux**: https://www.syslinux.org/ (bootloader files)
-- **7-Zip**: https://www.7-zip.org/ (misc/7z*.* files)
+- **Syslinux**: https://www.syslinux.org/ — release tarballs at
+  https://mirrors.edge.kernel.org/pub/linux/utils/boot/syslinux/
 
-### Future Improvements
+### Worth doing
 
-- [ ] Add verified checksums for all binary files
-- [ ] Implement runtime verification of resource files
-- [ ] Fetch binaries dynamically from official sources with verification
+- [ ] Delete `ubnldr`, `ubnldr.exe` and `ubnldr.mbr` — nothing loads them
+- [ ] Drop `ubnsylnx*`/`ubnexlnx*` in favour of the built-in installer on
+      Linux too, once that path has been exercised on hardware there, which
+      would leave no unverified binary in the tree
+- [ ] Verify the bundled files at runtime before use
