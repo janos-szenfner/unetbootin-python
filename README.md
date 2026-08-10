@@ -19,49 +19,68 @@ accept no liability for any data loss or damage arising from its use.
 pynetboot/
 ├── README.md                          # Project documentation
 ├── requirements.txt                   # Python dependencies
-├── setup.py                           # Setup script for installation
+├── setup.py                           # Packaging metadata
+├── MANIFEST.in                        # Files to ship in an sdist
+├── pynetboot.spec                     # PyInstaller: Linux
+├── pynetboot-macos.spec               # PyInstaller: macOS .app
+├── pynetboot-windows.spec             # PyInstaller: Windows EXE (UAC manifest)
 │
 ├── src/
 │   └── pynetboot/
-│       ├── __init__.py               # Package init with version info
-│       ├── __main__.py               # Allow python -m pynetboot
-│       ├── main.py                   # Main entry point (CustomTkinter)
-│       ├── app.py                    # Main application class
+│       ├── __init__.py                # Version and app constants
+│       ├── __main__.py                # python -m pynetboot
+│       ├── main.py                    # Entry point: logging, i18n, window
+│       ├── app.py                     # Application logic and event loop
 │       │
 │       ├── ui/
-│       │   ├── __init__.py
-│       │   └── main_window_ctk.py    # CustomTkinter UI implementation
+│       │   ├── main_window_ctk.py     # CustomTkinter window
+│       │   └── native_dialogs.py      # File/folder pickers per platform
 │       │
 │       ├── models/
-│       │   ├── __init__.py
-│       │   ├── distro.py             # Distribution models & manager
-│       │   └── config.py             # Configuration management
+│       │   ├── distro.py              # Distribution models and manager
+│       │   └── config.py              # Saved settings
 │       │
 │       ├── core/
-│       │   ├── __init__.py
-│       │   ├── extractor.py          # ISO/Archive extraction
-│       │   ├── downloader.py         # Download functionality
-│       │   ├── installer.py          # USB installation logic
-│       │   └── utils.py              # Utility functions
+│       │   ├── downloader.py          # Downloads, resume, mirrors, checksums
+│       │   ├── extractor.py           # ISO/archive extraction
+│       │   ├── installer.py           # Partition, format, copy, bootloader
+│       │   ├── syslinux_native.py     # Built-in syslinux installer (no binary)
+│       │   ├── fat.py                 # FAT12/16/32 reader for the sector map
+│       │   ├── elevation.py           # pkexec / Authorization Services / UAC
+│       │   ├── log_buffer.py          # In-memory log behind the Log window
+│       │   ├── i18n.py                # Translation catalogs
+│       │   └── utils.py               # Shared helpers
 │       │
-│       └── platform/
-│           ├── __init__.py
-│           ├── base.py               # Base platform functions
-│           ├── macos.py               # macOS-specific code
-│           ├── linux.py               # Linux-specific code
-│           └── windows.py             # Windows-specific code
+│       ├── platform/
+│       │   ├── base.py                # Stubs for unsupported platforms
+│       │   ├── linux.py               # lsblk/parted/mkfs, mount, safety
+│       │   ├── macos.py               # diskutil, mount table, safety
+│       │   └── windows.py             # diskpart/wmic, drive letters, safety
+│       │
+│       └── resources/                 # Bundled data, resolved via __init__.py
+│           ├── bootloader/            # syslinux 6.03 payloads (+ efi64/)
+│           ├── icons/                 # App and button icons
+│           ├── logos/                 # Distribution logos
+│           └── translations/          # Qt .ts catalogs (de/es/fr/hu/it)
+│
+├── resources/                         # Packaging inputs, not shipped in the app
+│   ├── linux/                         # .desktop, AppStream, Flatpak manifest
+│   ├── macos/                         # README shipped with the macOS build
+│   └── windows/                       # Windows packaging bits
+│
+├── .github/workflows/                 # CI: tests, and the release pipeline
 │
 └── tests/
-    ├── __init__.py
-    ├── test_models.py              # Unit tests for models
-    ├── test_core.py                # Downloader / extractor / installer
-    ├── test_platform.py            # Platform-specific functions
-    ├── test_integration.py         # Cross-module (unit-level, mocked)
-    ├── test_new_features.py        # Mirrors, resume, categories, UEFI/SB params
-    └── test_ui.py                  # CustomTkinter window handling
+    ├── test_models.py                 # Distribution and config models
+    ├── test_core.py                   # Downloader / extractor / installer
+    ├── test_syslinux_native.py        # Boot sector patching and the FAT parser
+    ├── test_platform.py               # Per-platform disk handling
+    ├── test_integration.py            # Cross-module (unit-level, mocked)
+    ├── test_new_features.py           # Mirrors, resume, categories, UEFI/SB
+    ├── test_native_dialogs.py         # File pickers
+    ├── test_resources_checksum_i18n.py# Bundled resources, checksums, i18n
+    └── test_ui.py                     # Window behaviour and rendering
 ```
-
-> Note: `resources/` also contains `icons/`, `logos/`, `bootloader/`, and `translations/` — see the ⚠️ notes in *Current Status* about which of these are actually used by the running app.
 
 ## Installation
 
@@ -289,7 +308,7 @@ drops writes is reported during the install rather than at boot.
 - Platform detection and information gathering
 - Command line argument parsing
 - External command execution with timeout
-- Graphical sudo detection (gksu, kdesu, gnomesu, pkexec) — *helper exists but is not yet wired into the install flow, which still calls plain `sudo`*
+- Graphical elevation — `core/elevation.py` runs privileged steps through pkexec (falling back to `sudo` with a graphical askpass), Authorization Services on macOS and UAC on Windows; a `sudo` interceptor routes any remaining `sudo` call through it
 - Drive listing across platforms
 - Size formatting (human-readable)
 - Root/admin privilege checking
