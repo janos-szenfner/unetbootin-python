@@ -64,6 +64,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Resolve version
+        # The built files carry the version, the way the DEB and RPM do: from
+        # the tag on a release, from the packaged __version__ otherwise.
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
+          fi
+          echo "VER=${VER:-0.0.0}" >> "$GITHUB_ENV"
+          echo "Artifacts will be named after version ${VER:-0.0.0}"
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -94,11 +106,15 @@ jobs:
         # (uac_admin=True), so no post-build mt.exe step is needed.
         run: pyinstaller pynetboot-windows.spec --noconfirm --clean --distpath dist/windows
 
+      - name: Name the EXE after the version
+        shell: bash
+        run: mv "dist/windows/${{ env.APP_NAME }}.exe" "dist/windows/${{ env.APP_NAME }}-${VER}.exe"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APP_NAME }}-windows
-          path: dist/windows/${{ env.APP_NAME }}.exe
+          path: dist/windows/${{ env.APP_NAME }}-*.exe
           retention-days: 14
 
   build-macos:
@@ -108,6 +124,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Resolve version
+        # The built files carry the version, the way the DEB and RPM do: from
+        # the tag on a release, from the packaged __version__ otherwise.
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
+          fi
+          echo "VER=${VER:-0.0.0}" >> "$GITHUB_ENV"
+          echo "Artifacts will be named after version ${VER:-0.0.0}"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -136,15 +164,17 @@ jobs:
         run: pyinstaller pynetboot-macos.spec --noconfirm --clean --distpath dist/macos
 
       - name: Create ZIP (Primary - No Gatekeeper issues)
+        # The .app inside keeps its plain name: that is what appears in
+        # Applications. Only the download carries the version.
         run: |
           cd dist/macos
-          zip -r ${{ env.APP_NAME }}.zip ${{ env.APP_NAME }}.app
+          zip -r ${{ env.APP_NAME }}-${VER}.zip ${{ env.APP_NAME }}.app
 
       - name: Create DMG (with volume icon)
         run: |
           APP="dist/macos/${{ env.APP_NAME }}.app"
           ICNS="src/pynetboot/resources/icons/unetbootin.icns"
-          DMG="dist/macos/${{ env.APP_NAME }}.dmg"
+          DMG="dist/macos/${{ env.APP_NAME }}-${VER}.dmg"
           # Build a styled DMG whose mounted volume carries the app icon and a
           # drag-to-Applications shortcut. Falls back to a plain compressed DMG
           # if the icon/volume tooling misbehaves, so a release is never blocked.
@@ -174,8 +204,8 @@ jobs:
           # plain .dmg, not wrapped in a zip.
           name: ${{ env.APP_NAME }}-macos
           path: |
-            dist/macos/${{ env.APP_NAME }}.zip
-            dist/macos/${{ env.APP_NAME }}.dmg
+            dist/macos/${{ env.APP_NAME }}-*.zip
+            dist/macos/${{ env.APP_NAME }}-*.dmg
           retention-days: 14
 
   build-linux-appimage:
@@ -185,6 +215,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Resolve version
+        # The built files carry the version, the way the DEB and RPM do: from
+        # the tag on a release, from the packaged __version__ otherwise.
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
+          fi
+          echo "VER=${VER:-0.0.0}" >> "$GITHUB_ENV"
+          echo "Artifacts will be named after version ${VER:-0.0.0}"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -245,8 +287,8 @@ jobs:
             --desktop-file AppDir/usr/share/applications/${{ env.APP_NAME }}.desktop \
             --icon-filename AppDir/usr/share/icons/hicolor/256x256/apps/${{ env.APP_NAME }}.png \
             --output appimage
-          mv ${{ env.APP_NAME }}.AppImage dist/linux-appimage/${{ env.APP_NAME }}.AppImage
-          chmod +x dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+          mv ${{ env.APP_NAME }}.AppImage dist/linux-appimage/${{ env.APP_NAME }}-${VER}.AppImage
+          chmod +x dist/linux-appimage/${{ env.APP_NAME }}-${VER}.AppImage
 
       - name: Smoke-test the AppImage (must run self-contained)
         # Proves the bundle carries its own Python, Tcl/Tk and CustomTkinter:
@@ -260,7 +302,7 @@ jobs:
           # and failed this step even though the GUI had come up fine.
           set +e
           xvfb-run -a bash -c '
-            timeout 25 dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+            timeout 25 dist/linux-appimage/${{ env.APP_NAME }}-${VER}.AppImage
             echo $? > appimage-status
           '
           xvfb_code=$?
@@ -284,7 +326,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APP_NAME }}-linux-appimage
-          path: dist/linux-appimage/${{ env.APP_NAME }}.AppImage
+          path: dist/linux-appimage/${{ env.APP_NAME }}-*.AppImage
           retention-days: 14
 
   build-linux-deb:
@@ -480,6 +522,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Resolve version
+        # The built files carry the version, the way the DEB and RPM do: from
+        # the tag on a release, from the packaged __version__ otherwise.
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/pynetboot/__init__.py)"
+          fi
+          echo "VER=${VER:-0.0.0}" >> "$GITHUB_ENV"
+          echo "Artifacts will be named after version ${VER:-0.0.0}"
+
       - name: Stamp version into AppStream metadata
         # GNOME Software reads the version and release notes from the
         # AppStream <releases> element. The metainfo in the source tree
@@ -520,17 +574,17 @@ jobs:
             resources/linux/com.pynetboot.PyNetboot.json
           flatpak build-bundle \
             build-flatpak/repo \
-            dist/flatpak/${{ env.APP_NAME }}.flatpak \
+            dist/flatpak/${{ env.APP_NAME }}-${VER}.flatpak \
             com.pynetboot.PyNetboot
           # `flatpak info` takes an installed app id, not a bundle path; just
           # confirm the bundle was written.
-          ls -lh dist/flatpak/${{ env.APP_NAME }}.flatpak
+          ls -lh dist/flatpak/${{ env.APP_NAME }}-${VER}.flatpak
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.APP_NAME }}-flatpak
-          path: dist/flatpak/${{ env.APP_NAME }}.flatpak
+          path: dist/flatpak/${{ env.APP_NAME }}-*.flatpak
           retention-days: 14
 
   create-release:
@@ -623,15 +677,17 @@ jobs:
             
             ### Installation
             
-            **Windows**: Run `pynetboot.exe` (UAC elevation required)
+            Every file below is named `pynetboot-${{ github.ref_name }}`, minus the leading `v`.
+
+            **Windows**: Run `pynetboot-<version>.exe` (UAC elevation required)
             **macOS**: 
             - ZIP: Extract and drag to Applications, then right-click → Open
             - DMG: Mount, drag to Applications, then right-click → Open
             **Linux**: 
-            - AppImage: `chmod +x pynetboot.AppImage && ./pynetboot.AppImage`
-            - DEB: `sudo dpkg -i pynetboot.deb`
-            - RPM: `sudo rpm -i pynetboot.rpm`
-            - Flatpak: `flatpak install pynetboot.flatpak`
+            - AppImage: `chmod +x pynetboot-*.AppImage && ./pynetboot-*.AppImage`
+            - DEB: `sudo dpkg -i pynetboot-*.deb`
+            - RPM: `sudo rpm -i pynetboot-*.rpm`
+            - Flatpak: `flatpak install pynetboot-*.flatpak`
           files: |
             artifacts/${{ env.APP_NAME }}-windows/*
             artifacts/${{ env.APP_NAME }}-macos/*

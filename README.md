@@ -73,13 +73,13 @@ Download the one for your system — no Python or extra toolkit required.
 
 | Platform | Asset | Install / run |
 |---|---|---|
-| Windows | `pynetboot.exe` | Double-click (prompts for UAC elevation) |
-| macOS | `pynetboot.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
-| macOS | `pynetboot.zip` | Extract, then right-click → Open |
-| Linux | `pynetboot.AppImage` | `chmod +x pynetboot.AppImage && ./pynetboot.AppImage` |
+| Windows | `pynetboot-<version>.exe` | Double-click (prompts for UAC elevation) |
+| macOS | `pynetboot-<version>.dmg` | Mount, drag to Applications, then **right-click → Open** (unsigned) |
+| macOS | `pynetboot-<version>.zip` | Extract, then right-click → Open |
+| Linux | `pynetboot-<version>.AppImage` | `chmod +x pynetboot-*.AppImage && ./pynetboot-*.AppImage` |
 | Linux (Debian/Ubuntu) | `pynetboot-<version>.deb` | `sudo apt install ./pynetboot-<version>.deb` |
 | Linux (Fedora/RHEL) | `pynetboot-<version>.rpm` | `sudo dnf install ./pynetboot-<version>.rpm` |
-| Linux (Flatpak) | `pynetboot.flatpak` | `flatpak install --user pynetboot.flatpak` |
+| Linux (Flatpak) | `pynetboot-<version>.flatpak` | `flatpak install --user pynetboot-<version>.flatpak` |
 
 After installing the DEB/RPM/Flatpak the app appears in the GNOME and KDE
 application menus (under **Utilities**) with its icon, and launches with a

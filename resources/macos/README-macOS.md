@@ -14,7 +14,7 @@ Since PyNetboot is **not code-signed** with an Apple Developer certificate (we a
 
 This is the simplest and most reliable method.
 
-1. **Download** `pynetboot.zip` from the release assets
+1. **Download** `pynetboot-<version>.zip` from the release assets
 2. **Extract** the ZIP file by double-clicking it
 3. **Drag** the `PyNetboot.app` to your `Applications` folder
 4. **First Launch Only**:
@@ -28,7 +28,7 @@ This is the simplest and most reliable method.
 
 ### Method 2: DMG File (Alternative)
 
-1. **Download** `pynetboot.dmg` from the release assets
+1. **Download** `pynetboot-<version>.dmg` from the release assets
 2. **Open** the DMG by double-clicking it
 3. **Drag** the `PyNetboot.app` to your `Applications` folder
 4. **First Launch Only**:
