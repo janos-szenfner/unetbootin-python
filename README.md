@@ -136,8 +136,22 @@ using the mechanism the OS already provides:
 | macOS | `osascript` with administrator privileges (Authorization Services) | None |
 | Windows | UAC (`ShellExecute` `runas`; the EXE also embeds a `uac_admin` manifest) | None |
 
-You are prompted for your password only when an install actually begins. On Linux
-`sudo` caches the credential, so a single install does not re-prompt for every step.
+You are prompted for your password only when an install actually begins, and each
+platform asks as few times as it can:
+
+- **Linux** holds one `pkexec` session open for the whole install, so one prompt
+  covers every privileged step.
+- **macOS** cannot do that — the admin right is not shared between processes, so
+  every elevated command is authorised separately. The install therefore batches
+  its raw disk work into exactly two: **one to read the drive** (the FAT, the
+  root directory and the MBR together) and **one to write the boot sector,
+  `ldlinux.sys` and the MBR and read the result back**. Unmounting the drive
+  needs no password at all.
+- **Windows** elevates once, at launch, through the EXE's UAC manifest.
+
+After writing, the boot sector and the first sector of `ldlinux.sys` are read
+back off the drive and compared with what was written, so a drive that silently
+drops writes is reported during the install rather than at boot.
 
 ## Requirements
 

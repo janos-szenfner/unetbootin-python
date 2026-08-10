@@ -634,6 +634,14 @@ jobs:
             echo
             echo 'CHANGELOG_EOF'
           } >> "$GITHUB_OUTPUT"
+          # An annotated tag's message is the release note written by hand;
+          # prefer it over the commit list when there is one.
+          {
+            echo 'summary<<SUMMARY_EOF'
+            git tag -l --format='%(contents:body)' "$CURRENT" || true
+            echo
+            echo 'SUMMARY_EOF'
+          } >> "$GITHUB_OUTPUT"
           if [ -n "$PREV" ]; then
             echo "prev=$PREV" >> "$GITHUB_OUTPUT"
           fi
@@ -660,9 +668,16 @@ jobs:
           body: |
             ### What's Changed in ${{ github.ref_name }}
 
+            ${{ steps.changelog.outputs.summary }}
+
+            <details>
+            <summary>Commits in this release</summary>
+
             ${{ steps.changelog.outputs.notes }}
 
-            ### Changes
+            </details>
+
+            ### Packages
 
             - Windows: EXE with UAC manifest for admin elevation
             - macOS: .app bundle (Apple Silicon/arm64 only - not Intel), distributed as ZIP and DMG
