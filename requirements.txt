@@ -1,7 +1,7 @@
 # Core dependencies
 # CustomTkinter: modern, HiDPI-aware widgets on top of Tkinter. Replaces
 # PySimpleGUI, whose licence terms have changed across major versions.
-customtkinter>=5.2.0
+customtkinter>=6.0.0
 # Pillow is used for the window/category icons (CTkImage).
 Pillow>=10.0.0
 requests>=2.28.0

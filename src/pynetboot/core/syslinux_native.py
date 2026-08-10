@@ -18,6 +18,7 @@ decides how the device is reached (directly when root, via ``dd`` under
 elevation otherwise) and the logic stays testable against a disk image.
 """
 
+import contextlib
 import logging
 import os
 import struct
@@ -475,36 +476,43 @@ class RawDevice:
         # alongside every other device's; without one they go out as they
         # come.
         self._batch = batch if elevated else None
-        self._handle = None
         # Spans already read from the device: (offset, data).
         self._cache: List[Tuple[int, bytes]] = []
         # Whole-sector writes waiting to be issued: (sector, data).
         self._pending: List[Tuple[int, bytes]] = []
 
     def __enter__(self) -> 'RawDevice':
-        if not self.elevated:
-            self._handle = open(self.path, 'rb+')
         logger.info(
             f"Raw access to {self.path}: "
             f"{'elevated (dd)' if self.elevated else 'direct'}")
         return self
 
-    def __exit__(self, exc_type, *exc_info) -> None:
+    @contextlib.contextmanager
+    def _open(self):
+        """Open the device for one operation, then let it go.
+
+        Holding a partition open would block writes to the disk that contains
+        it: macOS fails those with "Resource busy" while a slice is open, so
+        the MBR could not be written while the boot sector's device was still
+        in hand.
+        """
+        handle = open(self.path, 'rb+')
         try:
-            # A failed install must not leave half its sectors on the drive.
-            if exc_type is None:
-                self.flush()
-            elif self._pending:
-                logger.warning(
-                    f"Discarding {len(self._pending)} pending writes to "
-                    f"{self.path} after an error")
-                self._pending.clear()
+            yield handle
         finally:
-            if self._handle is not None:
-                self._handle.flush()
-                os.fsync(self._handle.fileno())
-                self._handle.close()
-                self._handle = None
+            handle.flush()
+            os.fsync(handle.fileno())
+            handle.close()
+
+    def __exit__(self, exc_type, *exc_info) -> None:
+        # A failed install must not leave half its sectors on the drive.
+        if exc_type is None:
+            self.flush()
+        elif self._pending:
+            logger.warning(
+                f"Discarding {len(self._pending)} pending writes to "
+                f"{self.path} after an error")
+            self._pending.clear()
 
     # -- reading ------------------------------------------------------------
 
@@ -514,7 +522,7 @@ class RawDevice:
         With a batch attached the read is queued instead, and lands in the
         cache when the batch runs.
         """
-        if self._handle is not None or length <= 0:
+        if not self.elevated or length <= 0:
             return
         if self._from_cache(offset, length) is not None:
             return
@@ -536,9 +544,10 @@ class RawDevice:
                     f"{self.path} from sector {base // SECTOR_SIZE}")
 
     def read(self, offset: int, length: int) -> bytes:
-        if self._handle is not None:
-            self._handle.seek(offset)
-            return self._handle.read(length)
+        if not self.elevated:
+            with self._open() as handle:
+                handle.seek(offset)
+                return handle.read(length)
 
         cached = self._from_cache(offset, length)
         if cached is not None:
@@ -559,7 +568,7 @@ class RawDevice:
         this exists to see what the drive actually holds.
         """
         self.flush()
-        if self._handle is not None:
+        if not self.elevated:
             return [self.read(offset, length) for offset, length in spans]
 
         commands, temps, sectors = [], [], []
@@ -606,7 +615,7 @@ class RawDevice:
         store, so pending writes are committed and the cache is skipped.
         """
         self.flush()
-        if self._handle is not None:
+        if not self.elevated:
             return self.read(offset, length)
         first = offset // SECTOR_SIZE
         last = (offset + length + SECTOR_SIZE - 1) // SECTOR_SIZE
@@ -617,10 +626,10 @@ class RawDevice:
     # -- writing ------------------------------------------------------------
 
     def write(self, offset: int, data: bytes) -> None:
-        if self._handle is not None:
-            self._handle.seek(offset)
-            self._handle.write(data)
-            self._handle.flush()
+        if not self.elevated:
+            with self._open() as handle:
+                handle.seek(offset)
+                handle.write(data)
             return
 
         if offset % SECTOR_SIZE or len(data) % SECTOR_SIZE:
@@ -642,6 +651,13 @@ class RawDevice:
         if not self._pending:
             return
         pending, self._pending = self._pending, []
+
+        if not self.elevated:
+            with self._open() as handle:
+                for sector, data in pending:
+                    handle.seek(sector * SECTOR_SIZE)
+                    handle.write(data)
+            return
 
         if self._batch is not None:
             for sector, data in pending:

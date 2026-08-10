@@ -176,7 +176,7 @@ drops writes is reported during the install rather than at boot.
 
 ### Core Dependencies
 - **Python 3.10+**
-- **customtkinter>=5.2.0** - Modern, HiDPI-aware widgets on the Tkinter backend
+- **customtkinter>=6.0.0** - Modern, HiDPI-aware widgets on the Tkinter backend. 6.0.0 is the floor because the window depends on internals that moved across major versions: the click gate (`_mouse_inside`), the draw engine's shape method, and the theme's font family.
   > ✅ **Licensing:** CustomTkinter is **MIT licensed**, compatible with this project's GPLv2-or-later and fine to bundle into redistributable executables. It replaced PySimpleGUI, whose licence terms changed across major versions.
 - **Pillow>=10.0.0** - Icon rendering (`CTkImage`)
 - **requests>=2.28.0** - HTTP downloads

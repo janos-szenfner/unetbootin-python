@@ -274,6 +274,22 @@ class USBInstaller:
 
                 params['mount_point_is_temp'] = False
                 logger.info(f"Writing directly to {mount_point}")
+            elif self.platform == 'darwin':
+                # A real disk node is root:operator 0640, so mount(8) at a
+                # directory of ours fails with "Permission denied" -- the
+                # mount_msdos call here could only ever have worked against a
+                # disk image, whose node belongs to the user who attached it.
+                # diskutil goes through Disk Arbitration, which mounts
+                # removable media as the logged-in user with no elevation.
+                mount_point = self._macos_mount(target_partition)
+                if not mount_point:
+                    self._fail(params,
+                               f"Could not mount {target_partition}. Unplug "
+                               f"the drive, plug it in again and retry.")
+                    shutil.rmtree(params['temp_dir'], ignore_errors=True)
+                    return False
+                params['mount_point_is_temp'] = False
+                logger.info(f"Writing to {mount_point}")
             else:
                 # Create and mount the device to a temporary mount point
                 mount_point = tempfile.mkdtemp(prefix='pynetboot_mount_')
@@ -330,11 +346,14 @@ class USBInstaller:
                     # Create directory structure
                     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
 
-                    # Copy file
+                    # Copy file. Metadata is deliberately left behind: on
+                    # macOS the extended attributes would land on the FAT
+                    # volume as a `._name` sidecar beside every file.
                     if os.path.isdir(src_path):
-                        shutil.copytree(src_path, dest_path)
+                        shutil.copytree(src_path, dest_path,
+                                        copy_function=self._copy_to_target)
                     else:
-                        shutil.copy2(src_path, dest_path)
+                        self._copy_to_target(src_path, dest_path)
 
                     copied_files += 1
                     if progress_callback:
@@ -416,16 +435,8 @@ class USBInstaller:
                     # Windows: no explicit unmount needed for drive letters
                     pass
                 elif os.path.ismount(mount_point):
-                    command = (['umount', mount_point] if self.platform == 'darwin'
-                               else ['sudo', 'umount', mount_point])
-                    result = subprocess.run(
-                        command, capture_output=True, text=True, timeout=60)
-                    if result.returncode == 0:
+                    if self._release_mount(params):
                         logger.info(f"Unmounted {mount_point}")
-                    else:
-                        logger.error(
-                            f"Could not unmount {mount_point}: "
-                            f"{(result.stderr or '').strip()}")
 
                 # Removing the directory is only safe once nothing is mounted
                 # on it. While it is still a mount point it *is* the drive, so
@@ -533,6 +544,42 @@ class USBInstaller:
         except _SUBPROCESS_ERRORS as e:
             logger.debug(f"diskutil info failed for {device}: {e}")
         return f"/dev/{ident}"
+
+    def _macos_mount(self, partition: str, settle: float = 8.0) -> Optional[str]:
+        """Mount a macOS volume through Disk Arbitration; return its path.
+
+        `diskutil eraseDisk` usually leaves the new volume mounted already, so
+        the common case is just finding where. Mounting is left to diskutil
+        because mount(8) needs root for a real device node, and a volume
+        mounted by root would then be unwritable by the copy that follows.
+        """
+        from pynetboot.platform.macos import device_mountpoints
+
+        deadline = time.monotonic() + settle
+        last_error = ''
+        while True:
+            points = device_mountpoints(partition)
+            if points:
+                return points[0]
+
+            result = subprocess.run(
+                ['diskutil', 'mount', partition],
+                capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                points = device_mountpoints(partition)
+                if points:
+                    return points[0]
+            else:
+                last_error = (result.stderr or result.stdout or '').strip()
+
+            if time.monotonic() >= deadline:
+                logger.error(
+                    f"Could not mount {partition}"
+                    + (f": {last_error}" if last_error else
+                       " (it never appeared after formatting)"))
+                return None
+            # The volume takes a moment to appear after an erase.
+            time.sleep(0.5)
 
     def _macos_data_partition(self, whole_disk: str) -> Optional[str]:
         """Return the first data partition identifier (e.g. disk4s1) of a disk.
@@ -1183,7 +1230,23 @@ class USBInstaller:
     def _remount(self, params: Dict[str, Any], device: str) -> None:
         """Re-mount the target after a raw write, for tools that need a path."""
         mount_point = params.get('mount_point')
-        if not mount_point or not os.path.isdir(mount_point):
+        if not mount_point:
+            return
+
+        if self.platform == 'darwin':
+            # Disk Arbitration decides the path, and it is the same one as
+            # before because the volume label has not changed -- but record
+            # what it actually chose rather than assuming.
+            restored = self._macos_mount(device)
+            if not restored:
+                logger.warning(f"Could not re-mount {device}")
+                return
+            if restored != mount_point:
+                logger.info(f"{device} came back at {restored}")
+                params['mount_point'] = restored
+            return
+
+        if not os.path.isdir(mount_point):
             return
         if not self._mount_device(device, mount_point):
             logger.warning(f"Could not re-mount {device} at {mount_point}")
@@ -1220,6 +1283,17 @@ class USBInstaller:
         letter = (device or '').strip().rstrip('\\/').rstrip(':')[:1].upper()
         return f"{letter}:" if letter.isalpha() else None
 
+    @staticmethod
+    def _copy_to_target(source, destination) -> None:
+        """Copy a file onto the target drive without its metadata.
+
+        `shutil.copy2` carries extended attributes across, and macOS stores
+        those on a FAT volume as an AppleDouble sidecar -- a `._name` file
+        next to every single one. They are useless on the drive and clutter
+        the boot directory, so copy the contents and the mode only.
+        """
+        shutil.copy(source, destination)
+
     def _copy_syslinux_modules(self, mount_point: Optional[str]) -> None:
         """Copy the bundled syslinux modules the boot menu needs to the target."""
         if not mount_point or not os.path.isdir(mount_point):
@@ -1228,7 +1302,7 @@ class USBInstaller:
             src = bootloader_path(name)
             if src.exists():
                 try:
-                    shutil.copy2(src, os.path.join(mount_point, name))
+                    self._copy_to_target(src, os.path.join(mount_point, name))
                     logger.info(f"Copied bundled {name} to {mount_point}")
                 except _FILE_COPY_ERRORS as e:
                     logger.warning(f"Failed to copy {name}: {e}")
@@ -1293,11 +1367,11 @@ class USBInstaller:
 
         try:
             os.makedirs(efi_dir, exist_ok=True)
-            shutil.copy2(loader, os.path.join(efi_dir, _EFI_LOADER))
+            self._copy_to_target(loader, os.path.join(efi_dir, _EFI_LOADER))
             for name in _EFI_MODULES:
                 src = bootloader_path(os.path.join('efi64', name))
                 if src.exists():
-                    shutil.copy2(src, os.path.join(efi_dir, name))
+                    self._copy_to_target(src, os.path.join(efi_dir, name))
                 else:
                     logger.warning(f"Bundled efi64/{name} is missing")
         except _FILE_COPY_ERRORS as e:

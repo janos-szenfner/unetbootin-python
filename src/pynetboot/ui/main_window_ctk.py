@@ -11,6 +11,7 @@ elevation — keeps working unchanged against a callback-driven toolkit.
 
 import os
 import sys
+import time
 import queue
 import logging
 import tkinter
@@ -210,6 +211,10 @@ def resolve_drawing_method(available: Optional[set] = None) -> Optional[str]:
     return "polygon_shapes"
 
 
+# How many clicks to describe in the log before falling silent.
+_CLICK_REPORT_LIMIT = 8
+
+
 def mark_mouse_inside(widget) -> bool:
     """Tell the CustomTkinter widget owning `widget` that the mouse is in it.
 
@@ -241,9 +246,32 @@ def enable_press_to_click(root) -> None:
     which CustomTkinter already handles, then runs the command as it should.
     Harmless everywhere else: it states something that is true by definition.
     """
+    # Clicks that go astray are invisible in a log, and this behaviour differs
+    # between Tk builds and macOS versions, so record the first few: which
+    # widget Tk delivered them to, where the pointer was, and whether that
+    # widget belongs to a control. A report of "the buttons do not work" can
+    # then be answered from the log instead of guessed at.
+    reported = []
+
+    def on_press(event) -> None:
+        owner = mark_mouse_inside(event.widget)
+        if len(reported) < _CLICK_REPORT_LIMIT:
+            reported.append(1)
+            try:
+                widget = event.widget
+                bounds = (f"{widget.winfo_width()}x{widget.winfo_height()}"
+                          f"+{widget.winfo_rootx()}+{widget.winfo_rooty()}")
+            except Exception:  # noqa: BLE001 - diagnostics only
+                bounds = 'unknown'
+            logger.info(
+                f"Click {len(reported)}: on {event.widget.winfo_class()} "
+                f"at ({event.x}, {event.y}) in the widget, "
+                f"({event.x_root}, {event.y_root}) on screen; "
+                f"widget is {bounds}; "
+                f"{'a control was marked hovered' if owner else 'no control owns it'}")
+
     try:
-        root.bind_all('<Button-1>',
-                      lambda event: mark_mouse_inside(event.widget), add='+')
+        root.bind_all('<Button-1>', on_press, add='+')
         logger.info("Press-to-click enabled: a press marks the widget as hovered")
     except Exception as e:  # noqa: BLE001 - a missing binding is not fatal
         logger.warning(f"Could not install the press-to-click handler: {e}")
@@ -1048,7 +1076,13 @@ class MainWindowCTk:
 
         deadline = (timeout or 0) / 1000.0
         waited = 0.0
-        step = 0.01
+        # How long the toolkit is left unpumped between passes. This window
+        # is where macOS coalesces mouse motion: AppKit keeps only the latest
+        # move, so a pointer that crosses a button while we are asleep can
+        # produce no motion event inside it at all -- and then no <Enter>,
+        # which is what CustomTkinter's buttons wait for. Short enough that
+        # normal pointer movement always lands at least one event on a widget.
+        step = 0.002
 
         while True:
             try:
@@ -1072,11 +1106,10 @@ class MainWindowCTk:
             if timeout is not None and waited >= deadline:
                 return TIMEOUT_EVENT, self._collect_values()
 
-            try:
-                self.root.after(int(step * 1000))
-            except tkinter.TclError:
-                self.closed = True
-                return WIN_CLOSED, {}
+            # time.sleep rather than root.after(ms): the Tcl form blocks the
+            # interpreter just the same, but this makes the wait -- and its
+            # cost to event delivery -- visible in the code that owns it.
+            time.sleep(step)
             waited += step
 
     def _collect_values(self) -> Dict[str, Any]:

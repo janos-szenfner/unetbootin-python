@@ -56,7 +56,7 @@ setup(
 
     # Dependencies
     install_requires=[
-        "customtkinter>=5.2.0",
+        "customtkinter>=6.0.0",
         "Pillow>=10.0.0",
         "requests>=2.28.0",
         "psutil>=5.9.0",

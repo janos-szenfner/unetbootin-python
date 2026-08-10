@@ -94,7 +94,7 @@ jobs:
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -121,6 +121,12 @@ jobs:
     name: Build macOS App (Apple Silicon)
     runs-on: macos-latest
     needs: test
+    env:
+      # The bundled Tk comes from this Python, and Tk is where macOS mouse
+      # handling lives. 3.10 ships Tk 8.6.12 (2021), whose Aqua event
+      # handling misbehaves on current macOS: buttons respond only where the
+      # pointer happened to generate a crossing event. Newer Python, newer Tk.
+      PYTHON_VERSION: '3.12'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -155,7 +161,7 @@ jobs:
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -254,7 +260,7 @@ jobs:
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -360,7 +366,7 @@ jobs:
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
@@ -452,7 +458,7 @@ jobs:
         # window opens but stays blank. Fail the build here rather than ship a
         # binary that shows an empty window.
         run: |
-          python -c "import sys, tkinter, customtkinter; v = float(tkinter.TkVersion); print('Tk', v, 'customtkinter', customtkinter.__version__); sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
+          python -c "import sys, tkinter, customtkinter; r = tkinter.Tcl(); p = r.call('info', 'patchlevel'); v = float(tkinter.TkVersion); print('Tk', p, 'customtkinter', customtkinter.__version__); print('::warning::Bundled Tk is ' + p + '; 8.6.13+ is wanted on macOS for Aqua mouse handling') if tuple(int(n) for n in p.split('.')) < (8, 6, 13) else None; sys.exit(0 if v >= 8.6 else 'Tk 8.6+ required, found ' + str(v))"
           # The TLS stack gets bundled into the artifact, so record which one
           # and flag the combination urllib3 v2 does not support.
           python -c "import ssl, urllib3; b = ssl.OPENSSL_VERSION; print('TLS backend:', b, '| urllib3', urllib3.__version__); print('::warning::Bundled TLS backend is ' + b + ', which urllib3 v2 does not fully support (needs OpenSSL 1.1.1+)') if ('LibreSSL' in b or b < 'OpenSSL 1.1.1') else print('TLS backend OK')"
