@@ -551,6 +551,16 @@ class RawDevice:
             self._fd, self._authopen_process = authopen_device(self.path)
         return self
 
+    @property
+    def batched(self) -> bool:
+        """True when this device's work is queued for an elevated batch.
+
+        False for a descriptor from authopen and for direct access: those act
+        immediately, and queueing their reads into a batch would send them
+        back through the very mechanism they exist to avoid.
+        """
+        return self._batch is not None
+
     @contextlib.contextmanager
     def _open(self):
         """Open the device for one operation, then let it go.

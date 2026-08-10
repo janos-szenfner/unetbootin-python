@@ -552,6 +552,41 @@ class TestAuthopenBackend(unittest.TestCase):
         self.assertEqual(boot[510:512], b'\x55\xaa')
 
 
+class TestBackendRouting(unittest.TestCase):
+    """Work must not be handed to dd when the device is already open.
+
+    A descriptor from authopen exists precisely because macOS refuses dd;
+    queueing that device's reads into an elevated batch sends them straight
+    back to the mechanism that does not work.
+    """
+
+    def setUp(self):
+        import tempfile
+        handle = tempfile.NamedTemporaryFile(prefix='pynetboot_route_',
+                                             delete=False)
+        handle.write(b'\0' * 8192)
+        handle.close()
+        self.path = handle.name
+        self.addCleanup(os.unlink, self.path)
+
+    def test_a_dd_device_batches(self):
+        batch = native.ElevatedBatch()
+        device = native.RawDevice(self.path, elevated=True, authopen=False,
+                                 batch=batch)
+        self.assertTrue(device.batched)
+
+    def test_an_authopen_device_does_not_batch(self):
+        batch = native.ElevatedBatch()
+        device = native.RawDevice(self.path, elevated=True, authopen=True,
+                                  batch=batch)
+        self.assertFalse(device.batched)
+
+    def test_a_direct_device_does_not_batch(self):
+        batch = native.ElevatedBatch()
+        device = native.RawDevice(self.path, elevated=False, batch=batch)
+        self.assertFalse(device.batched)
+
+
 class TestMacOSDeviceNodes(unittest.TestCase):
     """The raw node, and explaining a refusal that no retry can fix."""
 

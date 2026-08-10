@@ -1496,27 +1496,32 @@ class USBInstaller:
                         device.read, device.write, ldlinux, boot_template,
                         prefetch=device.prefetch)
 
-                    # Queue the writes, then the read-back that checks them,
-                    # so both happen under the same elevation.
                     device.flush()
-                    tokens = [batch.add_read(device.path, offset, length)
-                              for offset, length in written.spans()]
-                    batch.run(f"write the bootloader to {partition} "
-                              f"and read it back")
-                    if tokens:
+                    if device.batched:
+                        # Queue the read-back with the writes, so checking the
+                        # result costs no extra elevation.
+                        tokens = [batch.add_read(device.path, offset, length)
+                                  for offset, length in written.spans()]
+                        batch.run(f"write the bootloader to {partition} "
+                                  f"and read it back")
                         written.check(*[batch.result(t) for t in tokens])
                     else:
+                        # The device is already open: read straight back from
+                        # it. Going through the batch here would hand the work
+                        # to dd, which is what macOS refuses.
                         written.check(*[device.read_uncached(offset, length)
                                         for offset, length in written.spans()])
 
             if whole_disk:
                 with native.ElevatedBatch() as batch:
                     with native.RawDevice(whole_disk, batch=batch) as disk:
-                        disk.prefetch(0, 512)
-                        batch.run(f"read the MBR of {whole_disk}")
+                        if disk.batched:
+                            disk.prefetch(0, 512)
+                            batch.run(f"read the MBR of {whole_disk}")
                         self._stage_mbr(disk, whole_disk, partition)
                         disk.flush()
-                        batch.run(f"write the MBR of {whole_disk}")
+                        if disk.batched:
+                            batch.run(f"write the MBR of {whole_disk}")
 
             native.sync_disks()
             logger.info(f"Installed syslinux on {partition} (native)")
