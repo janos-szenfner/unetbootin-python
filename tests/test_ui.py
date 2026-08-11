@@ -924,6 +924,71 @@ class TestFontFallback(unittest.TestCase):
         self.assertIn('/app/share/fonts', commands)
 
 
+class TestCategoryIcons(unittest.TestCase):
+    """Switching categories repeatedly must keep showing the icons.
+
+    CustomTkinter ignores `image=None` -- its label goes on displaying the
+    previous image -- so an image released on the Python side left the widget
+    pointing at one Tk had destroyed, and the next category raised
+    "image pyimageN doesn't exist". The icons disappeared from the second
+    round onwards.
+    """
+
+    def setUp(self):
+        if not HAS_CTK:
+            self.skipTest("customtkinter is not installed")
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
+        try:
+            self.window = MainWindowCTk()
+        except Exception as e:                # no display, e.g. headless CI
+            self.skipTest(f"no Tk display: {e}")
+        self.window.root.withdraw()
+        self.window.root.update_idletasks()
+        self.addCleanup(self.window.root.destroy)
+
+    def test_cycling_categories_keeps_the_icon(self):
+        label = self.window._category_icon._label
+        for _round in range(3):
+            for category in ('All', 'Linux', 'BSD', 'Windows'):
+                self.window.set_category_icon(category)
+                self.window.root.update_idletasks()
+                shown = str(label.cget('image'))
+                self.assertTrue(shown, f"{category}: no image on the label")
+                # The name must still refer to a live Tk image.
+                self.assertTrue(
+                    self.window.root.tk.call('image', 'inuse', shown),
+                    f"{category}: {shown} was destroyed underneath Tk")
+
+    def test_images_are_reused_rather_than_rebuilt(self):
+        label = self.window._category_icon._label
+        self.window.set_category_icon('Linux')
+        first = str(label.cget('image'))
+        self.window.set_category_icon('All')
+        self.window.set_category_icon('Linux')
+        self.assertEqual(str(label.cget('image')), first,
+                         "each visit built a new image instead of reusing one")
+
+    def test_the_linux_category_uses_the_distribution_logo(self):
+        import os
+
+        from pynetboot.resources import icon_path, resource_path
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
+        filename = MainWindowCTk._CATEGORY_ICONS['linux']
+        self.assertEqual(filename, 'Linux-Logo.png')
+        # It lives in logos/, not icons/, so the lookup has to reach both.
+        found = (os.path.exists(icon_path(filename))
+                 or os.path.exists(resource_path('logos', filename)))
+        self.assertTrue(found, f"{filename} is not bundled")
+
+    def test_an_unknown_category_shows_nothing_but_stays_usable(self):
+        label = self.window._category_icon._label
+        self.window.set_category_icon('Linux')
+        self.window.set_category_icon('Something Else')
+        self.window.root.update_idletasks()
+        shown = str(label.cget('image'))
+        self.assertTrue(self.window.root.tk.call('image', 'inuse', shown))
+
+
 class TestPressToClick(unittest.TestCase):
     """A press must count as "the mouse is inside", or buttons look dead.
 

@@ -621,11 +621,14 @@ class _WindowShim:
 class MainWindowCTk:
     """The application's main window."""
 
+    # Shown beside the category drop-down. Looked up in icons/ first, then
+    # logos/, so a distribution logo can be used directly.
     _CATEGORY_ICONS = {
-        'linux': 'category_linux.png',
+        'linux': 'Linux-Logo.png',
         'bsd': 'category_bsd.png',
         'windows': 'category_windows.png',
     }
+    _CATEGORY_ICON_SIZE = 28
 
     # Controls disabled while a long operation runs.
     _BUSY_ELEMENTS = ('ok', 'iso_download', 'refresh', 'about',
@@ -1021,13 +1024,23 @@ class MainWindowCTk:
             logger.debug(f"Could not change visibility: {e}")
 
     def _set_image(self, widget, filename: str):
-        """Put a bundled PNG on a label, keeping a reference alive."""
+        """Put a bundled PNG on a label, keeping a reference alive.
+
+        Images are cached by name and never released: replacing the only
+        reference to one that a widget still displays destroys it underneath
+        Tk.
+        """
         try:
             from PIL import Image
-            image = ctk.CTkImage(light_image=Image.open(filename),
-                                 dark_image=Image.open(filename),
-                                 size=(28, 28))
-            self._images[id(widget)] = image
+            key = (filename, 28)
+            image = self._images.get(key)
+            if image is None:
+                loaded = Image.open(filename).convert('RGBA')
+                if loaded.width > 56:
+                    loaded = loaded.resize((28, 28), Image.LANCZOS)
+                image = ctk.CTkImage(light_image=loaded, dark_image=loaded,
+                                     size=(28, 28))
+                self._images[key] = image
             widget.configure(image=image, text="")
         except Exception as e:  # noqa: BLE001 - decorative only
             logger.debug(f"Could not set image {filename}: {e}")
@@ -1173,18 +1186,65 @@ class MainWindowCTk:
         self.set_category_icon('All')
 
     def set_category_icon(self, category: Optional[str]):
-        """Show the icon for the selected category beside the drop-down."""
+        """Show the icon for the selected category beside the drop-down.
+
+        "All" gets a blank image rather than none at all. CustomTkinter
+        ignores `image=None` -- its label keeps displaying the previous one --
+        so the image object stays referenced by Tk after this code has let go
+        of it, and the next category raises "image pyimageN doesn't exist".
+        That is why the icons vanished after cycling through the categories
+        once.
+        """
         filename = self._CATEGORY_ICONS.get((category or '').strip().lower())
         try:
-            if not filename:
-                self._category_icon.configure(image=None, text="")
-                return
-            from pynetboot.resources import icon_path
-            path = icon_path(filename)
-            if os.path.exists(path):
-                self._set_image(self._category_icon, str(path))
+            image = (self._cached_image(filename, self._CATEGORY_ICON_SIZE)
+                     if filename else self._blank_image())
+            self._category_icon.configure(image=image, text="")
         except Exception as e:  # noqa: BLE001 - decorative only
             logger.warning(f"Could not set category icon: {e}")
+
+    def _blank_image(self):
+        """A transparent stand-in, so a label never has to be cleared."""
+        blank = self._images.get('__blank__')
+        if blank is None:
+            from PIL import Image
+            empty = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+            blank = ctk.CTkImage(light_image=empty, dark_image=empty,
+                                 size=(1, 1))
+            self._images['__blank__'] = blank
+        return blank
+
+    def _cached_image(self, filename: str, size: int):
+        """A CTkImage for a bundled PNG, kept for the life of the window.
+
+        Every image handed to Tk is held here. Tk keeps only the name of an
+        image, so one that Python collects leaves the widget pointing at
+        something that no longer exists, and the next configure() on that
+        widget fails.
+        """
+        key = (filename, size)
+        cached = self._images.get(key)
+        if cached is not None:
+            return cached
+
+        from PIL import Image
+        from pynetboot.resources import icon_path, resource_path
+        path = icon_path(filename)
+        if not os.path.exists(path):
+            path = resource_path('logos', filename)
+        if not os.path.exists(path):
+            logger.warning(f"Image {filename} is missing from this build")
+            return self._blank_image()
+
+        loaded = Image.open(path).convert('RGBA')
+        # Downscale here rather than leaving it to the toolkit: these are
+        # full-size logos, and a good filter matters at this size.
+        if loaded.width > size * 2:
+            loaded = loaded.resize((size, size), Image.LANCZOS)
+        image = ctk.CTkImage(light_image=loaded, dark_image=loaded,
+                             size=(size, size))
+        self._images[key] = image
+        return image
 
     def update_distro_list(self, category_filter: str = None):
         """Refresh the distribution names, alphabetically."""
