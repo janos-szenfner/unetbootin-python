@@ -9,6 +9,8 @@ import os
 import sys
 import tempfile
 import shutil
+import threading
+import time
 from unittest.mock import patch, MagicMock
 
 # Add src to path for testing
@@ -997,6 +999,180 @@ class TestCategoryIcons(unittest.TestCase):
         self.window.root.update_idletasks()
         shown = str(label.cget('image'))
         self.assertTrue(self.window.root.tk.call('image', 'inuse', shown))
+
+
+class TestUpdateCheck(unittest.TestCase):
+    """About reports whether a newer release has been published."""
+
+    def test_versions_compare_numerically(self):
+        from pynetboot.core.updates import is_newer
+
+        self.assertTrue(is_newer('1.10.4', '1.10.3'))
+        self.assertTrue(is_newer('1.11.0', '1.10.9'))
+        self.assertTrue(is_newer('2.0.0', '1.99.99'))
+        self.assertFalse(is_newer('1.10.3', '1.10.3'))
+        # The trap in comparing these as text: 9 sorts after 1.
+        self.assertFalse(is_newer('1.9.11', '1.10.0'))
+
+    def test_a_shorter_number_is_the_earlier_one(self):
+        from pynetboot.core.updates import is_newer
+
+        self.assertFalse(is_newer('1.10', '1.10.1'))
+        self.assertTrue(is_newer('1.10.1', '1.10'))
+
+    def test_a_name_that_does_not_parse_is_never_newer(self):
+        """Nobody should be told to update on the strength of an unread name."""
+        from pynetboot.core.updates import is_newer, parse_version
+
+        self.assertIsNone(parse_version('nightly'))
+        self.assertFalse(is_newer('nightly', '1.10.3'))
+        self.assertFalse(is_newer('1.10.4', ''))
+
+    def test_a_tag_is_read_without_its_v(self):
+        from pynetboot.core import updates
+
+        reply = MagicMock()
+        reply.json.return_value = {'tag_name': 'v1.10.4'}
+        with patch('requests.get', return_value=reply):
+            self.assertEqual(updates.latest_release(), '1.10.4')
+
+    def test_a_newer_release_is_reported(self):
+        from pynetboot.core import updates
+
+        with patch.object(updates, 'latest_release', return_value='1.10.4'):
+            result = updates.check_for_update(current='1.10.3')
+        self.assertTrue(result.update_available)
+        self.assertEqual(result.latest, '1.10.4')
+
+    def test_the_current_version_is_not_reported_as_an_update(self):
+        from pynetboot.core import updates
+
+        with patch.object(updates, 'latest_release', return_value='1.10.3'):
+            result = updates.check_for_update(current='1.10.3')
+        self.assertEqual(result.status, 'current')
+        self.assertFalse(result.update_available)
+
+    def test_a_failed_check_is_unknown_rather_than_up_to_date(self):
+        """No network must not read as "you have the latest version"."""
+        from pynetboot.core import updates
+
+        import requests
+        with patch.object(updates, 'latest_release',
+                          side_effect=requests.exceptions.ConnectionError('x')):
+            result = updates.check_for_update(current='1.10.3')
+        self.assertEqual(result.status, 'unknown')
+        self.assertFalse(result.update_available)
+        self.assertIsNone(result.latest)
+
+    def test_the_check_never_raises(self):
+        """It runs on a worker thread, where an exception would go unseen."""
+        from pynetboot.core import updates
+
+        for blow_up in (ValueError('bad json'), OSError('socket'),
+                        KeyError('tag_name')):
+            with patch.object(updates, 'latest_release', side_effect=blow_up):
+                self.assertEqual(
+                    updates.check_for_update(current='1.10.3').status,
+                    'unknown')
+
+
+class TestUpdateCheckInAboutDialog(unittest.TestCase):
+    """The dialog opens at once and is told the answer afterwards.
+
+    The outcome is applied by _apply_update_result, which these drive
+    directly. Pumping the event loop instead would mean root.update() with a
+    modal dialog up, which does not return on every Tk build.
+    """
+
+    def setUp(self):
+        if not HAS_CTK:
+            self.skipTest("customtkinter is not installed")
+        import customtkinter as ctk
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
+        try:
+            self.window = MainWindowCTk()
+        except Exception as e:                # no display, e.g. headless CI
+            self.skipTest(f"no Tk display: {e}")
+        self.window.root.withdraw()
+        self.addCleanup(self.window.root.destroy)
+        self.label = ctk.CTkLabel(self.window.root, text="checking")
+
+    def _apply(self, status, latest=None):
+        from pynetboot.core.updates import UpdateCheck
+        self.window._apply_update_result(self.label,
+                                         UpdateCheck(status, latest))
+        return self.label.cget('text')
+
+    def test_a_newer_version_is_named(self):
+        self.assertIn('9.9.9', self._apply('update', '9.9.9'))
+
+    def test_the_update_line_opens_the_releases_page(self):
+        from pynetboot.core import updates
+        from pynetboot.ui import main_window_ctk
+
+        import customtkinter as ctk
+
+        # The handler is caught as it is bound and then called: a real click
+        # cannot be delivered to a widget in a window that is never mapped.
+        bound = {}
+        real_bind = ctk.CTkLabel.bind
+
+        def capture(label, sequence=None, command=None, add=True):
+            bound[sequence] = command
+            return real_bind(label, sequence, command, add)
+
+        with patch.object(main_window_ctk.MainWindowCTk, '_open_url') as opened, \
+                patch.object(ctk.CTkLabel, 'bind', capture):
+            self._apply('update', '9.9.9')
+            self.assertIn('<Button-1>', bound, "the line is not clickable")
+            bound['<Button-1>'](None)
+            opened.assert_called_once_with(updates.RELEASES_PAGE)
+
+    def test_being_current_says_so(self):
+        self.assertIn('latest', self._apply('current', '1.0.0').lower())
+
+    def test_a_failed_check_does_not_claim_the_version_is_current(self):
+        text = self._apply('unknown')
+        self.assertIn('Could not check', text)
+        self.assertNotIn('latest', text.lower())
+
+    def test_a_closed_dialog_is_left_alone(self):
+        """The window can be gone by the time the request comes back."""
+        self.label.destroy()
+        self.window._apply_update_result(         # must not raise
+            self.label, __import__(
+                'pynetboot.core.updates', fromlist=['UpdateCheck']
+            ).UpdateCheck('update', '9.9.9'))
+
+    def test_the_dialog_does_not_wait_for_the_answer(self):
+        """It opens saying it is checking, with the request still out."""
+        from pynetboot.core import updates
+        from pynetboot.ui import main_window_ctk
+        import customtkinter as ctk
+
+        started = threading.Event()
+        threads = []
+
+        def slow_check(*_a, **_k):
+            threads.append(threading.current_thread().name)
+            started.set()
+            time.sleep(0.5)
+            return updates.UpdateCheck('update', '9.9.9')
+
+        with patch.object(main_window_ctk.MainWindowCTk, '_open_url'), \
+                patch.object(updates, 'check_for_update', slow_check):
+            self.window.show_about()
+            self.assertTrue(started.wait(2), "the check never ran")
+            texts = []
+            for child in self.window.root.winfo_children():
+                if isinstance(child, ctk.CTkToplevel):
+                    texts = [w.cget('text') for w in child.winfo_children()
+                             if isinstance(w, ctk.CTkLabel)]
+                    child.destroy()
+        self.assertTrue(any('Checking' in t for t in texts),
+                        f"no checking line among {texts}")
+        self.assertNotIn('MainThread', threads,
+                         "the request blocked the window")
 
 
 class TestApplicationMenu(unittest.TestCase):

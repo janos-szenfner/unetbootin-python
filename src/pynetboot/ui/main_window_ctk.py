@@ -1619,7 +1619,9 @@ class MainWindowCTk:
         win = ctk.CTkToplevel(self.root)
         apply_window_icon(win)
         win.title(f"{_('About')} {APP_TITLE}")
-        win.geometry("470x360")
+        # Taller than the content strictly needs: the update line changes
+        # length when the answer arrives, and the window cannot be resized.
+        win.geometry("470x390")
         win.resizable(False, False)
         win.transient(self.root)
 
@@ -1637,7 +1639,13 @@ class MainWindowCTk:
 
         ctk.CTkLabel(win, text=APP_NAME,
                      font=ctk.CTkFont(size=20, weight="bold")).pack()
-        ctk.CTkLabel(win, text=f"{_('Version')} {APP_VERSION}").pack(pady=(0, 8))
+        ctk.CTkLabel(win, text=f"{_('Version')} {APP_VERSION}").pack()
+
+        update = ctk.CTkLabel(win, text=_("Checking for updates…"),
+                              text_color="gray")
+        update.pack(pady=(2, 8))
+        self._start_update_check(win, update)
+
         ctk.CTkLabel(
             win, text=_("Create bootable USB drives from ISO files")).pack()
 
@@ -1662,6 +1670,71 @@ class MainWindowCTk:
             win.grab_set()
         except tkinter.TclError:
             pass
+
+    # How often the dialog looks to see whether the check has answered.
+    _UPDATE_POLL_MS = 150
+
+    def _start_update_check(self, win, label):
+        """Ask GitHub for the newest release and report it on `label`.
+
+        The request runs on a thread of its own, because the dialog has to
+        appear at once and an unreachable network must not freeze it. The
+        answer is handed over through a queue and picked up by the main thread,
+        which is the only one that may touch Tk: calling into the toolkit from
+        the worker deadlocks it against whoever is running the event loop.
+
+        The dialog can be closed while the request is still out, so the poll
+        stops as soon as its label is gone, and the thread is a daemon -- a
+        request left waiting on a timeout never holds up quitting.
+        """
+        import threading
+
+        from pynetboot.core import updates
+
+        answer: "queue.Queue" = queue.Queue(maxsize=1)
+
+        def poll():
+            try:
+                if not label.winfo_exists():
+                    return
+                try:
+                    result = answer.get_nowait()
+                except queue.Empty:
+                    win.after(self._UPDATE_POLL_MS, poll)
+                    return
+            except tkinter.TclError:
+                return                      # the dialog is gone
+            self._apply_update_result(label, result)
+
+        def run():
+            answer.put(updates.check_for_update())
+
+        threading.Thread(target=run, daemon=True, name='update-check').start()
+        win.after(self._UPDATE_POLL_MS, poll)
+
+    def _apply_update_result(self, label, result):
+        """Say what the check found. Main thread only."""
+        from pynetboot.core import updates
+
+        try:
+            if not label.winfo_exists():
+                return
+            if result.update_available:
+                label.configure(
+                    text=_("Version {v} is available").format(v=result.latest),
+                    text_color="#3b82f6", cursor="hand2")
+                label.bind("<Button-1>",
+                           lambda _e: self._open_url(updates.RELEASES_PAGE))
+            elif result.status == 'current':
+                label.configure(text=_("This is the latest version"),
+                                text_color="gray")
+            else:
+                # Offline, rate-limited, or GitHub had nothing to say. Not the
+                # user's doing, and not worth a dialog of its own.
+                label.configure(text=_("Could not check for updates"),
+                                text_color="gray")
+        except tkinter.TclError as e:
+            logger.debug(f"Update check not shown: {e}")
 
     @staticmethod
     def _open_url(url: str):
