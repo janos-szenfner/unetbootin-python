@@ -48,6 +48,7 @@ pynetboot/
 │       │   ├── fat.py                 # FAT12/16/32 reader for the sector map
 │       │   ├── elevation.py           # pkexec / Authorization Services / UAC
 │       │   ├── log_buffer.py          # In-memory log behind the Log window
+│       │   ├── updates.py             # Asks GitHub for the newest release
 │       │   ├── i18n.py                # Translation catalogs
 │       │   └── utils.py               # Shared helpers
 │       │
@@ -224,10 +225,13 @@ drops writes is reported during the install rather than at boot.
 - Advanced options (persistence for live USB)
 - File selectors for ISO, kernel, initrd, and config files
 - Inline progress bar and Cancel button in the main window (no popups)
+- Log window: the captured log, scrollable and copyable, alongside the file it is written to
+- About dialog: version, licence and an update check — it asks GitHub for the newest release and says either that this is the latest version or which newer one is available, with a link to the releases page. The request goes out only when the dialog is opened
+- macOS: the application menu's *About* opens this same dialog, rather than the standard Cocoa panel
 
 ### Distribution Management
-- Built-in list of **22 distributions** across Linux (14), BSD (6), and Windows (2) — see the full list under *Next Steps → Distribution Statistics*
-- Version management with download URLs, file sizes, and optional dynamic checksums (all 40 versions are verified against a published checksum)
+- Built-in list of **22 distributions** across Linux (14), BSD (6), and Windows (2), covering **45 versions** — see the full table under *Next Steps → Distribution Statistics*
+- Version management with download URLs, file sizes, and dynamic checksums (every one of the 43 downloadable versions is verified against a checksum its publisher publishes)
 - Search and filtering by category
 - Easy extensibility to add more distributions
 - JSON-based external distribution loading
@@ -238,7 +242,7 @@ drops writes is reported during the install rather than at boot.
 - File size verification (minimum size checks)
 - FTP directory listing
 - HTTP directory listing with HTML parsing
-- Checksum verification (SHA256, SHA1, MD5) — mechanism present and active for 6 distros (Ubuntu 24.04/22.04/20.04, Debian current, Fedora 44/43) via dynamic `sha256_url` fetching; other distros skip verification (log "No checksum available… skipping")
+- Checksum verification (SHA256, SHA512, SHA1, MD5) — every downloadable version names a published checksum file, fetched at download time via `sha256_url` (or `sha512_url`/`md5_url` where that is the strongest the publisher offers) and matched against the ISO filename, so verification survives point releases without hardcoded hashes going stale
 - Support for redirects
 
 ### Archive Extraction
@@ -356,7 +360,7 @@ git tag -a v1.2.3 -m "v1.2.3"
 git push origin v1.2.3
 ```
 
-The workflow builds Windows EXE, macOS `.app` (Universal 2, as ZIP **and** DMG),
+The workflow builds Windows EXE, macOS `.app` (Apple Silicon/arm64, as ZIP **and** DMG),
 Linux AppImage, DEB, RPM and Flatpak, then publishes them as **raw, un-zipped
 release assets**. Running the workflow manually (`workflow_dispatch`) builds the
 artifacts without publishing a release — the release job is tag-only.
@@ -403,25 +407,32 @@ pyinstaller --windowed --name PyNetboot \
 
 ## Adding New Distributions
 
-Edit `src/pynetboot/models/distro.py`:
+Add an entry to `linux_distros`, `bsd_distros` or `windows_distros` in
+`DistributionManager.load_distributions()`
+(`src/pynetboot/models/distro.py`):
 
 ```python
-builtin_distros = [
-    {
-        'name': 'your_distro',
-        'display_name': 'Your Distribution',
-        'description': 'Description of your distro',
-        'category': 'YourCategory',
-        'homepage': 'https://yourdistro.org',
-        'versions': [
-            {'name': 'Latest', 'url': 'https://download.yourdistro.org/latest.iso', 'size': 1500000000},
-            {'name': 'Stable', 'url': 'https://download.yourdistro.org/stable.iso', 'size': 1400000000},
-        ],
-        'icon': 'yourdistro',
-    },
-    # ... existing distros
-]
+{
+    'name': 'your_distro',
+    'display_name': 'Your Distribution',
+    'description': 'Description of your distro',
+    'category': 'Linux',
+    'homepage': 'https://yourdistro.org',
+    'versions': [
+        {'name': 'Latest',
+         'url': 'https://download.yourdistro.org/latest.iso',
+         # The publisher's checksum file. Fetched at download time and
+         # matched by ISO filename, so it survives point releases. Use
+         # sha512_url or md5_url when that is all the publisher offers.
+         'sha256_url': 'https://download.yourdistro.org/SHA256SUMS',
+         'size': 1500000000},
+    ],
+    'icon': 'yourdistro',
+}
 ```
+
+Every downloadable version currently ships a checksum URL; adding one without
+means that image alone would be written unverified.
 
 Or load from external JSON files:
 ```python
@@ -445,8 +456,8 @@ manager.load_from_directory('/path/to/distro/definitions')
 *Trade-off:* CustomTkinter is consistent rather than *native* — it looks the
 same on all three platforms rather than adopting each one's widget style.
 wxPython was considered for genuinely native widgets, but it has no Linux
-wheels on PyPI and ships separate arm64/x86_64 macOS wheels, which would cost
-the Universal 2 macOS build.
+wheels on PyPI and ships separate arm64/x86_64 macOS wheels, which would tie
+the macOS build to one architecture per wheel.
 
 ### Why This Structure?
 - **Separation of Concerns**: UI, business logic, data models, platform code are all separate
@@ -595,13 +606,37 @@ See [LICENSE](LICENSE) for the full license text.
 This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 🎯 Distribution Statistics
-- **Total Distributions**: 22 (40 versions, every one checksum-verified)
+- **Total Distributions**: 22 across 45 versions
 - **Categories**: Linux (14), BSD (6), Windows (2)
+- **Verified downloads**: all 43 downloadable versions carry a published
+  checksum; the two Windows entries have no direct URL to verify
 
-#### Available Distributions by Category:
-- **Linux**: Ubuntu (24.04, 22.04, 20.04), Debian 13, Fedora (44, 43), Linux Mint 22.3 (Cinnamon, MATE), Arch Linux, Manjaro 26.0.4 (Xfce, KDE, GNOME), SUSE Tumbleweed, SUSE Leap 16.0, Zorin OS 18.1 (Core, Lite), Kali Linux 2026.2, Slackware 15.0, OpenMandriva ROME (Plasma X11/Wayland, GNOME), 6.0 Rock (Plasma X11/Wayland), Tiny Core 17.0
-- **BSD**: FreeBSD 15.1, NetBSD 10.1, MidnightBSD 3.2.3, GhostBSD 26.1, DragonFly BSD 6.4.2, TrueNAS SCALE 25.10.4
-- **Windows**: Windows 11 (25H2), Windows 10 (22H2) — **not downloaded by PyNetboot**
+#### Available Distributions by Category
+
+| Type | Distribution | Versions |
+|------|--------------|----------|
+| Linux | Ubuntu | 26.04 LTS, 24.04 LTS, 25.10 (non-LTS), 22.04 LTS, 20.04 LTS |
+| Linux | Debian | 13 (Trixie) |
+| Linux | Fedora | 44, 43 |
+| Linux | Linux Mint | 22.3 Cinnamon (Zena), 22.3 MATE (Zena), 22.2 Cinnamon (Zara) |
+| Linux | Manjaro Linux | 26.0.4 Xfce, 26.0.4 KDE Plasma, 26.0.4 GNOME |
+| Linux | Arch Linux | Latest |
+| Linux | openSUSE | Leap 16.1 (Stable), Leap 16.0 (Stable), Tumbleweed (Rolling), Tumbleweed ARM (Rolling), Leap 16.1 ARM (Stable), Leap 16.0 ARM (Stable) |
+| Linux | Zorin OS | Core 18.1, Lite 18.1, Core 18 (r3) |
+| Linux | Kali Linux | Latest (2026.2) |
+| Linux | Slackware Linux | Latest (15.0) |
+| Linux | OpenMandriva | ROME Plasma (Rolling, X11), ROME Plasma (Rolling, Wayland), ROME GNOME (Rolling), 6.0 Rock Plasma (Stable, X11), 6.0 Rock Plasma (Stable, Wayland) |
+| Linux | Rocky Linux | 10.2 (Stable), 9.8 (Stable) |
+| Linux | CentOS Stream | 10 (Rolling), 9 (Rolling) |
+| Linux | Tiny Core Linux | 17.1 TinyCore, 17.1 Core Plus |
+| BSD | FreeBSD | Latest (15.1) |
+| BSD | NetBSD | Latest (10.1) |
+| BSD | MidnightBSD | Latest (4.0.6) |
+| BSD | GhostBSD | Latest (26.1-R15.0p2) |
+| BSD | DragonFly BSD | Latest (6.4.2) |
+| BSD | TrueNAS | Latest (SCALE Goldeye 25.10.5) |
+| Windows | Windows 11 | 25H2 (download from Microsoft) |
+| Windows | Windows 10 | 22H2 (download from Microsoft) |
 
 > **Note on Windows entries.** Microsoft does not publish direct ISO links, so
 > these two cannot be downloaded for you. Selecting one opens Microsoft's own
@@ -617,8 +652,8 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 
 ### 📦 Medium Priority
 - [x] Add translation support - ✅ **Done.** Added `core/i18n.py` which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` activates the catalog from CLI `--lang` / system locale, and the UI (`main_window_ctk.py`) wraps user-facing strings in `_()`. Supports 5 languages plus English fallback.
-- [ ] Implement auto-update checking
-- [x] Add ISO verification (checksum comparison) - ✅ **Done (dynamic).** Added `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` GNU/coreutils and `SHA256 (file) = <hex>` BSD/Fedora layouts). Currently wired for 6 distro versions (Ubuntu 24.04/22.04/20.04, Debian current, Fedora 44/43) — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
+- [x] Implement auto-update checking - ✅ **Done.** `core/updates.py` asks GitHub for the newest release and compares it with `__version__`; the About dialog reports the result. It runs on a worker thread so the dialog opens at once, hands the answer back through a queue for the main thread (Tk may only be touched from the thread that owns it), and reports a check that did not complete as *not known* rather than as up to date. Versions compare numerically, so 1.9.11 does not outrank 1.10.0. Notification only — nothing is downloaded or installed
+- [x] Add ISO verification (checksum comparison) - ✅ **Done (dynamic).** Added `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` GNU/coreutils and `SHA256 (file) = <hex>` BSD/Fedora layouts). Every downloadable version now names one (SHA512/MD5 where a publisher offers nothing stronger) — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
 - [x] Add support for more archive formats (zip, tar, etc.) - ✅ Complete
 
 ### 🎨 Low Priority / Enhancements
@@ -635,7 +670,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 ### 🧪 Testing
 - [x] Add unit tests for core functionality - ✅ Complete
 - [x] Add unit tests for platform-specific code - ✅ Complete
-- [x] Add integration tests - ⚠️ **Unit-level only.** All 192 tests mock `subprocess`; **no test actually formats a drive or produces a bootable USB.** A loopback-image integration test is still needed.
+- [x] Add integration tests - ⚠️ **Unit-level only.** All 413 tests (376 run, 37 skipped as platform-specific) mock `subprocess`; **no test actually formats a drive or produces a bootable USB.** A loopback-image integration test is still needed.
 - [x] Add UI tests for the window layer - ✅ Complete (ported to CustomTkinter)
 
 ### 📝 Documentation
@@ -656,7 +691,7 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] **Remove the terminal-dependent privilege flow.** ✅ **Done.** Replaced `show_root_warning()`, `show_admin_warning()` and `relaunch_with_sudo()` in `app.py`. The startup privilege check was removed entirely: the app no longer blocks or warns on launch, and no longer relies on Terminal.app or command-line sudo instructions.
 - [x] **Actually use the bundled bootloader binaries** - ✅ **Done.** Added a frozen-app-aware resolver (`pynetboot/resources/__init__.py`: `resource_path()`/`bootloader_path()` with `sys._MEIPASS` support + `ensure_executable()`). The installer now writes the bundled `mbr.bin`, copies the bundled `menu.c32`/`vesamenu.c32`, and runs the bundled syslinux (`ubnsylnx64`/`ubnsylnx`, Windows `syslinux.exe`), falling back to system tools only if a bundled binary is missing. (Also fixed a latent `result.return_code` typo that would have crashed the Linux path.)
 - [x] **Harden device resolution** - ✅ **Done.** macOS `_format_device`/`_mount_device` now resolve the whole disk and data partition via `diskutil info -plist` / `diskutil list -plist` (`_macos_whole_disk`, `_macos_data_partition`) instead of substring-scanning `diskutil list` text and hardcoding `…s1`; Linux uses `lsblk -no pkname` (`_linux_parent_disk`) for the MBR target.
-- [x] **Populate distribution checksums** - ✅ **Done (dynamic).** Added a `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` and BSD `SHA256 (file) = <hex>` layouts). Wired for Ubuntu, Debian and Fedora — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
+- [x] **Populate distribution checksums** - ✅ **Done (dynamic).** Added a `sha256_url` field + `Downloader.fetch_checksum_from_url()` that downloads a distro's published checksum file and matches the ISO by filename (handles both `<hex>  <file>` and BSD `SHA256 (file) = <hex>` layouts). Wired for every downloadable version — verified live. This verifies downloads without hardcoding hashes that rot across point releases.
 - [x] **Wire real translations** - ✅ **Done.** Added `core/i18n.py`, which parses the bundled Qt `.ts` catalogs (de/es/fr/it/hu) into a gettext-style `_()` lookup (no Qt dependency). `main.load_translations()` now activates the catalog from the CLI `--lang` / system locale, and the UI wraps its user-facing labels/buttons in `_()`. (Semantic combo *values* like "USB Drive" are deliberately left untranslated so installer logic still matches.)
 
 ### 🔧 Build & Distribution
@@ -665,10 +700,10 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 - [x] **Add a frozen-app resource resolver** (`sys._MEIPASS`-aware) so icons and bootloader binaries are found inside a PyInstaller bundle. ✅ **Done.** Added `pynetboot/resources/__init__.py` with `resource_path()`, `bootloader_path()`, `icon_path()`, `translations_dir()` and helper functions that resolve paths both in normal layouts and inside frozen PyInstaller bundles.
 - [x] Add a PyInstaller `.spec` (onefile/windowed) and wire the real app icon. ✅ **Done.** Created `pynetboot.spec` with cross-platform support: uses `unetbootin.ico` for Windows, `unetbootin.icns` for macOS, and `unetbootin.xpm` for Linux. Includes all resources (icons, logos, bootloader, translations) in the bundle.
 - [x] Create Windows `.exe` (no install) ✅ **Done.** PyInstaller onefile/windowed via `pynetboot-windows.spec`, with the UAC `uac_admin` manifest embedded by the spec (no fragile post-build `mt.exe` step). The app icon is a real multi-resolution `.ico` (16–256 px). *Scripted `diskpart` to replace the interactive `format` command is still open.*
-- [x] Create macOS `.app` → `.dmg` (drag-to-Applications) ✅ **Done.** Universal 2 bundle shipped as both a ZIP and a DMG; the DMG carries a volume icon and an Applications symlink. The Terminal-sudo flow is replaced by Authorization Services. *Still unsigned — codesign + notarize remain open.*
+- [x] Create macOS `.app` → `.dmg` (drag-to-Applications) ✅ **Done.** Apple Silicon (arm64) bundle — the CI runner is arm64 and the build is not cross-compiled, so Intel Macs are not covered — shipped as both a ZIP and a DMG; the DMG carries a volume icon and an Applications symlink. The Terminal-sudo flow is replaced by Authorization Services. *Still unsigned — codesign + notarize remain open.*
 - [x] Create Linux packages ✅ **Done.** AppImage, `.deb`/`.rpm` (via `fpm`, declaring `syslinux`, `dosfstools`, `mtools`, `sudo`) and Flatpak (`--device=all`, runtime 24.08). Each ships a `.desktop` file and AppStream metadata so the app appears in the GNOME/KDE menus.
 - [x] Set up a CI/CD matrix (windows/macos/ubuntu runners) to build all artifacts on tag. ✅ **Done.** `.github/workflows/release.yml` builds all six artifacts and publishes a GitHub release on any `v*` tag.
-- [ ] Set up automatic updates.
+- [ ] Set up automatic updates — the app now *notices* a newer release (see *Implement auto-update checking*), but installing one is still a manual download.
 - [ ] Codesign + notarize the macOS build so Gatekeeper stops warning.
 - [x] Add `build/`, `dist/`, `__pycache__/`, `.pytest_cache/`, `venv/` to `.gitignore`. ✅ **Done.** Updated `.gitignore` with these entries plus additional common patterns (`.egg-info/`, `*.egg`, `.coverage`, `htmlcov/`, etc.). Note: `pynetboot.spec` is tracked in the repo.
 
@@ -704,13 +739,14 @@ This is a work in progress. Here are the tasks needed to complete the rewrite:
 | Drive Safety | ✅ Removable-only selection + erase confirmation + installer hard-guard (internal/system/virtual disks can never be targeted) |
 | Platform Support | ✅ Verified end-to-end on all three. Drive listing/info solid everywhere. UEFI-only mode installs the bundled `syslinux.efi` as `EFI/BOOT/BOOTX64.EFI`; Secure Boot still needs a distribution-supplied signed shim |
 | Core Utilities | ✅ Complete |
-| Unit Tests | ⚠️ Unit-level only (mocked subprocess; no real bootable-USB test) |
+| Unit Tests | ⚠️ Unit-level only — 413 tests, all mocking `subprocess`; no real bootable-USB test |
 | Documentation | ⚠️ Partial |
 | Resources | ✅ Bundled and used — bootloader binaries in `resources/bootloader/` are now referenced via `pynetboot.resources` resolver; icons and logos are also properly bundled |
-| Full Distribution List | ✅ Complete (22 distros, including ARM64 builds of openSUSE; checksums dynamically fetched) |
+| Full Distribution List | ✅ Complete — 22 distros over 45 versions, including ARM64 builds of openSUSE; checksums dynamically fetched |
 | Translations | ✅ Implemented — `core/i18n.py` parses bundled Qt `.ts` catalogs (de/es/fr/it/hu) into gettext-style `_()`; wired in `main.load_translations()` |
-| Checksum Verification | ✅ Dynamic — downloads and verifies distro checksums from published checksum files (wired for Ubuntu, Debian, Fedora) |
+| Checksum Verification | ✅ Dynamic — every one of the 43 downloadable versions is checked against a checksum file its publisher publishes (SHA256, or SHA512/MD5 where that is all that is offered). The two Windows entries have no direct URL to verify |
 | Packaging | ✅ Complete — CI builds Windows EXE, macOS ZIP + DMG, AppImage, DEB, RPM and Flatpak on every `v*` tag and publishes them as raw release assets. DEB/RPM/Flatpak ship `.desktop` + AppStream metadata and icons, so the app appears in the GNOME/KDE menus with its icon and GPL license. *macOS build is not yet codesigned/notarized.* |
+| Update Check | ✅ About asks GitHub for the newest release and reports whether this is the current one; notification only, nothing is installed |
 | Elevation / "no-terminal" launch | ✅ Implemented — `core/elevation.py` provides a single elevation model with a `sudo` interceptor. The GUI runs as a normal user and each privileged command elevates on demand: pkexec → `sudo` (graphical askpass) on Linux, osascript on macOS, UAC on Windows. No extra toolkit is required; the DEB/RPM depend on `sudo`. Double-click launch works on all three platforms |
 
 ---
