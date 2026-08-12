@@ -980,6 +980,16 @@ class TestCategoryIcons(unittest.TestCase):
                  or os.path.exists(resource_path('logos', filename)))
         self.assertTrue(found, f"{filename} is not bundled")
 
+    def test_every_category_icon_is_bundled(self):
+        import os
+
+        from pynetboot.resources import icon_path, resource_path
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
+        for category, filename in MainWindowCTk._CATEGORY_ICONS.items():
+            found = (os.path.exists(icon_path(filename))
+                     or os.path.exists(resource_path('logos', filename)))
+            self.assertTrue(found, f"{category}: {filename} is not bundled")
+
     def test_an_unknown_category_shows_nothing_but_stays_usable(self):
         label = self.window._category_icon._label
         self.window.set_category_icon('Linux')
@@ -1175,6 +1185,31 @@ class TestLogWindow(unittest.TestCase):
         from pynetboot.resources import icon_path
         for name in ('ui_log.png', 'ui_copy.png'):
             self.assertTrue(os.path.exists(icon_path(name)), f"missing {name}")
+
+    def test_the_log_starts_at_the_left_margin(self):
+        """`see('end')` also scrolls sideways when the last line is long.
+
+        That left every line starting mid-word, so the reset has to follow it.
+        """
+        if not HAS_CTK:
+            self.skipTest("customtkinter is not installed")
+        from pynetboot.core import log_buffer
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
+
+        original = log_buffer.get_text
+        log_buffer.get_text = lambda: ('x' * 400 + '\n') * 30 + 'z' * 400
+        self.addCleanup(setattr, log_buffer, 'get_text', original)
+        try:
+            window = MainWindowCTk()
+        except Exception as e:                # no display, e.g. headless CI
+            self.skipTest(f"no Tk display: {e}")
+        window.root.withdraw()
+        self.addCleanup(window.root.destroy)
+
+        window.show_log()
+        window.root.update_idletasks()
+        self.assertEqual(window._log_textbox.xview()[0], 0.0,
+                         "the log opened scrolled to the right")
 
 
 class TestFlatpakTooling(unittest.TestCase):

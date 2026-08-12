@@ -624,6 +624,7 @@ class MainWindowCTk:
     # Shown beside the category drop-down. Looked up in icons/ first, then
     # logos/, so a distribution logo can be used directly.
     _CATEGORY_ICONS = {
+        'all': 'category_all.png',
         'linux': 'Linux-Logo.png',
         'bsd': 'category_bsd.png',
         'windows': 'category_windows.png',
@@ -1188,8 +1189,8 @@ class MainWindowCTk:
     def set_category_icon(self, category: Optional[str]):
         """Show the icon for the selected category beside the drop-down.
 
-        "All" gets a blank image rather than none at all. CustomTkinter
-        ignores `image=None` -- its label keeps displaying the previous one --
+        A category with no icon gets a blank image rather than none at all.
+        CustomTkinter ignores `image=None` -- the label keeps the previous one --
         so the image object stays referenced by Tk after this code has let go
         of it, and the next category raises "image pyimageN doesn't exist".
         That is why the icons vanished after cycling through the categories
@@ -1558,6 +1559,9 @@ class MainWindowCTk:
             box.delete("1.0", "end")
             box.insert("1.0", log_buffer.get_text())
             box.see("end")
+            # `see` also scrolls sideways to the end of that line, which left
+            # the whole log starting mid-word. Put the left margin back.
+            box.xview_moveto(0)
             # Read-only, but Tk still allows selecting and copying.
             box.configure(state="disabled")
         except tkinter.TclError as e:
