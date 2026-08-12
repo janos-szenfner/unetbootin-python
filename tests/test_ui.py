@@ -999,6 +999,86 @@ class TestCategoryIcons(unittest.TestCase):
         self.assertTrue(self.window.root.tk.call('image', 'inuse', shown))
 
 
+class TestApplicationMenu(unittest.TestCase):
+    """The macOS application menu must open this app's About dialog.
+
+    Left to itself Tk fills that menu with an About item that opens the Cocoa
+    panel, which shows the bundle's name and version rather than the dialog
+    the About button opens.
+    """
+
+    def setUp(self):
+        if not HAS_CTK:
+            self.skipTest("customtkinter is not installed")
+        from pynetboot.ui.main_window_ctk import MainWindowCTk
+        try:
+            self.window = MainWindowCTk()
+        except Exception as e:                # no display, e.g. headless CI
+            self.skipTest(f"no Tk display: {e}")
+        self.addCleanup(self.window.root.destroy)
+        self.window.root.withdraw()
+        if self.window.root.tk.call('tk', 'windowingsystem') != 'aqua':
+            self.skipTest("the application menu exists only on macOS")
+
+    def test_the_about_item_is_wired_to_the_about_event(self):
+        menubar, app_menu = self.window._app_menu
+        # Named "apple", or macOS treats it as an ordinary menu.
+        self.assertEqual(app_menu.winfo_name(), 'apple')
+        self.assertEqual(str(self.window.root.cget('menu')), str(menubar))
+        self.assertIn('About', app_menu.entrycget(0, 'label'))
+
+        while not self.window._events.empty():
+            self.window._events.get_nowait()
+        app_menu.invoke(0)
+        self.assertEqual(self.window._events.get_nowait()[0], '-ABOUT-',
+                         "the menu item must go through the same event as "
+                         "the About button")
+
+
+class TestMacOSBundleMetadata(unittest.TestCase):
+    """The standard About panel and Finder read these from Info.plist."""
+
+    def _spec(self):
+        return open(os.path.join(os.path.dirname(__file__), '..',
+                                 'pynetboot-macos.spec')).read()
+
+    def test_the_bundle_carries_the_package_version(self):
+        """PyInstaller writes 0.0.0 when BUNDLE is given no version."""
+        spec = self._spec()
+        self.assertIn('version=VERSION', spec)
+        self.assertIn("'CFBundleShortVersionString': VERSION", spec)
+
+    def test_the_version_is_read_from_the_package(self):
+        """Run the spec's own lookup: a stale pattern must not pass silently."""
+        import ast
+
+        import pynetboot
+
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        tree = ast.parse(self._spec())
+        wanted = []
+        for node in tree.body:
+            if isinstance(node, ast.Import):        # pathlib, re
+                wanted.append(node)
+            elif (isinstance(node, ast.Assign)
+                    and getattr(node.targets[0], 'id', None) == 'VERSION'):
+                wanted.append(node)
+        namespace = {}
+        cwd = os.getcwd()
+        os.chdir(root)                              # the spec reads src/ from here
+        try:
+            exec(compile(ast.Module(body=wanted, type_ignores=[]),
+                         'spec', 'exec'), namespace)
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(namespace['VERSION'], pynetboot.__version__)
+
+    def test_the_bundle_is_named_for_display(self):
+        """The bundle directory is lower-case; the menu title must not be."""
+        from pynetboot import APP_NAME
+        self.assertIn(f"'CFBundleName': '{APP_NAME}'", self._spec())
+
+
 class TestPressToClick(unittest.TestCase):
     """A press must count as "the mouse is inside", or buttons look dead.
 

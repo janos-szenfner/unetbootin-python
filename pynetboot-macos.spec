@@ -3,7 +3,19 @@
 # Build:  pyinstaller pynetboot-macos.spec --noconfirm --clean --distpath dist/macos
 # Produces dist/macos/pynetboot.app. Compatible with PyInstaller 6.x.
 
+import pathlib
+import re
+
 from PyInstaller.utils.hooks import collect_data_files
+
+# Read from the package rather than passed in, so a local build carries the
+# same version as a release one. CI already refuses a tag that disagrees with
+# it. Without this PyInstaller writes 0.0.0 into Info.plist, which is what
+# Finder and the standard About panel then show.
+VERSION = re.search(
+    r'^__version__ = "(.+)"',
+    pathlib.Path('src/pynetboot/__init__.py').read_text(),
+    re.M).group(1)
 
 # CustomTkinter ships its themes and fonts as package data; without these the
 # app cannot build any widget at runtime.
@@ -76,4 +88,16 @@ app = BUNDLE(
     name='pynetboot.app',
     icon='src/pynetboot/resources/icons/unetbootin.icns',
     bundle_identifier='com.pynetboot.PyNetboot',
+    version=VERSION,
+    info_plist={
+        # The bundle directory keeps its lower-case name -- that is what the
+        # ZIP and the DMG are built around -- so the display name has to be
+        # set here, or macOS titles the application menu "pynetboot".
+        'CFBundleName': 'PyNetboot',
+        'CFBundleDisplayName': 'PyNetboot',
+        'CFBundleShortVersionString': VERSION,
+        'CFBundleVersion': VERSION,
+        'NSHumanReadableCopyright': 'GPLv2+. Janos Szenfner.',
+        'NSHighResolutionCapable': True,
+    },
 )

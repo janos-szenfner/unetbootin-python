@@ -687,6 +687,7 @@ class MainWindowCTk:
         self.root.minsize(760, 560)
         self.root.protocol("WM_DELETE_WINDOW", lambda: self.emit(WIN_CLOSED, None))
         self._apply_window_icon()
+        self._install_app_menu()
 
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(4, weight=1)
@@ -1071,6 +1072,37 @@ class MainWindowCTk:
             self.root.iconphoto(True, self._window_icon)
         except Exception as e:  # noqa: BLE001 - cosmetic only
             logger.warning(f"Could not set the window icon: {e}")
+
+    def _install_app_menu(self):
+        """Point the macOS application menu's About item at our own dialog.
+
+        With no application menu of its own, Tk supplies a default one whose
+        About item opens the standard Cocoa panel -- the app icon, the bundle
+        name and whatever version Info.plist carries, which is not the About
+        dialog the button in the header opens. Entries in a menu named "apple"
+        are moved to the top of the application menu, and the first one takes
+        the place of that default.
+
+        It goes through the same event as the button, so both routes end up in
+        one place, on the main thread.
+
+        macOS only: there is no application menu elsewhere, and a menubar would
+        be drawn inside the window instead.
+        """
+        try:
+            if self.root.tk.call('tk', 'windowingsystem') != 'aqua':
+                return
+            menubar = tkinter.Menu(self.root)
+            app_menu = tkinter.Menu(menubar, name='apple')
+            menubar.add_cascade(menu=app_menu)
+            app_menu.add_command(label=f"{_('About')} {APP_TITLE}",
+                                 command=lambda: self.emit('-ABOUT-'))
+            self.root.configure(menu=menubar)
+            # Kept alive for as long as the window is: Tk holds no reference
+            # of its own to a menu that only the menubar names.
+            self._app_menu = (menubar, app_menu)
+        except tkinter.TclError as e:
+            logger.debug(f"Could not install the application menu: {e}")
 
     # --------------------------------------------------------------- events
 
