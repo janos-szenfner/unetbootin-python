@@ -193,9 +193,9 @@ class DistributionManager:
                 # (non-LTS) release follows it.
                 'versions': [
                     {'name': '26.04 LTS',
-                     'url': 'https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso',
+                     'url': 'https://releases.ubuntu.com/26.04/ubuntu-26.04.1-desktop-amd64.iso',
                      'sha256_url': 'https://releases.ubuntu.com/26.04/SHA256SUMS',
-                     'size': 6518974464},
+                     'size': 6482409472},
                     {'name': '24.04 LTS',
                      'url': 'https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso',
                      'sha256_url': 'https://releases.ubuntu.com/24.04/SHA256SUMS',
